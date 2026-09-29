@@ -1,5 +1,6 @@
 // =====================================================
 // PÁGINA DEL CLIENTE: REVISAR Y CONFIRMAR LA COTIZACIÓN
+// (usa los textos de i18n.js)
 // =====================================================
 
 const $ = (id) => document.getElementById(id);
@@ -9,7 +10,10 @@ const numero = params.get("n");
 const token = params.get("t");
 
 let datos = null;
+let errorClave = "";
 let confirmarMarcado = false;
+let mensajeExito = false;
+let mensajeComentario = null;   // { clave, tipo }
 
 function escapar(texto) {
   return String(texto ?? "").replace(/[&<>"']/g, (c) =>
@@ -17,9 +21,9 @@ function escapar(texto) {
 }
 const dinero = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n) || 0);
 const hora = (h) => (h ? String(h).slice(0, 5) : "");
-function fecha(t, opciones) {
-  const s = new Date(t.slice(0, 10) + "T12:00:00").toLocaleDateString("es-CR", opciones);
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function fecha(s, opciones) {
+  const txt = new Date(s.slice(0, 10) + "T12:00:00").toLocaleDateString(locale(), opciones);
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
 }
 
 const subtotalPersonas = (a) => a.participantes.reduce((s, p) => s + p.cantidad * p.precio, 0);
@@ -27,64 +31,64 @@ const transporteCobrado = (a) =>
   a.transporte_modo === "opcional" && a.transporte_respuesta === true ? Number(a.transporte_costo) || 0 : 0;
 const transportePendiente = (a) => a.transporte_modo === "opcional" && a.transporte_respuesta === null;
 
-function mostrarError(texto) {
+function mostrarError(clave) {
+  errorClave = clave;
   $("cargando").hidden = true;
   $("contenido").hidden = true;
-  $("error").textContent = texto;
+  $("error").textContent = t(clave);
   $("error").hidden = false;
 }
 
 async function cargar() {
-  if (!numero || !token) {
-    return mostrarError("El enlace está incompleto. Revisa que lo hayas copiado completo del mensaje que te enviamos.");
-  }
+  if (!numero || !token) return mostrarError("c_e_enlace");
   const { data, error } = await db.rpc("ver_cotizacion", { p_numero: numero, p_token: token });
-  if (error || !data) {
-    return mostrarError("No encontramos esta cotización. Revisa el enlace o escríbenos y con gusto te ayudamos.");
-  }
+  if (error || !data) return mostrarError("c_e_no_encontrada");
   datos = data;
+
+  // Si el cliente no eligió un idioma en este navegador, se usa el de su solicitud
+  if (!idiomaExplicito() && data.idioma && data.idioma !== idioma) cambiarIdioma(data.idioma, false);
   pintar();
 }
 
 function htmlTransporte(a, puedeResponder) {
   const lugares = [
-    a.recogida && `Pick up: ${escapar(a.recogida)}${a.hora_recogida ? " a las " + hora(a.hora_recogida) : ""}`,
-    a.dejada && `Drop off: ${escapar(a.dejada)}`
-  ].filter(Boolean).map((t) => `<p class="act-lugar">${t}</p>`).join("");
+    a.recogida && (a.hora_recogida
+      ? t("t_pickup_hora", { lugar: a.recogida, hora: hora(a.hora_recogida) })
+      : t("t_pickup", { lugar: a.recogida })),
+    a.dejada && t("t_dropoff", { lugar: a.dejada })
+  ].filter(Boolean).map((x) => `<p class="act-lugar">${escapar(x)}</p>`).join("");
 
-  if (a.transporte_modo === "sin_transporte") {
-    return `<p class="act-lugar">Este servicio no incluye transporte.</p>`;
-  }
-  if (a.transporte_modo === "incluido") {
-    return `<p class="act-lugar"><strong>Transporte incluido.</strong></p>${lugares}`;
-  }
+  if (a.transporte_modo === "sin_transporte") return `<p class="act-lugar">${escapar(t("t_sin_servicio"))}</p>`;
+  if (a.transporte_modo === "incluido") return `<p class="act-lugar"><strong>${escapar(t("t_incluido"))}</strong></p>${lugares}`;
 
-  const costo = Number(a.transporte_costo) ? `+${dinero(a.transporte_costo)}` : "sin costo";
+  const costo = Number(a.transporte_costo) ? `+${dinero(a.transporte_costo)}` : t("t_sin_costo");
   if (!puedeResponder) {
-    if (a.transporte_respuesta === true) return `<p class="act-lugar"><strong>Con transporte</strong> (${costo})</p>${lugares}`;
-    if (a.transporte_respuesta === false) return `<p class="act-lugar">Sin transporte: llegas por tu cuenta.</p>`;
-    return `<p class="act-lugar">Transporte opcional (${costo}).</p>`;
+    if (a.transporte_respuesta === true) return `<p class="act-lugar"><strong>${escapar(t("t_con"))}</strong> (${escapar(costo)})</p>${lugares}`;
+    if (a.transporte_respuesta === false) return `<p class="act-lugar">${escapar(t("t_sin_cuenta"))}</p>`;
+    return `<p class="act-lugar">${escapar(t("t_opcional", { costo }))}</p>`;
   }
 
   return `
     <div class="pregunta${transportePendiente(a) ? " falta" : ""}">
-      <p class="pregunta-texto">¿Necesitas transporte para esta actividad? (${costo})</p>
-      <label class="opcion"><input type="radio" name="trans-${a.id}" value="si" data-actividad="${a.id}" ${a.transporte_respuesta === true ? "checked" : ""}> Sí, necesito transporte</label>
-      <label class="opcion"><input type="radio" name="trans-${a.id}" value="no" data-actividad="${a.id}" ${a.transporte_respuesta === false ? "checked" : ""}> No, llego por mi cuenta</label>
+      <p class="pregunta-texto">${escapar(t("t_pregunta", { costo }))}</p>
+      <label class="opcion"><input type="radio" name="trans-${a.id}" value="si" data-actividad="${a.id}" ${a.transporte_respuesta === true ? "checked" : ""}> ${escapar(t("t_si"))}</label>
+      <label class="opcion"><input type="radio" name="trans-${a.id}" value="no" data-actividad="${a.id}" ${a.transporte_respuesta === false ? "checked" : ""}> ${escapar(t("t_no"))}</label>
       ${lugares ? `<div class="pregunta-lugares">${lugares}</div>` : ""}
     </div>`;
 }
 
 function pintar() {
   const d = datos;
+  $("cargando").hidden = true;
+
   if (d.estado === "cancelado") {
-    $("cargando").hidden = true;
     $("contenido").innerHTML = `
-      <h1>Cotización ${escapar(d.numero)}</h1>
-      <p class="aviso">Esta cotización fue cancelada. Si crees que es un error o quieres retomarla, escríbenos y con gusto te ayudamos.</p>`;
+      <h1>${escapar(t("c_cancelada_titulo", { numero: d.numero }))}</h1>
+      <p class="aviso">${escapar(t("c_cancelada"))}</p>`;
     $("contenido").hidden = false;
     return;
   }
+
   const reservada = d.estado === "reserva" || d.estado === "finalizado";
   const puedeResponder = d.estado === "proceso";
   const porDia = {};
@@ -97,15 +101,17 @@ function pintar() {
       ${porDia[f].map((a) => {
         const sub = subtotalPersonas(a) + transporteCobrado(a);
         total += sub;
-        const horario = a.hora_inicio ? `${hora(a.hora_inicio)}${a.hora_fin ? " a " + hora(a.hora_fin) : ""}` : "Horario por confirmar";
+        const horario = a.hora_inicio
+          ? `${hora(a.hora_inicio)}${a.hora_fin ? " – " + hora(a.hora_fin) : ""}`
+          : t("c_horario_pendiente");
         return `
           <div class="act">
             <div class="act-cab">
-              <p class="act-nombre">${escapar(a.servicio ?? "Actividad")}</p>
+              <p class="act-nombre">${escapar(a.servicio ?? "")}</p>
               <span class="monto">${dinero(sub)}</span>
             </div>
-            <p class="act-hora">${horario}</p>
-            <p class="act-part">${a.participantes.map((p) => `${p.cantidad} ${escapar(p.categoria)} × ${dinero(p.precio)}`).join(", ")}</p>
+            <p class="act-hora">${escapar(horario)}</p>
+            <p class="act-part">${a.participantes.map((p) => `${p.cantidad} ${escapar(tCategoria(p.categoria))} × ${dinero(p.precio)}`).join(", ")}</p>
             ${htmlTransporte(a, puedeResponder)}
           </div>`;
       }).join("")}
@@ -116,44 +122,45 @@ function pintar() {
   const faltan = d.actividades.filter(transportePendiente).length;
 
   let html = `
-    <h1>${reservada ? "Tu reserva" : "Tu cotización"} ${escapar(d.numero)}</h1>
-    <p class="intro">Hola ${escapar(d.nombre)}. ${reservada
-      ? "Tu reserva está confirmada. Aquí tienes el itinerario completo."
-      : "Este es el itinerario que preparamos para ti. Revísalo, indica si necesitas transporte donde se te pregunta y, si todo está bien, confírmalo al final de la página."}</p>
-    ${dias || `<p class="ayuda">Todavía no hay actividades en esta cotización.</p>`}
+    ${mensajeExito ? `<div class="exito"><strong>${escapar(t("c_exito_titulo"))}</strong>${escapar(t("c_exito"))}</div>` : ""}
+    <h1>${escapar(t(reservada ? "c_tu_reserva" : "c_tu_cotizacion", { numero: d.numero }))}</h1>
+    <p class="intro">${escapar(t(reservada ? "c_intro_reserva" : "c_intro_cot", { nombre: d.nombre }))}</p>
+    ${dias || `<p class="ayuda">${escapar(t("c_sin_actividades"))}</p>`}
     <div class="caja-total">
-      <p class="grande"><span>Total</span><strong>${dinero(total)}</strong></p>
-      ${reservada && prepago ? `<p><span>Prepago solicitado</span><span>${dinero(prepago)}</span></p>` : ""}
-      ${reservada ? `<p><span>Pagado</span><span>${dinero(pagado)}</span></p><p><span>Saldo pendiente</span><strong>${dinero(total - pagado)}</strong></p>` : ""}
-      <p class="ayuda" style="margin-top:6px">Precios en dólares estadounidenses (USD).${faltan ? " El total se ajustará según tus respuestas de transporte." : ""}</p>
+      <p class="grande"><span>${escapar(t("c_total"))}</span><strong>${dinero(total)}</strong></p>
+      ${reservada && prepago ? `<p><span>${escapar(t("c_prepago"))}</span><span>${dinero(prepago)}</span></p>` : ""}
+      ${reservada ? `
+        <p><span>${escapar(t("c_pagado"))}</span><span>${dinero(pagado)}</span></p>
+        <p><span>${escapar(t("c_saldo"))}</span><strong>${dinero(total - pagado)}</strong></p>` : ""}
+      <p class="ayuda" style="margin-top:6px">${escapar(t("c_usd"))}${faltan ? " " + escapar(t("c_ajuste")) : ""}</p>
     </div>`;
 
   if (puedeResponder) {
     html += `
       <div class="caja">
-        <h2>¿Todo está bien?</h2>
-        ${faltan ? `<p class="aviso">Antes de confirmar, indica si necesitas transporte en ${faltan === 1 ? "la actividad marcada" : `las ${faltan} actividades marcadas`}.</p>` : ""}
-        <label class="check"><input id="chkConfirmar" type="checkbox" ${confirmarMarcado ? "checked" : ""} ${faltan ? "disabled" : ""}> CONFIRMAR: estoy de acuerdo con esta cotización</label>
-        <button id="btnConfirmar" type="button" class="btn primario" ${confirmarMarcado && !faltan ? "" : "disabled"}>Confirmar mi reserva</button>
+        <h2>${escapar(t("c_todo_bien"))}</h2>
+        ${faltan ? `<p class="aviso">${escapar(faltan === 1 ? t("c_faltan_1") : t("c_faltan_n", { n: faltan }))}</p>` : ""}
+        <label class="check"><input id="chkConfirmar" type="checkbox" ${confirmarMarcado ? "checked" : ""} ${faltan ? "disabled" : ""}> ${escapar(t("c_check"))}</label>
+        <button id="btnConfirmar" type="button" class="btn primario" ${confirmarMarcado && !faltan ? "" : "disabled"}>${escapar(t("c_btn_confirmar"))}</button>
         <p id="msgConfirmar" class="aviso" hidden style="margin-top:12px"></p>
       </div>`;
   }
 
   if (d.estado === "proceso" || d.estado === "reserva") {
+    const textoPrevio = $("txtComentario")?.value ?? "";
     html += `
       <div class="caja">
-        <h2>¿Quieres cambiar algo?</h2>
-        <p class="ayuda">Cuéntanos qué te gustaría modificar y un colaborador te contactará.</p>
-        <textarea id="txtComentario" maxlength="2000" aria-label="Cambios que deseas"></textarea>
-        <button id="btnComentario" type="button" class="btn">Enviar comentario</button>
-        <p id="msgComentario" hidden style="margin-top:12px"></p>
+        <h2>${escapar(t("c_cambiar"))}</h2>
+        <p class="ayuda">${escapar(t("c_cambiar_ayuda"))}</p>
+        <textarea id="txtComentario" maxlength="2000" aria-label="${escapar(t("c_aria_cambios"))}">${escapar(textoPrevio)}</textarea>
+        <button id="btnComentario" type="button" class="btn">${escapar(t("c_btn_comentario"))}</button>
+        ${mensajeComentario ? `<p class="${mensajeComentario.tipo}" style="margin-top:12px">${escapar(t(mensajeComentario.clave))}</p>` : ""}
       </div>`;
   }
 
-  html += `<div class="acciones"><button type="button" class="btn" onclick="window.print()">Imprimir</button></div>`;
+  html += `<div class="acciones"><button type="button" class="btn" onclick="window.print()">${escapar(t("c_imprimir"))}</button></div>`;
 
   const scroll = window.scrollY;
-  $("cargando").hidden = true;
   $("contenido").innerHTML = html;
   $("contenido").hidden = false;
   window.scrollTo(0, scroll);
@@ -179,7 +186,7 @@ $("contenido").addEventListener("change", async (e) => {
   });
 
   if (error || !data) {
-    alert("No pudimos guardar tu respuesta. Intenta de nuevo o escríbenos.");
+    alert(t("t_e_guardar"));
     await cargar();
     return;
   }
@@ -191,45 +198,43 @@ $("contenido").addEventListener("change", async (e) => {
 async function confirmar() {
   const btn = $("btnConfirmar");
   btn.disabled = true;
-  btn.textContent = "Confirmando…";
+  btn.textContent = t("c_confirmando");
   const { data, error } = await db.rpc("confirmar_cotizacion", { p_numero: numero, p_token: token });
   if (error || !data) {
-    btn.textContent = "Confirmar mi reserva";
+    btn.textContent = t("c_btn_confirmar");
     btn.disabled = false;
     $("msgConfirmar").textContent = error?.message?.includes("transporte")
-      ? "Indica si necesitas transporte en cada actividad antes de confirmar."
-      : "No pudimos confirmar desde aquí. Escríbenos y lo resolvemos de inmediato.";
+      ? t("c_e_confirmar_transporte")
+      : t("c_e_confirmar");
     $("msgConfirmar").hidden = false;
     return;
   }
+  mensajeExito = true;
   await cargar();
-  $("contenido").insertAdjacentHTML("afterbegin",
-    `<div class="exito"><strong>¡Reserva confirmada!</strong>Gracias. Un colaborador te contactará para coordinar el prepago y los detalles.</div>`);
   window.scrollTo(0, 0);
 }
 
 async function comentar() {
   const texto = $("txtComentario").value.trim();
-  const msg = $("msgComentario");
   if (!texto) {
-    msg.className = "aviso";
-    msg.textContent = "Escribe qué te gustaría cambiar.";
-    msg.hidden = false;
-    return;
+    mensajeComentario = { clave: "c_e_comentario_vacio", tipo: "aviso" };
+    return pintar();
   }
-  const btn = $("btnComentario");
-  btn.disabled = true;
+  $("btnComentario").disabled = true;
   const { data, error } = await db.rpc("comentar_cotizacion", { p_numero: numero, p_token: token, p_texto: texto });
-  btn.disabled = false;
   if (error || !data) {
-    msg.className = "aviso";
-    msg.textContent = "No pudimos enviar tu comentario. Intenta de nuevo o escríbenos.";
+    mensajeComentario = { clave: "c_e_comentario", tipo: "aviso" };
   } else {
-    msg.className = "exito";
-    msg.textContent = "Recibimos tu comentario. Un colaborador te contactará pronto.";
+    mensajeComentario = { clave: "c_ok_comentario", tipo: "exito" };
     $("txtComentario").value = "";
   }
-  msg.hidden = false;
+  pintar();
 }
+
+// Cambio de idioma: se redibuja la página sin perder lo escrito
+document.addEventListener("idioma-cambiado", () => {
+  if (datos) pintar();
+  else if (errorClave) $("error").textContent = t(errorClave);
+});
 
 cargar();

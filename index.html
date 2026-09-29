@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilos.css?v=9">
+  <link rel="stylesheet" href="estilos.css?v=10">
 </head>
-<body>
+<body data-titulo="titulo_form">
   <header class="barra">
     <div class="marca">
       <svg class="brujula" viewBox="0 0 40 40" aria-hidden="true">
@@ -18,88 +18,74 @@
         <path d="M20 35 L25 20 L15 20 Z" fill="currentColor"/>
       </svg>
       <span>The House of Tours</span>
+      <label class="selector-idioma">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        <select id="selectorIdioma"></select>
+      </label>
     </div>
   </header>
 
   <main class="pagina">
     <!-- ================= FORMULARIO ================= -->
     <section id="vistaFormulario">
-      <h1>Arma tu cotización</h1>
-      <p class="intro">Cuéntanos qué días estarás con nosotros y qué te gustaría hacer. Un colaborador revisará tu solicitud y te enviará por correo la cotización con horarios y precios.</p>
+      <h1 data-i18n="f_titulo">Arma tu cotización</h1>
+      <p class="intro" data-i18n="f_intro"></p>
       <p id="errorCarga" class="aviso" hidden></p>
 
       <form id="formulario" novalidate>
         <fieldset>
-          <legend>Fechas</legend>
+          <legend data-i18n="f_fechas">Fechas</legend>
           <div class="fila">
-            <label>Desde <input id="fechaInicio" type="date" required></label>
-            <label>Hasta <input id="fechaFin" type="date" required></label>
+            <label><span data-i18n="f_desde">Desde</span> <input id="fechaInicio" type="date" required></label>
+            <label><span data-i18n="f_hasta">Hasta</span> <input id="fechaFin" type="date" required></label>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Servicios por día</legend>
-          <p id="ayudaDias" class="ayuda">Elige primero las fechas para ver los días.</p>
+          <legend data-i18n="f_servicios">Servicios por día</legend>
+          <p id="ayudaDias" class="ayuda"></p>
           <div id="dias" class="dias"></div>
         </fieldset>
 
         <fieldset>
-          <legend>Hospedaje</legend>
+          <legend data-i18n="f_hospedaje">Hospedaje</legend>
           <div class="fila">
-            <label>¿Dónde te hospedas?
-              <select id="propiedad" required>
-                <option value="">Cargando…</option>
-              </select>
+            <label><span data-i18n="f_donde">¿Dónde te hospedas?</span>
+              <select id="propiedad" required></select>
             </label>
-            <label id="campoOtro" hidden>Nombre del lugar
-              <input id="propiedadOtro" type="text" placeholder="Hotel, casa o dirección">
+            <label id="campoOtro" hidden><span data-i18n="f_nombre_lugar">Nombre del lugar</span>
+              <input id="propiedadOtro" type="text" data-i18n-placeholder="f_ph_lugar">
             </label>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Tus datos</legend>
+          <legend data-i18n="f_datos">Tus datos</legend>
           <div class="fila">
-            <label>Nombre <input id="nombre" type="text" autocomplete="given-name" required></label>
-            <label>Apellido <input id="apellido" type="text" autocomplete="family-name" required></label>
+            <label><span data-i18n="f_nombre">Nombre</span> <input id="nombre" type="text" autocomplete="given-name" required></label>
+            <label><span data-i18n="f_apellido">Apellido</span> <input id="apellido" type="text" autocomplete="family-name" required></label>
           </div>
           <div class="fila">
-            <label>Correo electrónico <input id="correo" type="email" autocomplete="email" required></label>
+            <label><span data-i18n="f_correo">Correo electrónico</span> <input id="correo" type="email" autocomplete="email" required></label>
             <div class="telefono">
-              <label>Código
-                <select id="codigoPais" autocomplete="tel-country-code">
-                  <option value="+506">+506 Costa Rica</option>
-                  <option value="+1">+1 EE. UU. / Canadá</option>
-                  <option value="+52">+52 México</option>
-                  <option value="+507">+507 Panamá</option>
-                  <option value="+57">+57 Colombia</option>
-                  <option value="+54">+54 Argentina</option>
-                  <option value="+55">+55 Brasil</option>
-                  <option value="+56">+56 Chile</option>
-                  <option value="+34">+34 España</option>
-                  <option value="+33">+33 Francia</option>
-                  <option value="+49">+49 Alemania</option>
-                  <option value="+39">+39 Italia</option>
-                  <option value="+44">+44 Reino Unido</option>
-                  <option value="+31">+31 Países Bajos</option>
-                  <option value="+41">+41 Suiza</option>
-                </select>
+              <label><span data-i18n="f_codigo">Código</span>
+                <select id="codigoPais" autocomplete="tel-country-code"></select>
               </label>
-              <label>Teléfono <input id="telefono" type="tel" autocomplete="tel-national" required></label>
+              <label><span data-i18n="f_telefono">Teléfono</span> <input id="telefono" type="tel" autocomplete="tel-national" required></label>
             </div>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>¿Cuántas personas?</legend>
+          <legend data-i18n="f_personas">¿Cuántas personas?</legend>
           <div class="fila tres">
-            <label>Adultos <span class="nota">12 años o más</span>
+            <label><span data-i18n="f_adultos">Adultos</span> <span class="nota" data-i18n="f_nota_adultos"></span>
               <input id="adultos" type="number" min="1" max="99" value="2" inputmode="numeric">
             </label>
-            <label>Niños <span class="nota">de 6 a 11 años</span>
+            <label><span data-i18n="f_ninos">Niños</span> <span class="nota" data-i18n="f_nota_ninos"></span>
               <input id="ninos" type="number" min="0" max="99" value="0" inputmode="numeric">
             </label>
-            <label>Menores <span class="nota">de 0 a 5 años</span>
+            <label><span data-i18n="f_menores">Menores</span> <span class="nota" data-i18n="f_nota_menores"></span>
               <input id="menores" type="number" min="0" max="99" value="0" inputmode="numeric">
             </label>
           </div>
@@ -107,7 +93,7 @@
         </fieldset>
 
         <div id="errores" class="aviso" role="alert" hidden></div>
-        <button id="btnEnviar" type="submit" class="btn primario grande">Enviar solicitud</button>
+        <button id="btnEnviar" type="submit" class="btn primario grande" data-i18n="f_enviar">Enviar solicitud</button>
       </form>
     </section>
 
@@ -116,21 +102,22 @@
       <div class="boleta">
         <div class="boleta-cabeza">
           <p class="boleta-marca">The House of Tours</p>
-          <p class="boleta-etiqueta">Tu número de cotización</p>
+          <p class="boleta-etiqueta" data-i18n="g_etiqueta">Tu número de cotización</p>
           <p id="numeroFinal" class="numero-grande" tabindex="-1"></p>
         </div>
-        <p>Guárdalo: es el mismo número que usará el colaborador que te atienda. Te escribiremos a <strong id="correoFinal"></strong> con la cotización para que la revises y la confirmes.</p>
+        <p id="textoGracias"></p>
         <div id="resumenFinal"></div>
         <div class="acciones">
-          <button type="button" class="btn" id="btnImprimir">Imprimir</button>
-          <button type="button" class="btn" id="btnNueva">Hacer otra solicitud</button>
+          <button type="button" class="btn" id="btnImprimir" data-i18n="g_imprimir">Imprimir</button>
+          <button type="button" class="btn" id="btnNueva" data-i18n="g_otra">Hacer otra solicitud</button>
         </div>
       </div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=9"></script>
-  <script src="formulario.js?v=9"></script>
+  <script src="config.js?v=10"></script>
+  <script src="i18n.js?v=10"></script>
+  <script src="formulario.js?v=10"></script>
 </body>
 </html>

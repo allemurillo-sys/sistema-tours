@@ -19,6 +19,7 @@ const MOTIVOS_CANCELACION = [
 ];
 const ROLES_AUTORIZADOS = ["administrador", "gerente", "jefatura"];
 const METODOS_PAGO = ["Transferencia", "SINPE Móvil", "Tarjeta", "Efectivo", "Otro"];
+const NOMBRE_IDIOMA = { es: "Español", en: "Inglés", fr: "Francés", de: "Alemán", it: "Italiano" };
 const MODOS_TRANSPORTE = {
   incluido: "Incluido en el servicio",
   opcional: "Opcional (se consulta al cliente)",
@@ -522,6 +523,7 @@ function htmlCliente(c) {
         <div><dt>Hospedaje</dt><dd>${escapar(nombrePropiedad(c)) || "Sin indicar"}${c.propiedad_id ? "" : " (otro lugar)"}</dd></div>
         <div><dt>Fechas del viaje</dt><dd>${fecha(c.fecha_inicio)} al ${fecha(c.fecha_fin, { day: "numeric", month: "short", year: "numeric" })}</dd></div>
         <div><dt>Personas</dt><dd>${personas(c)}</dd></div>
+        <div><dt>Idioma del cliente</dt><dd>${NOMBRE_IDIOMA[c.idioma] ?? "Español"}</dd></div>
         <div><dt>Solicitud recibida</dt><dd>${fechaHora(c.creado_en)}</dd></div>
         <div><dt>Atiende</dt><dd>${escapar(nombrePerfil(c.colaborador_id)) || "Sin asignar"}</dd></div>
       </dl>

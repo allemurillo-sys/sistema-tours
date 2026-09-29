@@ -134,3 +134,17 @@ input:focus-visible, select:focus-visible, button:focus-visible {
   .boleta { box-shadow: none; padding: 0; }
   .boleta-cabeza::before, .boleta-cabeza::after { display: none; }
 }
+
+/* ---------- Selector de idioma ---------- */
+.selector-idioma {
+  margin-left: auto; flex-direction: row; align-items: center; gap: 6px;
+  font-family: var(--texto); font-weight: 500; font-size: .92rem;
+}
+.selector-idioma svg { width: 20px; height: 20px; flex: none; }
+.selector-idioma select {
+  width: auto; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+  background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .45);
+}
+.selector-idioma select option { color: var(--pizarra); background: var(--blanco); }
+.selector-idioma select:focus-visible { outline: 3px solid #5FAF84; outline-offset: 2px; }
+@media print { .selector-idioma { display: none; } }
