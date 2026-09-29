@@ -9,25 +9,25 @@ const TRANSPORTE_TEXTO = { incluido: "Incluido", opcional: "Opcional", sin_trans
 document.addEventListener("vista-abierta", (e) => { if (e.detail === "servicios") pintarCatalogo(); });
 document.addEventListener("datos-actualizados", () => { if (!$("vistaServicios").hidden) pintarCatalogo(); });
 
-document.querySelectorAll(".pestana").forEach((b) => b.addEventListener("click", () => {
+document.querySelectorAll(".pestana[data-pestana]").forEach((b) => b.addEventListener("click", () => {
   catalogo.pestana = b.dataset.pestana;
   catalogo.editando = null;
   pintarCatalogo();
 }));
 
 function pintarCatalogo() {
-  document.querySelectorAll(".pestana").forEach((b) => {
+  document.querySelectorAll(".pestana[data-pestana]").forEach((b) => {
     const activa = b.dataset.pestana === catalogo.pestana;
     b.classList.toggle("activa", activa);
     b.setAttribute("aria-selected", activa);
   });
 
-  const puede = esAutorizado();
-  let h = puede ? "" : `<p class="aviso">Puedes consultar el catálogo. Solo administradores, gerentes o jefatura pueden modificarlo.</p>`;
+  const editar = puede("editar_catalogo");
+  let h = editar ? "" : `<p class="aviso">Puedes consultar el catálogo. Tu usuario no tiene autorización para modificarlo.</p>`;
 
-  if (catalogo.pestana === "servicios") h += catalogo.editando ? htmlFormServicio(catalogo.editando) : htmlListaServicios(puede);
-  if (catalogo.pestana === "operadores") h += catalogo.editando ? htmlFormOperador(catalogo.editando) : htmlListaOperadores(puede);
-  if (catalogo.pestana === "propiedades") h += htmlPropiedades(puede);
+  if (catalogo.pestana === "servicios") h += catalogo.editando ? htmlFormServicio(catalogo.editando) : htmlListaServicios(editar);
+  if (catalogo.pestana === "operadores") h += catalogo.editando ? htmlFormOperador(catalogo.editando) : htmlListaOperadores(editar);
+  if (catalogo.pestana === "propiedades") h += htmlPropiedades(editar);
 
   $("catalogoContenido").innerHTML = h;
   $("catalogoContenido").querySelector("[autofocus]")?.focus();
@@ -41,7 +41,7 @@ function htmlListaServicios(puede) {
     const precios = app.categorias
       .map((c) => ({ c, p: app.precios.find((x) => x.servicio_id === s.id && x.categoria_id === c.id) }))
       .filter((x) => x.p)
-      .map(({ c, p }) => `<span class="precio-linea">${escapar(c.nombre)}: ${dinero(p.precio)} <span class="nota">neto ${dinero(p.neto)}</span></span>`)
+      .map(({ c, p }) => `<span class="precio-linea">${escapar(c.nombre)}: ${dinero(p.precio)}${puede("ver_utilidad") ? ` <span class="nota">neto ${dinero(p.neto)}</span>` : ""}</span>`)
       .join("");
     return `
       <tr class="${s.activo ? "" : "inactivo"}">

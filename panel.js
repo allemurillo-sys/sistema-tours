@@ -24,6 +24,7 @@ const app = {
   yo: null,
   cotizaciones: [],
   servicios: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
+  permisos: new Set(),
   actual: null,            // { cot, solicitudes, actividades, pagos, bitacora }
   editandoCliente: false,
   temporizador: null
@@ -57,7 +58,8 @@ function sumarMinutos(h, minutos) {
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 }
 
-const esAutorizado = () => ROLES_AUTORIZADOS.includes(app.yo?.rol);
+const puede = (permiso) => app.yo?.rol === "administrador" || app.permisos.has(permiso);
+const esAutorizado = () => puede("reabrir_finalizadas");
 const servicioPorId = (id) => app.servicios.find((s) => s.id === Number(id));
 const categoriaPorId = (id) => app.categorias.find((c) => c.id === Number(id));
 const categoriaPorNombre = (n) => app.categorias.find((c) => c.nombre === n);
@@ -152,6 +154,8 @@ async function entrar() {
   }
 
   app.yo = perfil;
+  const { data: permisos } = await db.from("permisos_rol").select("permiso, permitido").eq("rol", perfil.rol);
+  app.permisos = new Set((permisos || []).filter((p) => p.permitido).map((p) => p.permiso));
   $("usuarioNombre").textContent = `${perfil.nombre} (${perfil.rol})`;
   $("vistaLogin").hidden = true;
   $("vistaApp").hidden = false;
@@ -396,7 +400,7 @@ function pintarDetalle() {
   if (c.estado === "finalizado") h += htmlActividadesLectura();
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
-  if (c.estado === "reserva" || c.estado === "finalizado") h += htmlPagos(c, c.estado === "reserva");
+  if (c.estado === "reserva" || c.estado === "finalizado") h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
   if (c.estado === "finalizado") h += htmlReabrir();
   h += htmlNotas(c, c.estado !== "finalizado");
   h += htmlHistorial(bitacora);
@@ -511,6 +515,7 @@ function htmlEditorActividades() {
 }
 
 function htmlActividad(a, idx) {
+  const verNeto = puede("ver_utilidad");
   const serv = servicioPorId(a.servicio_id);
   const servicios = app.servicios
     .filter((s) => s.activo || s.id === a.servicio_id)
@@ -523,7 +528,7 @@ function htmlActividad(a, idx) {
       <th scope="row">${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}</th>
       <td><input data-p="cantidad" type="number" min="0" value="${p.cantidad}" aria-label="Cantidad"></td>
       <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio rack por persona"></td>
-      <td><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="Neto por persona"></td>
+      ${verNeto ? `<td><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="Neto por persona"></td>` : ""}
       <td class="num celda-subtotal">${dinero(p.cantidad * p.precio_unitario)}</td>
       <td><button type="button" class="enlace" data-accion="quitar-cat" data-cat="${p.categoria_id}">Quitar</button></td>
     </tr>`).join("");
@@ -559,11 +564,11 @@ function htmlActividad(a, idx) {
       ${htmlTransporte(a)}
       <div class="tabla-scroll">
         <table class="participantes">
-          <thead><tr><th>Tipo de cliente</th><th>Cantidad</th><th>Rack c/u</th><th>Neto c/u <span class="interno">interno</span></th><th class="num">Subtotal</th><th></th></tr></thead>
+          <thead><tr><th>Tipo de cliente</th><th>Cantidad</th><th>Rack c/u</th>${verNeto ? `<th>Neto c/u <span class="interno">interno</span></th>` : ""}<th class="num">Subtotal</th><th></th></tr></thead>
           <tbody>${filas}</tbody>
           <tfoot>
             <tr>
-              <td colspan="4">
+              <td colspan="${verNeto ? 4 : 3}">
                 <select data-accion="agregar-cat" aria-label="Agregar tipo de cliente">
                   <option value="">+ Agregar tipo de cliente</option>
                   ${faltantes.map((c) => `<option value="${c.id}">${escapar(c.nombre)}</option>`).join("")}
@@ -593,11 +598,12 @@ function htmlTransporte(a) {
         <label>Hora de pick up <input data-campo="hora_recogida" type="time" value="${a.hora_recogida}"></label>
         <label class="ancho">Drop off (lugar de dejada) <input data-campo="lugar_dejada" type="text" value="${escapar(a.lugar_dejada)}"></label>
       </div>
+      ${puede("ver_utilidad") ? `
       <div class="trans-campos">
         <label>Costo neto del transporte <span class="interno">interno</span>
           <input data-campo="transporte_neto" type="number" min="0" step="0.01" value="${a.transporte_neto || 0}">
         </label>
-      </div>`;
+      </div>` : ""}`;
   }
   if (modo === "opcional") {
     campos += `
@@ -686,7 +692,7 @@ function pintarTotales() {
     if (prepago > pagado) h += `<p class="nota">Falta recibir ${dinero(prepago - pagado)} del prepago.</p>`;
   }
   const neto = actividades.reduce((s, a) => s + costoNeto(a), 0);
-  h += `
+  if (puede("ver_utilidad")) h += `
     <div class="interno-caja">
       <p class="interno-titulo">Solo uso interno</p>
       <div class="fila-total"><span>Costo neto</span><span>${dinero(neto)}</span></div>
@@ -783,7 +789,7 @@ function htmlReabrir() {
       ${esAutorizado()
         ? `<p>Puedes reabrirla para hacer revisiones. Volverá a la columna Reserva y quedará registrado en el historial.</p>
            <button type="button" class="btn" data-accion="reabrir">Reabrir reserva</button>`
-        : `<p class="nota">Solo administradores, gerentes o jefatura pueden reabrir una reserva finalizada.</p>`}
+        : `<p class="nota">Tu usuario no tiene autorización para reabrir reservas finalizadas.</p>`}
     </section>`;
 }
 
@@ -841,7 +847,9 @@ function leerTarjeta(card) {
       categoria_id: Number(tr.dataset.cat),
       cantidad: Math.max(0, parseInt(tr.querySelector('[data-p="cantidad"]').value, 10) || 0),
       precio_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="precio"]').value) || 0),
-      neto_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="neto"]').value) || 0)
+      neto_unitario: tr.querySelector('[data-p="neto"]')
+        ? Math.max(0, parseFloat(tr.querySelector('[data-p="neto"]').value) || 0)
+        : (previa.participantes.find((p) => p.categoria_id === Number(tr.dataset.cat))?.neto_unitario ?? 0)
     }))
   };
 }

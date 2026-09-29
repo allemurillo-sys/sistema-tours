@@ -79,10 +79,13 @@
     <section id="vistaMantenimiento" class="vista" hidden>
       <div class="catalogo">
         <h1 class="vista-titulo">Mantenimiento</h1>
-        <div class="det-seccion sin-margen">
-          <p>Aquí se administrarán los usuarios, las claves, las autorizaciones de acceso y los reportes de ventas por colaborador.</p>
-          <p class="nota">Esta sección se habilita en la siguiente entrega.</p>
+        <div class="pestanas" role="tablist" aria-label="Mantenimiento">
+          <button type="button" role="tab" class="pestana" data-mant="cuenta">Mi cuenta</button>
+          <button type="button" role="tab" class="pestana" data-mant="usuarios" data-solo="admin">Usuarios</button>
+          <button type="button" role="tab" class="pestana" data-mant="autorizaciones" data-solo="admin">Autorizaciones</button>
+          <button type="button" role="tab" class="pestana" data-mant="reportes" data-solo="ver_reportes">Reportes</button>
         </div>
+        <div id="mantContenido"></div>
       </div>
     </section>
   </div>
@@ -101,5 +104,6 @@
   <script src="config.js"></script>
   <script src="panel.js"></script>
   <script src="servicios.js"></script>
+  <script src="mantenimiento.js"></script>
 </body>
 </html>
