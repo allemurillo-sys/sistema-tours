@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tu cotización | The House of Tours</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilos.css">
+  <style>
+    .dia-bloque { margin-top: 22px; }
+    .dia-titulo { font-family: var(--titulos); font-weight: 700; font-size: 1.1rem; margin: 0 0 8px; }
+    .act { background: var(--blanco); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; border-left: 4px solid var(--verde); }
+    .act-cab { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .act-nombre { font-weight: 700; margin: 0; }
+    .act-hora { color: var(--gris); margin: 2px 0 6px; }
+    .act-lugar, .act-part { font-size: .92rem; color: var(--gris); margin: 2px 0; }
+    .monto { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+    .caja-total { background: var(--blanco); border-radius: 12px; padding: 18px 20px; margin-top: 24px; display: grid; gap: 6px; }
+    .caja-total p { display: flex; justify-content: space-between; margin: 0; font-variant-numeric: tabular-nums; }
+    .caja-total .grande strong { font-family: var(--titulos); font-size: 2rem; color: var(--verde-hondo); }
+    .caja { background: var(--blanco); border-radius: 12px; padding: 20px; margin-top: 20px; }
+    .caja h2 { font-family: var(--titulos); font-size: 1.25rem; margin: 0 0 10px; }
+    .check { display: flex; flex-direction: row; align-items: center; gap: 12px; font-weight: 700; font-size: 1.05rem; margin: 12px 0 16px; cursor: pointer; }
+    .check input { width: 24px; height: 24px; accent-color: var(--verde); flex: none; padding: 0; }
+    textarea { font: inherit; width: 100%; min-height: 110px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 8px; margin-bottom: 12px; }
+    .exito { background: var(--verde-suave); color: var(--verde-hondo); border-radius: 12px; padding: 18px 20px; margin-top: 20px; font-weight: 500; }
+    .exito strong { font-family: var(--titulos); font-size: 1.3rem; display: block; margin-bottom: 4px; }
+    @media print { .caja, .acciones { display: none !important; } .act { border: 1px solid #ccc; } }
+  </style>
+</head>
+<body>
+  <header class="barra">
+    <div class="marca">
+      <svg class="brujula" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M20 5 L25 20 L15 20 Z" fill="#5FAF84"/>
+        <path d="M20 35 L25 20 L15 20 Z" fill="currentColor"/>
+      </svg>
+      <span>The House of Tours</span>
+    </div>
+  </header>
+
+  <main class="pagina">
+    <p id="cargando" class="ayuda">Cargando tu cotización…</p>
+    <p id="error" class="aviso" hidden></p>
+    <div id="contenido" hidden></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="cotizacion.js"></script>
+</body>
+</html>
