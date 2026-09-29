@@ -31,6 +31,7 @@ const app = {
   servicios: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
   permisos: new Set(),
   verCanceladas: false,
+  actualizando: false,
   actual: null,            // { cot, solicitudes, actividades, pagos, bitacora }
   editandoCliente: false,
   temporizador: null
@@ -149,30 +150,60 @@ $("formLogin").addEventListener("submit", async (e) => {
   });
 });
 
-async function entrar() {
+// Vuelve a leer el usuario y sus permisos (por si un administrador los cambió)
+async function recargarPerfil() {
   const { data: { user } } = await db.auth.getUser();
-  if (!user) return mostrarLogin();
+  if (!user) { mostrarLogin(); return false; }
 
   const { data: perfil } = await db.from("perfiles").select("*").eq("id", user.id).maybeSingle();
   if (!perfil || !perfil.activo) {
     await db.auth.signOut();
-    return mostrarLogin("Tu usuario no tiene acceso al panel. Pide a un administrador que te lo active.");
+    mostrarLogin("Tu usuario no tiene acceso al panel. Si crees que es un error, habla con un administrador.");
+    return false;
   }
 
-  app.yo = perfil;
   const { data: permisos } = await db.from("permisos_rol").select("permiso, permitido").eq("rol", perfil.rol);
+  app.yo = perfil;
   app.permisos = new Set((permisos || []).filter((p) => p.permitido).map((p) => p.permiso));
   $("usuarioNombre").textContent = `${perfil.nombre} (${perfil.rol})`;
+  return true;
+}
+
+// Actualiza todo: usuario y permisos, reservas vencidas, catálogo y tablero.
+// "silencioso" = actualización automática: no redibuja las secciones Servicios
+// ni Mantenimiento, para no borrar un formulario que alguien esté llenando.
+async function actualizarTodo(silencioso = false) {
+  if (app.actualizando) return;
+  app.actualizando = true;
+  try {
+    if (!(await recargarPerfil())) return;
+    await db.rpc("finalizar_vencidas");
+    await cargarCatalogos();
+    await cargarTablero();
+    if (!silencioso) document.dispatchEvent(new Event("datos-actualizados"));
+  } finally {
+    app.actualizando = false;
+  }
+}
+
+async function entrar() {
+  if (!(await recargarPerfil())) return;
   $("vistaLogin").hidden = true;
   $("vistaApp").hidden = false;
 
-  await cargarCatalogos();
   await db.rpc("finalizar_vencidas");
+  await cargarCatalogos();
   await cargarTablero();
 
+  // Actualización automática cada minuto
   clearInterval(app.temporizador);
-  app.temporizador = setInterval(cargarTablero, 60000);
+  app.temporizador = setInterval(() => actualizarTodo(true), 60000);
 }
+
+// Al volver a la pestaña del panel después de un rato, se actualiza de inmediato
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && app.yo && !$("vistaApp").hidden) actualizarTodo(true);
+});
 
 $("btnSalir").addEventListener("click", async () => {
   await db.auth.signOut();
@@ -267,11 +298,10 @@ $("verCanceladas").addEventListener("change", (e) => {
   pintarTablero();
 });
 $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, async () => {
-  await db.rpc("finalizar_vencidas");
-  await cargarCatalogos();
-  await cargarTablero();
-  document.dispatchEvent(new Event("datos-actualizados"));
-  avisar("Datos actualizados.");
+  // Si hay una actualización automática en curso, espera a que termine
+  while (app.actualizando) await new Promise((r) => setTimeout(r, 200));
+  await actualizarTodo(false);
+  if (app.yo && !$("vistaApp").hidden) avisar("Datos actualizados.");
 }));
 
 // ---------- Menú de secciones ----------

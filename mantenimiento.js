@@ -236,7 +236,7 @@ function htmlAutorizaciones() {
   return `
     <div class="det-seccion sin-margen">
       <h3>Autorizaciones por tipo de usuario</h3>
-      <p class="nota">Marca lo que puede hacer cada tipo de usuario. Los cambios se guardan al instante y se aplican la próxima vez que la persona entre al panel o presione Actualizar. El administrador siempre tiene todos los permisos, y es el único que puede gestionar usuarios y autorizaciones.</p>
+      <p class="nota">Marca lo que puede hacer cada tipo de usuario. Los cambios se guardan al instante y llegan al panel de cada persona en menos de un minuto (o de inmediato si presiona Actualizar); se notan al abrir la siguiente pantalla. El administrador siempre tiene todos los permisos, y es el único que puede gestionar usuarios y autorizaciones.</p>
       <div class="tabla-scroll">
         <table class="tabla permisos">
           <thead><tr><th>Permiso</th>${ROLES.map((r) => `<th class="centro">${NOMBRE_ROL[r]}</th>`).join("")}</tr></thead>
