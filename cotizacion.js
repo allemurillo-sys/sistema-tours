@@ -77,6 +77,14 @@ function htmlTransporte(a, puedeResponder) {
 
 function pintar() {
   const d = datos;
+  if (d.estado === "cancelado") {
+    $("cargando").hidden = true;
+    $("contenido").innerHTML = `
+      <h1>Cotización ${escapar(d.numero)}</h1>
+      <p class="aviso">Esta cotización fue cancelada. Si crees que es un error o quieres retomarla, escríbenos y con gusto te ayudamos.</p>`;
+    $("contenido").hidden = false;
+    return;
+  }
   const reservada = d.estado === "reserva" || d.estado === "finalizado";
   const puedeResponder = d.estado === "proceso";
   const porDia = {};

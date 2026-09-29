@@ -12,7 +12,8 @@ const PERMISOS = [
   { id: "editar_catalogo", nombre: "Modificar el catálogo", detalle: "Crear y editar servicios, precios, operadores y propiedades." },
   { id: "registrar_pagos", nombre: "Registrar pagos", detalle: "Definir el prepago, registrar y eliminar pagos de las reservas." },
   { id: "reabrir_finalizadas", nombre: "Reabrir reservas finalizadas", detalle: "Devolver una reserva finalizada a la columna Reserva para revisarla." },
-  { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." }
+  { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." },
+  { id: "cancelar_reservas", nombre: "Cancelar reservas confirmadas", detalle: "Cancelar o reactivar reservas que el cliente ya confirmó. Cualquier usuario puede cancelar cotizaciones sin confirmar." }
 ];
 
 const esAdmin = () => app.yo?.rol === "administrador";

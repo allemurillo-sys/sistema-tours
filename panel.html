@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilos.css">
-  <link rel="stylesheet" href="panel.css">
+  <link rel="stylesheet" href="estilos.css?v=7">
+  <link rel="stylesheet" href="panel.css?v=7">
 </head>
 <body class="panel">
 
@@ -56,6 +56,7 @@
     <section id="vistaReservas" class="vista">
       <div class="herramientas">
         <input id="buscar" type="search" placeholder="Buscar por nombre o número" aria-label="Buscar por nombre o número">
+        <label class="check-linea chico"><input id="verCanceladas" type="checkbox"> Ver canceladas</label>
         <button id="btnImprimirTablero" type="button" class="btn">Imprimir listas</button>
         <span id="ultimaActualizacion" class="nota"></span>
       </div>
@@ -101,9 +102,9 @@
   <div id="aviso" class="toast" role="status" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="panel.js"></script>
-  <script src="servicios.js"></script>
-  <script src="mantenimiento.js"></script>
+  <script src="config.js?v=7"></script>
+  <script src="panel.js?v=7"></script>
+  <script src="servicios.js?v=7"></script>
+  <script src="mantenimiento.js?v=7"></script>
 </body>
 </html>

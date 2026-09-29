@@ -298,3 +298,13 @@ details summary { cursor: pointer; }
   font-family: ui-monospace, Consolas, monospace; background: var(--blanco);
   padding: 2px 8px; border-radius: 6px; color: var(--pizarra); user-select: all;
 }
+
+/* ---------- Cancelaciones ---------- */
+.col-cancelado, .estado-cancelado { --c: #5E4B4B; --cs: #EDE7E7; }
+.tablero.con-canceladas { grid-template-columns: repeat(5, minmax(230px, 1fr)); }
+.check-linea.chico { margin: 0; font-size: .95rem; }
+.check-linea.chico input { width: 18px; height: 18px; }
+.btn.peligro { border-color: var(--rojo); color: var(--rojo); }
+.btn.peligro:hover { background: var(--rojo-suave); }
+.zona-cancelar { border: 1px solid var(--rojo-suave); }
+.cancelada-info { background: #EDE7E7; }

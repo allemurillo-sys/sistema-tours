@@ -9,9 +9,14 @@ const COLUMNAS = [
   { id: "cotizacion", nombre: "Cotizaciones", vacio: "No hay solicitudes nuevas." },
   { id: "proceso", nombre: "Proceso", vacio: "No hay cotizaciones en proceso." },
   { id: "reserva", nombre: "Reserva", vacio: "No hay reservas activas." },
-  { id: "finalizado", nombre: "Finalizado", vacio: "No hay reservas finalizadas recientes." }
+  { id: "finalizado", nombre: "Finalizado", vacio: "No hay reservas finalizadas recientes." },
+  { id: "cancelado", nombre: "Canceladas", vacio: "No hay cancelaciones recientes." }
 ];
-const NOMBRE_ESTADO = { cotizacion: "Cotización", proceso: "Proceso", reserva: "Reserva", finalizado: "Finalizado" };
+const NOMBRE_ESTADO = { cotizacion: "Cotización", proceso: "Proceso", reserva: "Reserva", finalizado: "Finalizado", cancelado: "Cancelada" };
+const MOTIVOS_CANCELACION = [
+  "El cliente no respondió", "El cliente desistió", "Sin disponibilidad",
+  "Precio", "Solicitud duplicada", "Otro"
+];
 const ROLES_AUTORIZADOS = ["administrador", "gerente", "jefatura"];
 const METODOS_PAGO = ["Transferencia", "SINPE Móvil", "Tarjeta", "Efectivo", "Otro"];
 const MODOS_TRANSPORTE = {
@@ -25,6 +30,7 @@ const app = {
   cotizaciones: [],
   servicios: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
   permisos: new Set(),
+  verCanceladas: false,
   actual: null,            // { cot, solicitudes, actividades, pagos, bitacora }
   editandoCliente: false,
   temporizador: null
@@ -201,7 +207,7 @@ async function cargarTablero() {
 
   const { data, error } = await db.from("resumen_cotizaciones")
     .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance")
-    .or(`estado.neq.finalizado,fecha_fin.gte.${aTexto(d)}`)
+    .or(`and(estado.neq.finalizado,estado.neq.cancelado),fecha_fin.gte.${aTexto(d)}`)
     .order("creado_en", { ascending: true });
 
   if (error) return fallo(error, "No se pudo cargar el tablero.");
@@ -216,15 +222,18 @@ function pintarTablero() {
   const lista = app.cotizaciones.filter((c) =>
     !q || nombreCompleto(c).toLowerCase().includes(q) || c.numero.toLowerCase().includes(q));
 
-  $("tablero").innerHTML = COLUMNAS.map((col) => {
+  const columnas = COLUMNAS.filter((col) => col.id !== "cancelado" || app.verCanceladas);
+  $("tablero").classList.toggle("con-canceladas", app.verCanceladas);
+
+  $("tablero").innerHTML = columnas.map((col) => {
     let items = lista.filter((c) => c.estado === col.id);
-    if (col.id === "finalizado") items = items.sort((a, b) => b.fecha_fin.localeCompare(a.fecha_fin));
+    if (col.id === "finalizado" || col.id === "cancelado") items = items.sort((a, b) => b.fecha_fin.localeCompare(a.fecha_fin));
 
     return `
       <section class="columna col-${col.id}" aria-labelledby="t-${col.id}">
         <h2 id="t-${col.id}" class="col-titulo"><span>${col.nombre}</span><span class="col-cuenta">${items.length}</span></h2>
         ${items.length ? `<ul class="col-lista">${items.map(htmlItem).join("")}</ul>` : `<p class="col-vacia">${col.vacio}</p>`}
-        ${col.id === "finalizado" ? `<p class="col-nota">Se muestran las de los últimos 90 días.</p>` : ""}
+        ${col.id === "finalizado" || col.id === "cancelado" ? `<p class="col-nota">Se muestran las de los últimos 90 días.</p>` : ""}
       </section>`;
   }).join("");
 }
@@ -253,6 +262,10 @@ $("tablero").addEventListener("click", (e) => {
   if (item) abrirDetalle(Number(item.dataset.id));
 });
 $("buscar").addEventListener("input", pintarTablero);
+$("verCanceladas").addEventListener("change", (e) => {
+  app.verCanceladas = e.target.checked;
+  pintarTablero();
+});
 $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, async () => {
   await db.rpc("finalizar_vencidas");
   await cargarCatalogos();
@@ -384,6 +397,7 @@ function pintarDetalle() {
     </div>`;
 
   h += htmlCambiosCliente(c, bitacora);
+  if (c.estado === "cancelado") h += htmlCancelada(c);
   h += htmlCliente(c);
   h += htmlSolicitud(solicitudes);
 
@@ -397,11 +411,14 @@ function pintarDetalle() {
       </section>`;
   }
   if (editable) h += htmlEditorActividades();
-  if (c.estado === "finalizado") h += htmlActividadesLectura();
+  if (c.estado === "finalizado" || c.estado === "cancelado") h += htmlActividadesLectura();
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
-  if (c.estado === "reserva" || c.estado === "finalizado") h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
+  if (c.estado === "reserva" || c.estado === "finalizado" || (c.estado === "cancelado" && app.actual.pagos.length)) {
+    h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
+  }
   if (c.estado === "finalizado") h += htmlReabrir();
+  if (["cotizacion", "proceso", "reserva"].includes(c.estado)) h += htmlCancelar(c);
   h += htmlNotas(c, c.estado !== "finalizado");
   h += htmlHistorial(bitacora);
 
@@ -421,7 +438,7 @@ function htmlCambiosCliente(c, bitacora) {
 }
 
 function htmlCliente(c) {
-  const bloqueado = c.estado === "finalizado";
+  const bloqueado = c.estado === "finalizado" || c.estado === "cancelado";
 
   if (app.editandoCliente) {
     const opciones = app.propiedades.map((p) =>
@@ -779,6 +796,44 @@ function htmlPagos(c, editable) {
           <label>Referencia <input id="pagoReferencia" type="text" placeholder="Número de comprobante"></label>
           <button type="button" class="btn primario" data-accion="registrar-pago">Registrar pago</button>
         </div>` : ""}
+    </section>`;
+}
+
+function htmlCancelar(c) {
+  const esReserva = c.estado === "reserva";
+  if (esReserva && !puede("cancelar_reservas")) {
+    return `
+      <section class="det-seccion">
+        <h3>Cancelar reserva</h3>
+        <p class="nota">Tu usuario no tiene autorización para cancelar reservas confirmadas.</p>
+      </section>`;
+  }
+  const conPagos = esReserva && app.actual.pagos.length;
+  return `
+    <section class="det-seccion zona-cancelar">
+      <h3>${esReserva ? "Cancelar reserva" : "Cancelar cotización"}</h3>
+      <p class="nota">Úsalo cuando el cliente no respondió, desistió o la solicitud no se va a concretar. Saldrá del tablero y podrás consultarla marcando "Ver canceladas".</p>
+      ${conPagos ? `<p class="aviso">Esta reserva tiene pagos registrados. Si corresponde una devolución, anótala en las notas internas antes de cancelar.</p>` : ""}
+      <div class="fila-form">
+        <label>Motivo
+          <select id="motivoCancelacion">${MOTIVOS_CANCELACION.map((m) => `<option>${m}</option>`).join("")}</select>
+        </label>
+        <label>Detalle (opcional) <input id="detalleCancelacion" type="text" maxlength="300"></label>
+        <button type="button" class="btn peligro" data-accion="cancelar">${esReserva ? "Cancelar reserva" : "Cancelar cotización"}</button>
+      </div>
+    </section>`;
+}
+
+function htmlCancelada(c) {
+  const puedeReactivar = c.estado_previo !== "reserva" || puede("cancelar_reservas");
+  return `
+    <section class="det-seccion cancelada-info">
+      <h3>Cotización cancelada</h3>
+      <p><strong>Motivo:</strong> ${escapar(c.motivo_cancelacion ?? "Sin motivo indicado")}</p>
+      <p class="nota">Cancelada el ${c.cancelada_en ? fechaHora(c.cancelada_en) : ""}. Antes estaba en: ${NOMBRE_ESTADO[c.estado_previo] ?? "Cotización"}.</p>
+      ${puedeReactivar
+        ? `<button type="button" class="btn" data-accion="reactivar">Reactivar y volver a ${NOMBRE_ESTADO[c.estado_previo] ?? "Cotización"}</button>`
+        : `<p class="nota">Tu usuario no tiene autorización para reactivar reservas confirmadas.</p>`}
     </section>`;
 }
 
@@ -1225,6 +1280,37 @@ $("detalleContenido").addEventListener("click", async (e) => {
       });
       break;
 
+    case "cancelar": {
+      const motivo = $("motivoCancelacion").value;
+      const detalle = $("detalleCancelacion").value.trim();
+      if (hayPendientes() && !confirm("Hay cambios sin guardar en el itinerario y se perderán. ¿Continuar?")) return;
+      const que = c.estado === "reserva" ? "esta reserva" : "esta cotización";
+      if (!confirm(`¿Cancelar ${que}? Motivo: ${motivo}.`)) return;
+      await conBoton(btn, async () => {
+        const { error } = await db.from("cotizaciones")
+          .update({ estado: "cancelado", motivo_cancelacion: detalle ? `${motivo}: ${detalle}` : motivo })
+          .eq("id", c.id);
+        if (error) return fallo(error, "No se pudo cancelar.");
+        await recargarDetalle(false);
+        cargarTablero();
+        avisar("Cancelada. Puedes verla marcando \"Ver canceladas\" en el tablero.");
+      });
+      break;
+    }
+
+    case "reactivar": {
+      const destino = c.estado_previo || "cotizacion";
+      if (!confirm(`¿Reactivar y devolver a ${NOMBRE_ESTADO[destino]}?`)) return;
+      await conBoton(btn, async () => {
+        const { error } = await db.from("cotizaciones").update({ estado: destino }).eq("id", c.id);
+        if (error) return fallo(error, "No se pudo reactivar.");
+        await recargarDetalle(false);
+        cargarTablero();
+        avisar("Reactivada.");
+      });
+      break;
+    }
+
     case "reabrir":
       if (!confirm("¿Reabrir esta reserva? Volverá a la columna Reserva.")) return;
       await conBoton(btn, async () => {
@@ -1324,7 +1410,7 @@ function imprimirDetalle() {
   $("impresion").innerHTML = `
     <div class="imp-cabeza">
       <p class="imp-marca">The House of Tours</p>
-      <p class="imp-titulo">${esReserva ? "Reserva" : "Cotización"} ${c.numero}</p>
+      <p class="imp-titulo">${c.estado === "cancelado" ? "Cotización cancelada" : esReserva ? "Reserva" : "Cotización"} ${c.numero}</p>
     </div>
     <dl class="imp-datos">
       <div><dt>Cliente</dt><dd>${escapar(nombreCompleto(c))}</dd></div>
