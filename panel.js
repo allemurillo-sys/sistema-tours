@@ -414,6 +414,7 @@ function pintarDetalle() {
   if (c.estado === "finalizado" || c.estado === "cancelado") h += htmlActividadesLectura();
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
+  if (c.estado === "reserva") h += htmlCompartirReserva(c);
   if (c.estado === "reserva" || c.estado === "finalizado" || (c.estado === "cancelado" && app.actual.pagos.length)) {
     h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
   }
@@ -796,6 +797,44 @@ function htmlPagos(c, editable) {
           <label>Referencia <input id="pagoReferencia" type="text" placeholder="Número de comprobante"></label>
           <button type="button" class="btn primario" data-accion="registrar-pago">Registrar pago</button>
         </div>` : ""}
+    </section>`;
+}
+
+function htmlCompartirReserva(c) {
+  if (!c.enviada_en) {
+    return `
+      <section class="det-seccion">
+        <h3>Compartir la reserva con el cliente</h3>
+        <p>Esta reserva se confirmó sin enviarle antes el enlace al cliente. Actívalo para poder compartírselo.</p>
+        <button type="button" class="btn primario" data-accion="activar-enlace">Activar enlace del cliente</button>
+      </section>`;
+  }
+
+  const link = enlaceCliente(c);
+  const mensaje =
+    `Hola ${c.nombre}:\n\n` +
+    `Tu reserva ${c.numero} con The House of Tours está confirmada. ` +
+    `En este enlace puedes ver tu itinerario completo, lo pagado y el saldo pendiente:\n\n${link}\n\n` +
+    `Si necesitas cambiar algo, responde a este mensaje y con gusto te ayudamos.\n\n` +
+    `Saludos,\n${app.yo.nombre}\nThe House of Tours`;
+  const asunto = `Confirmación de tu reserva ${c.numero} | The House of Tours`;
+  const correo = `mailto:${encodeURIComponent(c.correo)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensaje)}`;
+  const whatsapp = `https://wa.me/${c.telefono.replace(/\D/g, "")}?text=${encodeURIComponent(mensaje)}`;
+
+  return `
+    <section class="det-seccion">
+      <h3>Compartir la reserva con el cliente</h3>
+      <p>Envíale al cliente el enlace de su reserva. Siempre muestra la información actualizada, así que puedes reenviarlo cuando registres un pago o hagas un cambio.</p>
+      <div class="enlace-cliente">
+        <input type="text" readonly value="${escapar(link)}" aria-label="Enlace de la reserva">
+        <button type="button" class="btn" data-accion="copiar-enlace">Copiar enlace</button>
+        <button type="button" class="btn" data-accion="copiar-mensaje">Copiar mensaje completo</button>
+      </div>
+      <div class="sec-botones">
+        <a class="btn" href="${correo}">Enviar por correo</a>
+        <a class="btn" href="${whatsapp}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+      </div>
+      <p class="nota">"Copiar mensaje completo" copia el saludo, el enlace y la despedida para pegarlos en Outlook u otro programa. "Enviar por correo" abre tu programa de correo predeterminado.</p>
     </section>`;
 }
 
@@ -1279,6 +1318,32 @@ $("detalleContenido").addEventListener("click", async (e) => {
         cargarTablero();
       });
       break;
+
+    case "activar-enlace":
+      await conBoton(btn, async () => {
+        const { error } = await db.from("cotizaciones").update({ enviada_en: new Date().toISOString() }).eq("id", c.id);
+        if (error) return fallo(error);
+        await registrar(c.id, "enlace del cliente activado");
+        await recargarDetalle();
+        avisar("Enlace activado. Ya puedes compartirlo con el cliente.");
+      });
+      break;
+
+    case "copiar-mensaje": {
+      const texto =
+        `Hola ${c.nombre}:\n\n` +
+        `Tu reserva ${c.numero} con The House of Tours está confirmada. ` +
+        `En este enlace puedes ver tu itinerario completo, lo pagado y el saldo pendiente:\n\n${enlaceCliente(c)}\n\n` +
+        `Si necesitas cambiar algo, responde a este mensaje y con gusto te ayudamos.\n\n` +
+        `Saludos,\n${app.yo.nombre}\nThe House of Tours`;
+      try {
+        await navigator.clipboard.writeText(texto);
+        avisar("Mensaje copiado. Pégalo en un correo nuevo de Outlook con Ctrl + V.");
+      } catch {
+        avisar("No se pudo copiar automáticamente. Usa Copiar enlace.", "error");
+      }
+      break;
+    }
 
     case "cancelar": {
       const motivo = $("motivoCancelacion").value;
