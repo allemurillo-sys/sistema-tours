@@ -1,8 +1,7 @@
-// Datos de conexión a Supabase.
-// Los encuentras en Supabase > Project Settings > API Keys.
-// La "publishable key" (o "anon key") es pública por diseño: la seguridad
+// Datos de conexión a Supabase (proyecto cotizador-tours).
+// La "publishable key" es pública por diseño: la seguridad
 // la dan las reglas de la base de datos, no esta clave.
 const CONFIG = {
-  supabaseUrl: "https://TU-PROYECTO.supabase.co",
-  supabaseKey: "PEGA-AQUI-TU-PUBLISHABLE-KEY"
+  supabaseUrl: "https://qbfjauehzzwqtlumxudn.supabase.co",
+  supabaseKey: "sb_publishable_jGwfB6WtYYTn7bVPB-RHpw_147Gu9vN"
 };
