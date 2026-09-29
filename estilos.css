@@ -1,0 +1,136 @@
+:root {
+  --verde: #2F6E4F;
+  --verde-hondo: #1F4F38;
+  --verde-suave: #E4EFE8;
+  --pizarra: #23343D;
+  --gris: #5B6B72;
+  --linea: #D5DEDA;
+  --fondo: #F1F5F3;
+  --blanco: #FFFFFF;
+  --alerta: #8A3B12;
+  --alerta-fondo: #FCEBDD;
+  --titulos: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --texto: "Karla", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0; background: var(--fondo); color: var(--pizarra);
+  font-family: var(--texto); font-size: 17px; line-height: 1.5;
+}
+
+.barra { background: var(--pizarra); color: #fff; padding: 14px 24px; }
+.marca {
+  max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 10px;
+  font-family: var(--titulos); font-weight: 700; font-size: 1.1rem;
+}
+.brujula { width: 32px; height: 32px; color: #fff; }
+
+.pagina { max-width: 760px; margin: 0 auto; padding: 40px 24px 72px; }
+
+h1 {
+  font-family: var(--titulos); font-size: clamp(2rem, 5vw, 2.8rem);
+  line-height: 1.1; margin: 0 0 10px; color: var(--verde-hondo);
+}
+.intro { margin: 0 0 36px; color: var(--gris); max-width: 60ch; }
+
+fieldset { border: 0; padding: 0; margin: 0 0 34px; min-width: 0; }
+legend { font-family: var(--titulos); font-weight: 700; font-size: 1.2rem; margin-bottom: 12px; padding: 0; }
+
+.fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.fila.tres { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+label { display: flex; flex-direction: column; gap: 6px; font-weight: 500; font-size: .95rem; }
+.nota { font-weight: 400; color: var(--gris); font-size: .85rem; margin-top: -4px; }
+
+input, select {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--linea);
+  border-radius: 8px; background: var(--blanco); color: inherit; width: 100%;
+}
+input:focus-visible, select:focus-visible, button:focus-visible {
+  outline: 3px solid var(--verde); outline-offset: 2px;
+}
+
+.telefono { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; }
+
+.ayuda { color: var(--gris); font-size: .92rem; margin: -4px 0 14px; }
+.total-personas { margin: 0; font-weight: 700; color: var(--verde-hondo); }
+
+/* ---------- Días ---------- */
+.dias { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.dia {
+  background: var(--blanco); border: 1px solid var(--linea); border-left: 4px solid var(--linea);
+  border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.dia.activo { border-left-color: var(--verde); }
+.dia-fecha { margin: 0; font-weight: 700; }
+.dia-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dia-lista li {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  background: var(--verde-suave); border-radius: 6px; padding: 6px 6px 6px 10px; font-size: .95rem;
+}
+.quitar {
+  font: inherit; font-size: .82rem; border: 0; background: transparent;
+  color: var(--verde-hondo); text-decoration: underline; cursor: pointer; padding: 4px 6px;
+}
+.agregar { font-size: .95rem; color: var(--verde-hondo); border-style: dashed; }
+
+/* ---------- Mensajes y botones ---------- */
+.aviso {
+  background: var(--alerta-fondo); color: var(--alerta);
+  padding: 12px 16px; border-radius: 8px; font-size: .95rem; margin: 0 0 20px;
+}
+.aviso p { margin: 0 0 4px; font-weight: 700; }
+.aviso ul { margin: 0; padding-left: 20px; }
+
+.btn {
+  font: inherit; font-weight: 700; padding: 12px 18px; border-radius: 10px;
+  border: 1.5px solid var(--pizarra); background: transparent; color: var(--pizarra); cursor: pointer;
+}
+.btn.primario { background: var(--verde); border-color: var(--verde); color: #fff; }
+.btn.grande { width: 100%; padding: 16px; font-size: 1.05rem; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- Boleta de confirmación ---------- */
+.boleta {
+  background: var(--blanco); border-radius: 14px; padding: 28px;
+  box-shadow: 0 14px 34px -20px rgba(35, 52, 61, .5);
+}
+.boleta-cabeza {
+  position: relative; text-align: center; padding-bottom: 22px; margin-bottom: 20px;
+  border-bottom: 2px dashed var(--linea);
+}
+.boleta-cabeza::before, .boleta-cabeza::after {
+  content: ""; position: absolute; bottom: -11px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--fondo);
+}
+.boleta-cabeza::before { left: -38px; }
+.boleta-cabeza::after { right: -38px; }
+.boleta-marca { margin: 0 0 14px; font-family: var(--titulos); font-weight: 700; color: var(--verde-hondo); }
+.boleta-etiqueta { margin: 0; color: var(--gris); }
+.numero-grande {
+  margin: 4px 0 0; font-family: var(--titulos); font-weight: 700;
+  font-size: clamp(2.2rem, 8vw, 3.4rem); letter-spacing: .02em; color: var(--pizarra);
+  font-variant-numeric: tabular-nums;
+}
+.numero-grande:focus { outline: none; }
+.resumen-grupo { font-weight: 700; margin: 20px 0 6px; }
+.linea { display: grid; grid-template-columns: 11rem 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--linea); }
+.linea-dia { color: var(--gris); }
+.acciones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+
+@media (max-width: 520px) {
+  .linea { grid-template-columns: 1fr; gap: 2px; }
+  .telefono { grid-template-columns: 1fr; }
+}
+
+/* ---------- Impresión (tamaño carta) ---------- */
+@page { size: letter; margin: 18mm; }
+@media print {
+  body { background: #fff; font-size: 12pt; }
+  .barra, .acciones { display: none; }
+  .pagina { padding: 0; max-width: none; }
+  .boleta { box-shadow: none; padding: 0; }
+  .boleta-cabeza::before, .boleta-cabeza::after { display: none; }
+}

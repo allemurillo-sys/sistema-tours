@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Solicita tu cotización | The House of Tours</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="marca">
+      <svg class="brujula" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M20 5 L25 20 L15 20 Z" fill="#5FAF84"/>
+        <path d="M20 35 L25 20 L15 20 Z" fill="currentColor"/>
+      </svg>
+      <span>The House of Tours</span>
+    </div>
+  </header>
+
+  <main class="pagina">
+    <!-- ================= FORMULARIO ================= -->
+    <section id="vistaFormulario">
+      <h1>Arma tu cotización</h1>
+      <p class="intro">Cuéntanos qué días estarás con nosotros y qué te gustaría hacer. Un colaborador revisará tu solicitud y te enviará por correo la cotización con horarios y precios.</p>
+      <p id="errorCarga" class="aviso" hidden></p>
+
+      <form id="formulario" novalidate>
+        <fieldset>
+          <legend>Fechas</legend>
+          <div class="fila">
+            <label>Desde <input id="fechaInicio" type="date" required></label>
+            <label>Hasta <input id="fechaFin" type="date" required></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Servicios por día</legend>
+          <p id="ayudaDias" class="ayuda">Elige primero las fechas para ver los días.</p>
+          <div id="dias" class="dias"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Hospedaje</legend>
+          <div class="fila">
+            <label>¿Dónde te hospedas?
+              <select id="propiedad" required>
+                <option value="">Cargando…</option>
+              </select>
+            </label>
+            <label id="campoOtro" hidden>Nombre del lugar
+              <input id="propiedadOtro" type="text" placeholder="Hotel, casa o dirección">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Tus datos</legend>
+          <div class="fila">
+            <label>Nombre <input id="nombre" type="text" autocomplete="given-name" required></label>
+            <label>Apellido <input id="apellido" type="text" autocomplete="family-name" required></label>
+          </div>
+          <div class="fila">
+            <label>Correo electrónico <input id="correo" type="email" autocomplete="email" required></label>
+            <div class="telefono">
+              <label>Código
+                <select id="codigoPais" autocomplete="tel-country-code">
+                  <option value="+506">+506 Costa Rica</option>
+                  <option value="+1">+1 EE. UU. / Canadá</option>
+                  <option value="+52">+52 México</option>
+                  <option value="+507">+507 Panamá</option>
+                  <option value="+57">+57 Colombia</option>
+                  <option value="+54">+54 Argentina</option>
+                  <option value="+55">+55 Brasil</option>
+                  <option value="+56">+56 Chile</option>
+                  <option value="+34">+34 España</option>
+                  <option value="+33">+33 Francia</option>
+                  <option value="+49">+49 Alemania</option>
+                  <option value="+39">+39 Italia</option>
+                  <option value="+44">+44 Reino Unido</option>
+                  <option value="+31">+31 Países Bajos</option>
+                  <option value="+41">+41 Suiza</option>
+                </select>
+              </label>
+              <label>Teléfono <input id="telefono" type="tel" autocomplete="tel-national" required></label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>¿Cuántas personas?</legend>
+          <div class="fila tres">
+            <label>Adultos <span class="nota">12 años o más</span>
+              <input id="adultos" type="number" min="1" max="99" value="2" inputmode="numeric">
+            </label>
+            <label>Niños <span class="nota">de 6 a 11 años</span>
+              <input id="ninos" type="number" min="0" max="99" value="0" inputmode="numeric">
+            </label>
+            <label>Menores <span class="nota">de 0 a 5 años</span>
+              <input id="menores" type="number" min="0" max="99" value="0" inputmode="numeric">
+            </label>
+          </div>
+          <p id="totalPersonas" class="total-personas"></p>
+        </fieldset>
+
+        <div id="errores" class="aviso" role="alert" hidden></div>
+        <button id="btnEnviar" type="submit" class="btn primario grande">Enviar solicitud</button>
+      </form>
+    </section>
+
+    <!-- ================= CONFIRMACIÓN ================= -->
+    <section id="vistaGracias" hidden>
+      <div class="boleta">
+        <div class="boleta-cabeza">
+          <p class="boleta-marca">The House of Tours</p>
+          <p class="boleta-etiqueta">Tu número de cotización</p>
+          <p id="numeroFinal" class="numero-grande" tabindex="-1"></p>
+        </div>
+        <p>Guárdalo: es el mismo número que usará el colaborador que te atienda. Te escribiremos a <strong id="correoFinal"></strong> con la cotización para que la revises y la confirmes.</p>
+        <div id="resumenFinal"></div>
+        <div class="acciones">
+          <button type="button" class="btn" id="btnImprimir">Imprimir</button>
+          <button type="button" class="btn" id="btnNueva">Hacer otra solicitud</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/formulario.js"></script>
+</body>
+</html>
