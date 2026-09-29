@@ -14,6 +14,11 @@ const COLUMNAS = [
 const NOMBRE_ESTADO = { cotizacion: "Cotización", proceso: "Proceso", reserva: "Reserva", finalizado: "Finalizado" };
 const ROLES_AUTORIZADOS = ["administrador", "gerente", "jefatura"];
 const METODOS_PAGO = ["Transferencia", "SINPE Móvil", "Tarjeta", "Efectivo", "Otro"];
+const MODOS_TRANSPORTE = {
+  incluido: "Incluido en el servicio",
+  opcional: "Opcional (se consulta al cliente)",
+  sin_transporte: "Sin transporte"
+};
 
 const app = {
   yo: null,
@@ -58,7 +63,11 @@ const categoriaPorId = (id) => app.categorias.find((c) => c.id === Number(id));
 const categoriaPorNombre = (n) => app.categorias.find((c) => c.nombre === n);
 const nombreCompleto = (c) => `${c.nombre} ${c.apellido}`;
 const nombrePerfil = (id) => app.perfiles.find((p) => p.id === id)?.nombre ?? "";
-const subtotal = (a) => a.participantes.reduce((s, p) => s + p.cantidad * p.precio_unitario, 0);
+const subtotalPersonas = (a) => a.participantes.reduce((s, p) => s + p.cantidad * p.precio_unitario, 0);
+const transporteCobrado = (a) =>
+  a.transporte_modo === "opcional" && a.transporte_respuesta === "si" ? Number(a.transporte_costo) || 0 : 0;
+const transportePendiente = (a) => a.transporte_modo === "opcional" && !a.transporte_respuesta;
+const subtotal = (a) => subtotalPersonas(a) + transporteCobrado(a);
 const ordenActividad = (x, y) => (x.fecha + (x.hora_inicio || "")).localeCompare(y.fecha + (y.hora_inicio || ""));
 
 function precioBase(servicioId, categoriaId) {
@@ -247,6 +256,10 @@ function normalizarActividad(a) {
     hora_fin: hora(a.hora_fin),
     lugar_recogida: a.lugar_recogida ?? "",
     lugar_dejada: a.lugar_dejada ?? "",
+    hora_recogida: hora(a.hora_recogida),
+    transporte_modo: a.transporte_modo || "opcional",
+    transporte_costo: Number(a.transporte_costo) || 0,
+    transporte_respuesta: a.transporte_respuesta === true ? "si" : a.transporte_respuesta === false ? "no" : "",
     notas: a.notas ?? "",
     participantes: (a.actividad_participantes || [])
       .map((p) => ({ categoria_id: p.categoria_id, cantidad: p.cantidad, precio_unitario: Number(p.precio_unitario) }))
@@ -500,9 +513,8 @@ function htmlActividad(a, idx) {
           ${horarios.length ? `<span class="horarios-nota">Habituales: ${horarios.join(", ")}</span>` : ""}
         </label>
         <label>Hora de fin <input data-campo="hora_fin" type="time" value="${a.hora_fin}"></label>
-        <label class="ancho">Lugar de recogida <input data-campo="lugar_recogida" type="text" value="${escapar(a.lugar_recogida)}"></label>
-        <label class="ancho">Lugar de dejada <input data-campo="lugar_dejada" type="text" value="${escapar(a.lugar_dejada)}"></label>
       </div>
+      ${htmlTransporte(a)}
       <div class="tabla-scroll">
         <table class="participantes">
           <thead><tr><th>Tipo de cliente</th><th>Cantidad</th><th>Precio c/u</th><th class="num">Subtotal</th><th></th></tr></thead>
@@ -526,6 +538,43 @@ function htmlActividad(a, idx) {
     </article>`;
 }
 
+function htmlTransporte(a) {
+  const modo = a.transporte_modo;
+  const opciones = Object.entries(MODOS_TRANSPORTE)
+    .map(([k, v]) => `<option value="${k}" ${k === modo ? "selected" : ""}>${v}</option>`).join("");
+
+  let campos = "";
+  if (modo !== "sin_transporte") {
+    campos += `
+      <div class="trans-campos">
+        <label class="ancho">Pick up (lugar de recogida) <input data-campo="lugar_recogida" type="text" value="${escapar(a.lugar_recogida)}"></label>
+        <label>Hora de pick up <input data-campo="hora_recogida" type="time" value="${a.hora_recogida}"></label>
+        <label class="ancho">Drop off (lugar de dejada) <input data-campo="lugar_dejada" type="text" value="${escapar(a.lugar_dejada)}"></label>
+      </div>`;
+  }
+  if (modo === "opcional") {
+    campos += `
+      <div class="trans-campos">
+        <label>Costo del transporte (total) <input data-campo="transporte_costo" type="number" min="0" step="0.01" value="${a.transporte_costo}"></label>
+        <label class="ancho">Respuesta del cliente
+          <select data-campo="transporte_respuesta">
+            <option value="" ${!a.transporte_respuesta ? "selected" : ""}>Pendiente de respuesta</option>
+            <option value="si" ${a.transporte_respuesta === "si" ? "selected" : ""}>Sí requiere transporte</option>
+            <option value="no" ${a.transporte_respuesta === "no" ? "selected" : ""}>No requiere transporte</option>
+          </select>
+        </label>
+      </div>
+      <p class="horarios-nota">Deja el costo en 0 si el transporte no tiene costo. El cliente lo elige en el enlace de su cotización; si te responde por otro medio, anótalo aquí.</p>`;
+  }
+
+  return `
+    <fieldset class="transporte">
+      <legend>Transporte</legend>
+      <label class="trans-modo">Tipo de transporte <select data-campo="transporte_modo">${opciones}</select></label>
+      ${campos}
+    </fieldset>`;
+}
+
 function htmlActividadesLectura() {
   const acts = [...app.actual.actividades].sort(ordenActividad);
   if (!acts.length) return `<section class="det-seccion"><h3>Itinerario</h3><p class="nota">Sin actividades registradas.</p></section>`;
@@ -536,15 +585,27 @@ function htmlActividadesLectura() {
     </section>`;
 }
 
+function textoTransporte(a) {
+  if (a.transporte_modo === "sin_transporte") return "Sin transporte";
+  if (a.transporte_modo === "opcional" && a.transporte_respuesta === "no") return "Transporte: no requerido";
+  const partes = [];
+  if (a.transporte_modo === "opcional") {
+    const costo = Number(a.transporte_costo) ? dinero(a.transporte_costo) : "sin costo";
+    partes.push(a.transporte_respuesta === "si" ? `Transporte: sí (${costo})` : `Transporte opcional (${costo}), pendiente de respuesta`);
+  } else {
+    partes.push("Transporte incluido");
+  }
+  if (a.lugar_recogida) partes.push(`Pick up: ${escapar(a.lugar_recogida)}${a.hora_recogida ? " a las " + hora(a.hora_recogida) : ""}`);
+  if (a.lugar_dejada) partes.push(`Drop off: ${escapar(a.lugar_dejada)}`);
+  return partes.join("<br>");
+}
+
 function tablaItinerario(acts) {
   const filas = acts.map((a) => {
     const serv = servicioPorId(a.servicio_id);
     const part = a.participantes.filter((p) => p.cantidad > 0).map((p) =>
       `${p.cantidad} ${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")} × ${dinero(p.precio_unitario)}`).join("<br>");
-    const lugares = [
-      a.lugar_recogida && `Recogida: ${escapar(a.lugar_recogida)}`,
-      a.lugar_dejada && `Dejada: ${escapar(a.lugar_dejada)}`
-    ].filter(Boolean).join("<br>");
+    const lugares = textoTransporte(a);
     return `
       <tr>
         <td>${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</td>
@@ -576,6 +637,11 @@ function pintarTotales() {
       <div class="fila-total"><span>Pagado</span><span>${dinero(pagado)}</span></div>
       <div class="fila-total balance"><span>Balance</span><strong>${dinero(total - pagado)}</strong></div>`;
     if (prepago > pagado) h += `<p class="nota">Falta recibir ${dinero(prepago - pagado)} del prepago.</p>`;
+  }
+  const pendientesTrans = actividades.filter(transportePendiente);
+  if (pendientesTrans.length) {
+    const monto = pendientesTrans.reduce((s, a) => s + (Number(a.transporte_costo) || 0), 0);
+    h += `<p class="nota">${pendientesTrans.length} ${pendientesTrans.length === 1 ? "actividad tiene" : "actividades tienen"} transporte opcional sin respuesta del cliente${monto ? ` (hasta ${dinero(monto)} más)` : ""}.</p>`;
   }
   if (actividades.some((a) => a._pendiente)) h += `<p class="nota">Hay cambios sin guardar; el total ya los incluye.</p>`;
   cont.innerHTML = h + "</div>";
@@ -698,7 +764,10 @@ function htmlHistorial(bitacora) {
 // =====================================================
 function leerTarjeta(card) {
   const previa = app.actual.actividades[Number(card.dataset.idx)];
-  const v = (campo) => card.querySelector(`[data-campo="${campo}"]`)?.value ?? "";
+  const v = (campo) => {
+    const el = card.querySelector(`[data-campo="${campo}"]`);
+    return el ? el.value : (previa[campo] ?? "");
+  };
   return {
     ...previa,
     servicio_id: v("servicio_id") ? Number(v("servicio_id")) : null,
@@ -707,6 +776,10 @@ function leerTarjeta(card) {
     hora_fin: v("hora_fin"),
     lugar_recogida: v("lugar_recogida"),
     lugar_dejada: v("lugar_dejada"),
+    hora_recogida: v("hora_recogida"),
+    transporte_modo: v("transporte_modo") || "opcional",
+    transporte_costo: Math.max(0, parseFloat(v("transporte_costo")) || 0),
+    transporte_respuesta: v("transporte_respuesta"),
     notas: v("notas"),
     participantes: [...card.querySelectorAll("tr[data-cat]")].map((tr) => ({
       categoria_id: Number(tr.dataset.cat),
@@ -766,6 +839,10 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     hora_fin: sumarMinutos(inicio, serv?.duracion_min),
     lugar_recogida: nombrePropiedad(c),
     lugar_dejada: nombrePropiedad(c),
+    hora_recogida: "",
+    transporte_modo: serv?.transporte || "opcional",
+    transporte_costo: 0,
+    transporte_respuesta: "",
     notas: "",
     participantes,
     _pendiente: true
@@ -792,6 +869,10 @@ async function guardarTodo(btn) {
           hora_fin: a.hora_fin || null,
           lugar_recogida: a.lugar_recogida || null,
           lugar_dejada: a.lugar_dejada || null,
+          hora_recogida: a.hora_recogida || null,
+          transporte_modo: a.transporte_modo,
+          transporte_costo: a.transporte_modo === "opcional" ? a.transporte_costo : 0,
+          transporte_respuesta: a.transporte_respuesta === "si" ? true : a.transporte_respuesta === "no" ? false : null,
           notas: a.notas || null
         };
         if (a.id) {
@@ -854,10 +935,20 @@ $("detalleContenido").addEventListener("change", async (e) => {
       });
       if (serv.horarios?.length) a.hora_inicio = hora(serv.horarios[0]);
       if (a.hora_inicio && serv.duracion_min) a.hora_fin = sumarMinutos(a.hora_inicio, serv.duracion_min);
+      if (serv.transporte) a.transporte_modo = serv.transporte;
     }
     app.actual.actividades[idx] = a;
     repintarTarjeta(idx);
     pintarTotales();
+  }
+
+  if (e.target.dataset.campo === "transporte_modo") {
+    const a = leerTarjeta(card);
+    a._pendiente = true;
+    app.actual.actividades[idx] = a;
+    repintarTarjeta(idx);
+    pintarTotales();
+    return;
   }
 
   if (e.target.dataset.accion === "agregar-cat") {
@@ -990,6 +1081,9 @@ $("detalleContenido").addEventListener("click", async (e) => {
     case "confirmar-cliente":
       if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar.", "error");
       if (!app.actual.actividades.length) return avisar("La cotización no tiene actividades.", "error");
+      if (app.actual.actividades.some(transportePendiente)) {
+        return avisar("Falta la respuesta del cliente sobre el transporte en alguna actividad. Anótala en la sección Transporte y guarda.", "error");
+      }
       if (!confirm("¿Confirmar esta cotización en nombre del cliente? Pasará a Reserva.")) return;
       await conBoton(btn, async () => {
         const { error } = await db.from("cotizaciones")

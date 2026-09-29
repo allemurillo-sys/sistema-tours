@@ -211,3 +211,15 @@ textarea {
 .imp-totales { margin: 14px 0 0 auto; max-width: 280px; }
 .imp-totales p { display: flex; justify-content: space-between; margin: 3px 0; }
 .imp-pie { margin-top: 28px; font-size: 9pt; color: var(--gris); }
+
+/* ---------- Transporte dentro de cada actividad ---------- */
+.transporte {
+  border: 1px dashed var(--linea); border-radius: 10px; padding: 12px 14px 4px; margin: 0 0 12px;
+  background: var(--fondo);
+}
+.transporte legend { font-family: var(--titulos); font-size: 1rem; margin: 0; padding: 0 6px; }
+.trans-modo { max-width: 340px; margin-bottom: 12px; }
+.trans-campos { display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 12px; margin-bottom: 12px; }
+.trans-campos .ancho { grid-column: auto; }
+.transporte .horarios-nota { display: block; margin: -4px 0 10px; }
+@media (max-width: 800px) { .trans-campos { grid-template-columns: 1fr; } }

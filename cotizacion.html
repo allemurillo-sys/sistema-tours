@@ -27,6 +27,13 @@
     textarea { font: inherit; width: 100%; min-height: 110px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 8px; margin-bottom: 12px; }
     .exito { background: var(--verde-suave); color: var(--verde-hondo); border-radius: 12px; padding: 18px 20px; margin-top: 20px; font-weight: 500; }
     .exito strong { font-family: var(--titulos); font-size: 1.3rem; display: block; margin-bottom: 4px; }
+    .pregunta { background: var(--fondo); border-radius: 8px; padding: 10px 14px; margin-top: 10px; border: 2px solid transparent; }
+    .pregunta.falta { border-color: var(--amarillo, #D9A21B); background: #FFFCF3; }
+    .pregunta-texto { margin: 0 0 6px; font-weight: 700; }
+    .opcion { display: flex; flex-direction: row; align-items: center; gap: 10px; font-weight: 500; margin: 4px 0; cursor: pointer; }
+    .opcion input { width: 20px; height: 20px; accent-color: var(--verde); flex: none; padding: 0; }
+    .pregunta-lugares { margin-top: 6px; }
+    .check input:disabled + * { opacity: .5; }
     @media print { .caja, .acciones { display: none !important; } .act { border: 1px solid #ccc; } }
   </style>
 </head>
