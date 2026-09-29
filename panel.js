@@ -23,7 +23,7 @@ const MODOS_TRANSPORTE = {
 const app = {
   yo: null,
   cotizaciones: [],
-  servicios: [], propiedades: [], categorias: [], precios: [], perfiles: [],
+  servicios: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
   actual: null,            // { cot, solicitudes, actividades, pagos, bitacora }
   editandoCliente: false,
   temporizador: null
@@ -68,11 +68,21 @@ const transporteCobrado = (a) =>
   a.transporte_modo === "opcional" && a.transporte_respuesta === "si" ? Number(a.transporte_costo) || 0 : 0;
 const transportePendiente = (a) => a.transporte_modo === "opcional" && !a.transporte_respuesta;
 const subtotal = (a) => subtotalPersonas(a) + transporteCobrado(a);
+const transporteNetoAplicado = (a) =>
+  a.transporte_modo === "incluido" || (a.transporte_modo === "opcional" && a.transporte_respuesta === "si")
+    ? Number(a.transporte_neto) || 0 : 0;
+const costoNeto = (a) =>
+  a.participantes.reduce((s, p) => s + p.cantidad * (p.neto_unitario || 0), 0) + transporteNetoAplicado(a);
+const nombreOperador = (id) => app.operadores.find((o) => o.id === Number(id))?.nombre ?? "";
 const ordenActividad = (x, y) => (x.fecha + (x.hora_inicio || "")).localeCompare(y.fecha + (y.hora_inicio || ""));
 
 function precioBase(servicioId, categoriaId) {
   const p = app.precios.find((x) => x.servicio_id === Number(servicioId) && x.categoria_id === Number(categoriaId));
   return p ? Number(p.precio) : 0;
+}
+function netoBase(servicioId, categoriaId) {
+  const p = app.precios.find((x) => x.servicio_id === Number(servicioId) && x.categoria_id === Number(categoriaId));
+  return p ? Number(p.neto) || 0 : 0;
 }
 function nombrePropiedad(c) {
   if (c.propiedad_id) return app.propiedades.find((p) => p.id === c.propiedad_id)?.nombre ?? "";
@@ -163,15 +173,17 @@ $("btnSalir").addEventListener("click", async () => {
 // CATÁLOGOS Y TABLERO
 // =====================================================
 async function cargarCatalogos() {
-  const [s, p, c, pr, pf] = await Promise.all([
+  const [s, p, c, pr, pf, op] = await Promise.all([
     db.from("servicios").select("*").order("nombre"),
     db.from("propiedades").select("*").order("nombre"),
     db.from("categorias_cliente").select("*").order("orden"),
     db.from("servicio_precios").select("*"),
-    db.from("perfiles").select("id, nombre, rol")
+    db.from("perfiles").select("id, nombre, rol"),
+    db.from("operadores").select("*").order("nombre")
   ]);
-  const error = s.error || p.error || c.error || pr.error || pf.error;
+  const error = s.error || p.error || c.error || pr.error || pf.error || op.error;
   if (error) return fallo(error, "No se pudieron cargar los catálogos.");
+  app.operadores = op.data;
   app.servicios = s.data;
   app.propiedades = p.data;
   app.categorias = c.data;
@@ -241,7 +253,22 @@ $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, as
   await db.rpc("finalizar_vencidas");
   await cargarCatalogos();
   await cargarTablero();
+  document.dispatchEvent(new Event("datos-actualizados"));
+  avisar("Datos actualizados.");
 }));
+
+// ---------- Menú de secciones ----------
+const VISTAS = { reservas: "vistaReservas", servicios: "vistaServicios", mantenimiento: "vistaMantenimiento" };
+function mostrarVista(nombre) {
+  Object.entries(VISTAS).forEach(([k, id]) => ($(id).hidden = k !== nombre));
+  document.querySelectorAll(".menu-btn[data-vista]").forEach((b) => {
+    if (b.dataset.vista === nombre) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
+  document.dispatchEvent(new CustomEvent("vista-abierta", { detail: nombre }));
+}
+document.querySelectorAll(".menu-btn[data-vista]").forEach((b) =>
+  b.addEventListener("click", () => mostrarVista(b.dataset.vista)));
 $("btnImprimirTablero").addEventListener("click", () => window.print());
 
 // =====================================================
@@ -260,9 +287,16 @@ function normalizarActividad(a) {
     transporte_modo: a.transporte_modo || "opcional",
     transporte_costo: Number(a.transporte_costo) || 0,
     transporte_respuesta: a.transporte_respuesta === true ? "si" : a.transporte_respuesta === false ? "no" : "",
+    transporte_neto: Number(a.transporte_neto) || 0,
+    operador_id: a.operador_id,
     notas: a.notas ?? "",
     participantes: (a.actividad_participantes || [])
-      .map((p) => ({ categoria_id: p.categoria_id, cantidad: p.cantidad, precio_unitario: Number(p.precio_unitario) }))
+      .map((p) => ({
+        categoria_id: p.categoria_id,
+        cantidad: p.cantidad,
+        precio_unitario: Number(p.precio_unitario),
+        neto_unitario: Number(p.neto_unitario) || 0
+      }))
       .sort((x, y) => (categoriaPorId(x.categoria_id)?.orden ?? 0) - (categoriaPorId(y.categoria_id)?.orden ?? 0)),
     _pendiente: false
   };
@@ -488,7 +522,8 @@ function htmlActividad(a, idx) {
     <tr data-cat="${p.categoria_id}">
       <th scope="row">${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}</th>
       <td><input data-p="cantidad" type="number" min="0" value="${p.cantidad}" aria-label="Cantidad"></td>
-      <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio por persona"></td>
+      <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio rack por persona"></td>
+      <td><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="Neto por persona"></td>
       <td class="num celda-subtotal">${dinero(p.cantidad * p.precio_unitario)}</td>
       <td><button type="button" class="enlace" data-accion="quitar-cat" data-cat="${p.categoria_id}">Quitar</button></td>
     </tr>`).join("");
@@ -513,15 +548,22 @@ function htmlActividad(a, idx) {
           ${horarios.length ? `<span class="horarios-nota">Habituales: ${horarios.join(", ")}</span>` : ""}
         </label>
         <label>Hora de fin <input data-campo="hora_fin" type="time" value="${a.hora_fin}"></label>
+        <label class="ancho">Operador <span class="interno">interno</span>
+          <select data-campo="operador_id">
+            <option value="">Sin operador</option>
+            ${app.operadores.filter((o) => o.activo || o.id === a.operador_id)
+              .map((o) => `<option value="${o.id}" ${o.id === a.operador_id ? "selected" : ""}>${escapar(o.nombre)}</option>`).join("")}
+          </select>
+        </label>
       </div>
       ${htmlTransporte(a)}
       <div class="tabla-scroll">
         <table class="participantes">
-          <thead><tr><th>Tipo de cliente</th><th>Cantidad</th><th>Precio c/u</th><th class="num">Subtotal</th><th></th></tr></thead>
+          <thead><tr><th>Tipo de cliente</th><th>Cantidad</th><th>Rack c/u</th><th>Neto c/u <span class="interno">interno</span></th><th class="num">Subtotal</th><th></th></tr></thead>
           <tbody>${filas}</tbody>
           <tfoot>
             <tr>
-              <td colspan="3">
+              <td colspan="4">
                 <select data-accion="agregar-cat" aria-label="Agregar tipo de cliente">
                   <option value="">+ Agregar tipo de cliente</option>
                   ${faltantes.map((c) => `<option value="${c.id}">${escapar(c.nombre)}</option>`).join("")}
@@ -550,6 +592,11 @@ function htmlTransporte(a) {
         <label class="ancho">Pick up (lugar de recogida) <input data-campo="lugar_recogida" type="text" value="${escapar(a.lugar_recogida)}"></label>
         <label>Hora de pick up <input data-campo="hora_recogida" type="time" value="${a.hora_recogida}"></label>
         <label class="ancho">Drop off (lugar de dejada) <input data-campo="lugar_dejada" type="text" value="${escapar(a.lugar_dejada)}"></label>
+      </div>
+      <div class="trans-campos">
+        <label>Costo neto del transporte <span class="interno">interno</span>
+          <input data-campo="transporte_neto" type="number" min="0" step="0.01" value="${a.transporte_neto || 0}">
+        </label>
       </div>`;
   }
   if (modo === "opcional") {
@@ -638,6 +685,13 @@ function pintarTotales() {
       <div class="fila-total balance"><span>Balance</span><strong>${dinero(total - pagado)}</strong></div>`;
     if (prepago > pagado) h += `<p class="nota">Falta recibir ${dinero(prepago - pagado)} del prepago.</p>`;
   }
+  const neto = actividades.reduce((s, a) => s + costoNeto(a), 0);
+  h += `
+    <div class="interno-caja">
+      <p class="interno-titulo">Solo uso interno</p>
+      <div class="fila-total"><span>Costo neto</span><span>${dinero(neto)}</span></div>
+      <div class="fila-total"><span>Utilidad</span><strong>${dinero(total - neto)}</strong></div>
+    </div>`;
   const pendientesTrans = actividades.filter(transportePendiente);
   if (pendientesTrans.length) {
     const monto = pendientesTrans.reduce((s, a) => s + (Number(a.transporte_costo) || 0), 0);
@@ -780,11 +834,14 @@ function leerTarjeta(card) {
     transporte_modo: v("transporte_modo") || "opcional",
     transporte_costo: Math.max(0, parseFloat(v("transporte_costo")) || 0),
     transporte_respuesta: v("transporte_respuesta"),
+    transporte_neto: Math.max(0, parseFloat(v("transporte_neto")) || 0),
+    operador_id: v("operador_id") ? Number(v("operador_id")) : null,
     notas: v("notas"),
     participantes: [...card.querySelectorAll("tr[data-cat]")].map((tr) => ({
       categoria_id: Number(tr.dataset.cat),
       cantidad: Math.max(0, parseInt(tr.querySelector('[data-p="cantidad"]').value, 10) || 0),
-      precio_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="precio"]').value) || 0)
+      precio_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="precio"]').value) || 0),
+      neto_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="neto"]').value) || 0)
     }))
   };
 }
@@ -823,7 +880,12 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
   const agregar = (nombre, cantidad) => {
     const cat = categoriaPorNombre(nombre);
     if (cat && cantidad > 0) {
-      participantes.push({ categoria_id: cat.id, cantidad, precio_unitario: servicioId ? precioBase(servicioId, cat.id) : 0 });
+      participantes.push({
+        categoria_id: cat.id,
+        cantidad,
+        precio_unitario: servicioId ? precioBase(servicioId, cat.id) : 0,
+        neto_unitario: servicioId ? netoBase(servicioId, cat.id) : 0
+      });
     }
   };
   agregar("Adulto", c.adultos);
@@ -843,6 +905,8 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     transporte_modo: serv?.transporte || "opcional",
     transporte_costo: 0,
     transporte_respuesta: "",
+    transporte_neto: 0,
+    operador_id: serv?.operador_id ?? null,
     notas: "",
     participantes,
     _pendiente: true
@@ -873,6 +937,8 @@ async function guardarTodo(btn) {
           transporte_modo: a.transporte_modo,
           transporte_costo: a.transporte_modo === "opcional" ? a.transporte_costo : 0,
           transporte_respuesta: a.transporte_respuesta === "si" ? true : a.transporte_respuesta === "no" ? false : null,
+          transporte_neto: a.transporte_modo === "sin_transporte" ? 0 : a.transporte_neto,
+          operador_id: a.operador_id || null,
           notas: a.notas || null
         };
         if (a.id) {
@@ -887,7 +953,8 @@ async function guardarTodo(btn) {
         let r = await db.from("actividad_participantes").delete().eq("actividad_id", a.id);
         if (r.error) throw r.error;
         const filas = a.participantes.filter((p) => p.cantidad > 0).map((p) => ({
-          actividad_id: a.id, categoria_id: p.categoria_id, cantidad: p.cantidad, precio_unitario: p.precio_unitario
+          actividad_id: a.id, categoria_id: p.categoria_id, cantidad: p.cantidad,
+          precio_unitario: p.precio_unitario, neto_unitario: p.neto_unitario || 0
         }));
         if (filas.length) {
           r = await db.from("actividad_participantes").insert(filas);
@@ -932,7 +999,9 @@ $("detalleContenido").addEventListener("change", async (e) => {
       a.participantes.forEach((p) => {
         const base = precioBase(serv.id, p.categoria_id);
         if (base) p.precio_unitario = base;
+        p.neto_unitario = netoBase(serv.id, p.categoria_id);
       });
+      a.operador_id = serv.operador_id ?? null;
       if (serv.horarios?.length) a.hora_inicio = hora(serv.horarios[0]);
       if (a.hora_inicio && serv.duracion_min) a.hora_fin = sumarMinutos(a.hora_inicio, serv.duracion_min);
       if (serv.transporte) a.transporte_modo = serv.transporte;
@@ -970,7 +1039,8 @@ $("detalleContenido").addEventListener("change", async (e) => {
     a.participantes.push({
       categoria_id: categoriaId,
       cantidad: 1,
-      precio_unitario: a.servicio_id ? precioBase(a.servicio_id, categoriaId) : 0
+      precio_unitario: a.servicio_id ? precioBase(a.servicio_id, categoriaId) : 0,
+      neto_unitario: a.servicio_id ? netoBase(a.servicio_id, categoriaId) : 0
     });
     a._pendiente = true;
     app.actual.actividades[idx] = a;

@@ -223,3 +223,47 @@ textarea {
 .trans-campos .ancho { grid-column: auto; }
 .transporte .horarios-nota { display: block; margin: -4px 0 10px; }
 @media (max-width: 800px) { .trans-campos { grid-template-columns: 1fr; } }
+
+/* ---------- Menú del panel ---------- */
+.barra-panel .marca { flex: none; }
+.menu { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; justify-content: center; }
+.menu-btn {
+  font: inherit; font-size: .95rem; font-weight: 500; color: #fff; cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 7px 14px;
+}
+.menu-btn:hover { background: rgba(255, 255, 255, .1); }
+.menu-btn[aria-current="page"] { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .35); font-weight: 700; }
+.menu-btn.salir { border-color: rgba(255, 255, 255, .45); }
+.menu-btn:disabled { opacity: .6; cursor: wait; }
+.menu-btn:focus-visible { outline: 3px solid #5FAF84; outline-offset: 2px; }
+.usuario { font-size: .9rem; opacity: .85; }
+
+/* ---------- Secciones Servicios y Mantenimiento ---------- */
+.catalogo { max-width: 1180px; margin: 0 auto; padding: 24px; }
+.vista-titulo { font-size: clamp(1.8rem, 3vw, 2.3rem); margin: 0 0 16px; }
+.pestanas { display: flex; gap: 4px; border-bottom: 2px solid var(--linea); margin-bottom: 16px; }
+.pestana {
+  font: inherit; font-weight: 500; background: none; border: 0; cursor: pointer; color: var(--gris);
+  padding: 10px 16px; border-bottom: 3px solid transparent; margin-bottom: -2px;
+}
+.pestana.activa { color: var(--pizarra); font-weight: 700; border-bottom-color: var(--verde); }
+.det-seccion.sin-margen { margin: 0 0 16px; }
+.tabla tr.inactivo td { opacity: .55; }
+.precio-linea { display: block; }
+.tabla.precios input { max-width: 150px; padding: 7px 10px; }
+.check-linea { flex-direction: row; align-items: center; gap: 10px; margin: 12px 0; }
+.check-linea input { width: 20px; height: 20px; accent-color: var(--verde); padding: 0; flex: none; }
+.acciones-fila { white-space: nowrap; }
+.det-seccion textarea { margin-bottom: 4px; }
+
+/* ---------- Datos internos (neto y utilidad) ---------- */
+.interno {
+  display: inline-block; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--pizarra); color: #fff; border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: middle;
+}
+.interno-caja { border-top: 1px dashed var(--linea); margin-top: 10px; padding-top: 8px; display: grid; gap: 4px; }
+.interno-titulo { margin: 0 !important; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
+
+@media (max-width: 900px) {
+  .menu { justify-content: flex-start; order: 3; flex-basis: 100%; }
+}

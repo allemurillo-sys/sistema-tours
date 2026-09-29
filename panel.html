@@ -31,7 +31,7 @@
     </form>
   </section>
 
-  <!-- ================= TABLERO ================= -->
+  <!-- ================= APLICACIÓN ================= -->
   <div id="vistaApp" hidden>
     <header class="barra barra-panel">
       <div class="marca">
@@ -41,22 +41,50 @@
           <path d="M20 35 L25 20 L15 20 Z" fill="currentColor"/>
         </svg>
         <span>The House of Tours</span>
-        <span class="marca-sub">Panel de reservas</span>
       </div>
-      <div class="barra-derecha">
-        <span id="usuarioNombre"></span>
-        <button id="btnSalir" type="button" class="btn-barra">Salir</button>
-      </div>
+      <nav class="menu" aria-label="Secciones del panel">
+        <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
+        <button type="button" class="menu-btn" data-vista="servicios">Servicios</button>
+        <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
+        <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
+        <button type="button" class="menu-btn salir" id="btnSalir">Salir</button>
+      </nav>
+      <span id="usuarioNombre" class="usuario"></span>
     </header>
 
-    <div class="herramientas">
-      <input id="buscar" type="search" placeholder="Buscar por nombre o número" aria-label="Buscar por nombre o número">
-      <button id="btnActualizar" type="button" class="btn">Actualizar</button>
-      <button id="btnImprimirTablero" type="button" class="btn">Imprimir listas</button>
-      <span id="ultimaActualizacion" class="nota"></span>
-    </div>
+    <!-- Reservas -->
+    <section id="vistaReservas" class="vista">
+      <div class="herramientas">
+        <input id="buscar" type="search" placeholder="Buscar por nombre o número" aria-label="Buscar por nombre o número">
+        <button id="btnImprimirTablero" type="button" class="btn">Imprimir listas</button>
+        <span id="ultimaActualizacion" class="nota"></span>
+      </div>
+      <main id="tablero" class="tablero"></main>
+    </section>
 
-    <main id="tablero" class="tablero"></main>
+    <!-- Servicios -->
+    <section id="vistaServicios" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Servicios</h1>
+        <div class="pestanas" role="tablist" aria-label="Catálogo">
+          <button type="button" role="tab" class="pestana" data-pestana="servicios">Servicios</button>
+          <button type="button" role="tab" class="pestana" data-pestana="operadores">Operadores</button>
+          <button type="button" role="tab" class="pestana" data-pestana="propiedades">Propiedades</button>
+        </div>
+        <div id="catalogoContenido"></div>
+      </div>
+    </section>
+
+    <!-- Mantenimiento -->
+    <section id="vistaMantenimiento" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Mantenimiento</h1>
+        <div class="det-seccion sin-margen">
+          <p>Aquí se administrarán los usuarios, las claves, las autorizaciones de acceso y los reportes de ventas por colaborador.</p>
+          <p class="nota">Esta sección se habilita en la siguiente entrega.</p>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- ================= DETALLE DE UNA COTIZACIÓN ================= -->
@@ -72,5 +100,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="panel.js"></script>
+  <script src="servicios.js"></script>
 </body>
 </html>
