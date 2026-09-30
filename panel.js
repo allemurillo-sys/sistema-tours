@@ -20,6 +20,56 @@ const MOTIVOS_CANCELACION = [
 const ROLES_AUTORIZADOS = ["administrador", "gerente", "jefatura"];
 const METODOS_PAGO = ["Transferencia", "SINPE Móvil", "Tarjeta", "Efectivo", "Otro"];
 const NOMBRE_IDIOMA = { es: "Español", en: "Inglés", fr: "Francés", de: "Alemán", it: "Italiano" };
+
+// Mensajes que se envían al cliente, en su idioma
+const MENSAJES = {
+  es: {
+    cot_asunto: (c) => `Tu cotización ${c.numero} | The House of Tours`,
+    cot: (c, link) => `Hola ${c.nombre}, te enviamos tu cotización ${c.numero} de The House of Tours. Puedes revisarla y confirmarla aquí: ${link}`,
+    res_asunto: (c) => `Confirmación de tu reserva ${c.numero} | The House of Tours`,
+    res: (c, link, firma) =>
+      `Hola ${c.nombre}:\n\nTu reserva ${c.numero} con The House of Tours está confirmada. ` +
+      `En este enlace puedes ver tu itinerario completo, lo pagado y el saldo pendiente:\n\n${link}\n\n` +
+      `Si necesitas cambiar algo, responde a este mensaje y con gusto te ayudamos.\n\nSaludos,\n${firma}\nThe House of Tours`
+  },
+  en: {
+    cot_asunto: (c) => `Your quote ${c.numero} | The House of Tours`,
+    cot: (c, link) => `Hi ${c.nombre}, here is your quote ${c.numero} from The House of Tours. You can review and confirm it here: ${link}`,
+    res_asunto: (c) => `Your booking confirmation ${c.numero} | The House of Tours`,
+    res: (c, link, firma) =>
+      `Hi ${c.nombre},\n\nYour booking ${c.numero} with The House of Tours is confirmed. ` +
+      `At this link you can see your full itinerary, the amount paid and the balance due:\n\n${link}\n\n` +
+      `If you need to change anything, just reply to this message and we'll be happy to help.\n\nBest regards,\n${firma}\nThe House of Tours`
+  },
+  fr: {
+    cot_asunto: (c) => `Votre devis ${c.numero} | The House of Tours`,
+    cot: (c, link) => `Bonjour ${c.nombre}, voici votre devis ${c.numero} de The House of Tours. Vous pouvez le consulter et le confirmer ici : ${link}`,
+    res_asunto: (c) => `Confirmation de votre réservation ${c.numero} | The House of Tours`,
+    res: (c, link, firma) =>
+      `Bonjour ${c.nombre},\n\nVotre réservation ${c.numero} avec The House of Tours est confirmée. ` +
+      `Ce lien vous permet de consulter votre itinéraire complet, le montant payé et le solde restant :\n\n${link}\n\n` +
+      `Si vous souhaitez modifier quelque chose, répondez simplement à ce message et nous vous aiderons avec plaisir.\n\nCordialement,\n${firma}\nThe House of Tours`
+  },
+  de: {
+    cot_asunto: (c) => `Ihr Angebot ${c.numero} | The House of Tours`,
+    cot: (c, link) => `Hallo ${c.nombre}, anbei Ihr Angebot ${c.numero} von The House of Tours. Hier können Sie es prüfen und bestätigen: ${link}`,
+    res_asunto: (c) => `Bestätigung Ihrer Buchung ${c.numero} | The House of Tours`,
+    res: (c, link, firma) =>
+      `Hallo ${c.nombre},\n\nIhre Buchung ${c.numero} bei The House of Tours ist bestätigt. ` +
+      `Unter diesem Link finden Sie Ihre vollständige Reiseroute, den bezahlten Betrag und den offenen Restbetrag:\n\n${link}\n\n` +
+      `Wenn Sie etwas ändern möchten, antworten Sie einfach auf diese Nachricht – wir helfen Ihnen gerne.\n\nViele Grüße\n${firma}\nThe House of Tours`
+  },
+  it: {
+    cot_asunto: (c) => `Il tuo preventivo ${c.numero} | The House of Tours`,
+    cot: (c, link) => `Ciao ${c.nombre}, ecco il tuo preventivo ${c.numero} di The House of Tours. Puoi consultarlo e confermarlo qui: ${link}`,
+    res_asunto: (c) => `Conferma della tua prenotazione ${c.numero} | The House of Tours`,
+    res: (c, link, firma) =>
+      `Ciao ${c.nombre},\n\nla tua prenotazione ${c.numero} con The House of Tours è confermata. ` +
+      `A questo link puoi vedere il tuo itinerario completo, l'importo pagato e il saldo da versare:\n\n${link}\n\n` +
+      `Se desideri modificare qualcosa, rispondi a questo messaggio e saremo felici di aiutarti.\n\nCordiali saluti,\n${firma}\nThe House of Tours`
+  }
+};
+const mensajes = (c) => MENSAJES[c.idioma] || MENSAJES.es;
 const MODOS_TRANSPORTE = {
   incluido: "Incluido en el servicio",
   opcional: "Opcional (se consulta al cliente)",
@@ -29,7 +79,7 @@ const MODOS_TRANSPORTE = {
 const app = {
   yo: null,
   cotizaciones: [],
-  servicios: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
+  servicios: [], tipos: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
   permisos: new Set(),
   verCanceladas: false,
   actualizando: false,
@@ -85,6 +135,19 @@ const costoNeto = (a) =>
   a.participantes.reduce((s, p) => s + p.cantidad * (p.neto_unitario || 0), 0) + transporteNetoAplicado(a);
 const nombreOperador = (id) => app.operadores.find((o) => o.id === Number(id))?.nombre ?? "";
 const ordenActividad = (x, y) => (x.fecha + (x.hora_inicio || "")).localeCompare(y.fecha + (y.hora_inicio || ""));
+
+// Lista de servicios agrupada por tipo de actividad (para los <select>)
+function opcionesServicios(seleccionado) {
+  const opcion = (s) => `<option value="${s.id}" ${s.id === seleccionado ? "selected" : ""}>${escapar(s.nombre)}</option>`;
+  const usables = app.servicios.filter((s) => s.activo || s.id === seleccionado);
+  const grupos = app.tipos
+    .map((tp) => ({ tp, lista: usables.filter((s) => s.tipo_id === tp.id) }))
+    .filter((g) => g.lista.length)
+    .map((g) => `<optgroup label="${escapar(`${g.tp.icono ? g.tp.icono + " " : ""}${g.tp.nombre}`)}">${g.lista.map(opcion).join("")}</optgroup>`);
+  const sinTipo = usables.filter((s) => !app.tipos.some((tp) => tp.id === s.tipo_id));
+  if (sinTipo.length) grupos.push(grupos.length ? `<optgroup label="Sin tipo">${sinTipo.map(opcion).join("")}</optgroup>` : sinTipo.map(opcion).join(""));
+  return grupos.join("");
+}
 
 function precioBase(servicioId, categoriaId) {
   const p = app.precios.find((x) => x.servicio_id === Number(servicioId) && x.categoria_id === Number(categoriaId));
@@ -215,17 +278,19 @@ $("btnSalir").addEventListener("click", async () => {
 // CATÁLOGOS Y TABLERO
 // =====================================================
 async function cargarCatalogos() {
-  const [s, p, c, pr, pf, op] = await Promise.all([
+  const [s, p, c, pr, pf, op, tp] = await Promise.all([
     db.from("servicios").select("*").order("nombre"),
     db.from("propiedades").select("*").order("nombre"),
     db.from("categorias_cliente").select("*").order("orden"),
     db.from("servicio_precios").select("*"),
     db.from("perfiles").select("id, nombre, rol"),
-    db.from("operadores").select("*").order("nombre")
+    db.from("operadores").select("*").order("nombre"),
+    db.from("tipos_servicio").select("*").order("orden").order("nombre")
   ]);
-  const error = s.error || p.error || c.error || pr.error || pf.error || op.error;
+  const error = s.error || p.error || c.error || pr.error || pf.error || op.error || tp.error;
   if (error) return fallo(error, "No se pudieron cargar los catálogos.");
   app.operadores = op.data;
+  app.tipos = tp.data;
   app.servicios = s.data;
   app.propiedades = p.data;
   app.categorias = c.data;
@@ -238,7 +303,7 @@ async function cargarTablero() {
   d.setDate(d.getDate() - 90);
 
   const { data, error } = await db.from("resumen_cotizaciones")
-    .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance")
+    .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance, idioma")
     .or(`and(estado.neq.finalizado,estado.neq.cancelado),fecha_fin.gte.${aTexto(d)}`)
     .order("creado_en", { ascending: true });
 
@@ -272,6 +337,7 @@ function pintarTablero() {
 
 function htmlItem(c) {
   const extra = [];
+  if (c.idioma && c.idioma !== "es") extra.push(`<span class="etiqueta idioma" title="Idioma del cliente: ${NOMBRE_IDIOMA[c.idioma]}">${c.idioma.toUpperCase()}</span>`);
   if (c.cambios_pendientes) extra.push(`<span class="etiqueta alerta">Pidió cambios</span>`);
   if (c.estado === "proceso") extra.push(`<span class="etiqueta">${c.enviada_en ? "Enviada" : "Sin enviar"}</span>`);
   if (c.estado === "reserva" && Number(c.total) > 0) {
@@ -523,10 +589,15 @@ function htmlCliente(c) {
         <div><dt>Hospedaje</dt><dd>${escapar(nombrePropiedad(c)) || "Sin indicar"}${c.propiedad_id ? "" : " (otro lugar)"}</dd></div>
         <div><dt>Fechas del viaje</dt><dd>${fecha(c.fecha_inicio)} al ${fecha(c.fecha_fin, { day: "numeric", month: "short", year: "numeric" })}</dd></div>
         <div><dt>Personas</dt><dd>${personas(c)}</dd></div>
-        <div><dt>Idioma del cliente</dt><dd>${NOMBRE_IDIOMA[c.idioma] ?? "Español"}</dd></div>
+        <div><dt>Idioma del cliente</dt><dd>${bloqueado
+          ? NOMBRE_IDIOMA[c.idioma] ?? "Español"
+          : `<select id="cliIdioma" class="select-chico" aria-label="Idioma del cliente">
+              ${Object.entries(NOMBRE_IDIOMA).map(([k, v]) => `<option value="${k}" ${k === (c.idioma || "es") ? "selected" : ""}>${v}</option>`).join("")}
+            </select>`}</dd></div>
         <div><dt>Solicitud recibida</dt><dd>${fechaHora(c.creado_en)}</dd></div>
         <div><dt>Atiende</dt><dd>${escapar(nombrePerfil(c.colaborador_id)) || "Sin asignar"}</dd></div>
       </dl>
+      ${bloqueado ? "" : `<p class="nota">El enlace del cliente y los mensajes de WhatsApp y correo salen en el idioma del cliente. Puedes cambiarlo si te conviene.</p>`}
     </section>`;
 }
 
@@ -567,10 +638,7 @@ function htmlEditorActividades() {
 function htmlActividad(a, idx) {
   const verNeto = puede("ver_utilidad");
   const serv = servicioPorId(a.servicio_id);
-  const servicios = app.servicios
-    .filter((s) => s.activo || s.id === a.servicio_id)
-    .map((s) => `<option value="${s.id}" ${s.id === a.servicio_id ? "selected" : ""}>${escapar(s.nombre)}</option>`)
-    .join("");
+  const servicios = opcionesServicios(a.servicio_id);
   const horarios = (serv?.horarios || []).map(hora);
 
   const filas = a.participantes.map((p) => `
@@ -765,16 +833,18 @@ function htmlEnvio(c) {
   let compartir = "";
   if (c.enviada_en) {
     const link = enlaceCliente(c);
-    const texto = `Hola ${c.nombre}, te enviamos tu cotización ${c.numero} de The House of Tours. Puedes revisarla y confirmarla aquí: ${link}`;
+    const m = mensajes(c);
+    const texto = m.cot(c, link);
     const wa = `https://wa.me/${c.telefono.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
-    const mail = `mailto:${encodeURIComponent(c.correo)}?subject=${encodeURIComponent("Tu cotización " + c.numero + " | The House of Tours")}&body=${encodeURIComponent(texto)}`;
+    const mail = `mailto:${encodeURIComponent(c.correo)}?subject=${encodeURIComponent(m.cot_asunto(c))}&body=${encodeURIComponent(texto)}`;
     compartir = `
       <div class="enlace-cliente">
         <input type="text" readonly value="${escapar(link)}" aria-label="Enlace para el cliente">
         <button type="button" class="btn" data-accion="copiar-enlace">Copiar enlace</button>
         <a class="btn" href="${wa}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
         <a class="btn" href="${mail}">Enviar por correo</a>
-      </div>`;
+      </div>
+      <p class="nota">Los mensajes salen en ${NOMBRE_IDIOMA[c.idioma]?.toLowerCase() ?? "español"}.</p>`;
   }
 
   return `
@@ -843,13 +913,8 @@ function htmlCompartirReserva(c) {
   }
 
   const link = enlaceCliente(c);
-  const mensaje =
-    `Hola ${c.nombre}:\n\n` +
-    `Tu reserva ${c.numero} con The House of Tours está confirmada. ` +
-    `En este enlace puedes ver tu itinerario completo, lo pagado y el saldo pendiente:\n\n${link}\n\n` +
-    `Si necesitas cambiar algo, responde a este mensaje y con gusto te ayudamos.\n\n` +
-    `Saludos,\n${app.yo.nombre}\nThe House of Tours`;
-  const asunto = `Confirmación de tu reserva ${c.numero} | The House of Tours`;
+  const mensaje = mensajes(c).res(c, link, app.yo.nombre);
+  const asunto = mensajes(c).res_asunto(c);
   const correo = `mailto:${encodeURIComponent(c.correo)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensaje)}`;
   const whatsapp = `https://wa.me/${c.telefono.replace(/\D/g, "")}?text=${encodeURIComponent(mensaje)}`;
 
@@ -866,7 +931,7 @@ function htmlCompartirReserva(c) {
         <a class="btn" href="${correo}">Enviar por correo</a>
         <a class="btn" href="${whatsapp}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
       </div>
-      <p class="nota">"Copiar mensaje completo" copia el saludo, el enlace y la despedida para pegarlos en Outlook u otro programa. "Enviar por correo" abre tu programa de correo predeterminado.</p>
+      <p class="nota">Los mensajes salen en ${NOMBRE_IDIOMA[c.idioma]?.toLowerCase() ?? "español"}. "Copiar mensaje completo" copia el saludo, el enlace y la despedida para pegarlos en Outlook u otro programa. "Enviar por correo" abre tu programa de correo predeterminado.</p>
     </section>`;
 }
 
@@ -1121,6 +1186,7 @@ $("detalleContenido").addEventListener("input", (e) => {
 });
 
 $("detalleContenido").addEventListener("change", async (e) => {
+  if (e.target.id === "cliIdioma") return cambiarIdiomaCliente(e.target);
   const card = e.target.closest(".actividad");
   if (!card) return;
   const idx = Number(card.dataset.idx);
@@ -1182,6 +1248,21 @@ $("detalleContenido").addEventListener("change", async (e) => {
     pintarTotales();
   }
 });
+
+async function cambiarIdiomaCliente(sel) {
+  const c = app.actual.cot;
+  const anterior = c.idioma || "es";
+  const nuevo = sel.value;
+  if (nuevo === anterior) return;
+  sel.disabled = true;
+  const { error } = await db.from("cotizaciones").update({ idioma: nuevo }).eq("id", c.id);
+  if (error) { sel.value = anterior; sel.disabled = false; return fallo(error, "No se pudo cambiar el idioma."); }
+  await registrar(c.id, "idioma cambiado", `${NOMBRE_IDIOMA[anterior]} → ${NOMBRE_IDIOMA[nuevo]}`);
+  await recargarDetalle();
+  const item = app.cotizaciones.find((x) => x.id === c.id);
+  if (item) { item.idioma = nuevo; pintarTablero(); }
+  avisar(`Idioma del cliente: ${NOMBRE_IDIOMA[nuevo]}.`);
+}
 
 // ---------- Botones del detalle ----------
 $("detalleContenido").addEventListener("click", async (e) => {
@@ -1362,12 +1443,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
 
     case "copiar-mensaje": {
-      const texto =
-        `Hola ${c.nombre}:\n\n` +
-        `Tu reserva ${c.numero} con The House of Tours está confirmada. ` +
-        `En este enlace puedes ver tu itinerario completo, lo pagado y el saldo pendiente:\n\n${enlaceCliente(c)}\n\n` +
-        `Si necesitas cambiar algo, responde a este mensaje y con gusto te ayudamos.\n\n` +
-        `Saludos,\n${app.yo.nombre}\nThe House of Tours`;
+      const texto = mensajes(c).res(c, enlaceCliente(c), app.yo.nombre);
       try {
         await navigator.clipboard.writeText(texto);
         avisar("Mensaje copiado. Pégalo en un correo nuevo de Outlook con Ctrl + V.");

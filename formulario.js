@@ -7,6 +7,7 @@ const MAX_DIAS = 30;
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
 let servicios = [];
+let tipos = [];
 let propiedades = [];
 let catalogoListo = false;
 let errorCarga = "";          // clave del texto de error, si no se pudo cargar
@@ -50,7 +51,9 @@ function listaFechas(inicio, fin) {
   for (let s = inicio; s <= fin && dias.length < MAX_DIAS; s = sumarDias(s, 1)) dias.push(s);
   return dias;
 }
-const nombreServicio = (id) => servicios.find((s) => s.id === id)?.nombre ?? "";
+const servicioPorId = (id) => servicios.find((s) => s.id === id);
+const nombreServicio = (id) => tServicio(servicioPorId(id));
+const iconoServicio = (id) => tipos.find((x) => x.id === servicioPorId(id)?.tipo_id)?.icono || "";
 const totalServicios = () => Object.values(seleccion).reduce((n, l) => n + l.length, 0);
 
 // ---------- Listas que dependen del idioma ----------
@@ -83,13 +86,16 @@ function pintarPropiedades() {
 async function cargarCatalogos() {
   if (CONFIG.supabaseUrl.includes("TU-PROYECTO")) return mostrarErrorCarga("e_config");
 
-  const [s, p] = await Promise.all([
-    db.from("servicios").select("id, nombre, duracion_min").eq("activo", true).order("nombre"),
+  const [s, k, p] = await Promise.all([
+    db.from("servicios").select("id, nombre, duracion_min, descripcion, tipo_id, traducciones").eq("activo", true).order("nombre"),
+    db.from("tipos_servicio").select("id, nombre, icono, traducciones, orden").eq("activo", true).order("orden").order("nombre"),
     db.from("propiedades").select("id, nombre").eq("activa", true).order("nombre")
   ]);
-  if (s.error || p.error) return mostrarErrorCarga("e_carga");
+  if (s.error || k.error || p.error) return mostrarErrorCarga("e_carga");
 
-  servicios = s.data;
+  tipos = k.data;
+  // Si un tipo está oculto, sus actividades tampoco se ofrecen
+  servicios = s.data.filter((x) => !x.tipo_id || tipos.some((k) => k.id === x.tipo_id));
   propiedades = p.data;
   catalogoListo = true;
   pintarPropiedades();
@@ -103,7 +109,7 @@ function mostrarErrorCarga(clave) {
   $("btnEnviar").disabled = true;
 }
 
-// ---------- Días y servicios ----------
+// ---------- Días y actividades ----------
 function pintarDias() {
   const inicio = $("fechaInicio").value;
   const fin = $("fechaFin").value;
@@ -125,44 +131,150 @@ function pintarDias() {
     const elegidos = seleccion[f] || [];
     const lista = elegidos.map((id) => `
       <li>
-        <span>${escapar(nombreServicio(id))}</span>
+        <span class="dia-act">${iconoServicio(id) ? `<span class="dia-icono" aria-hidden="true">${escapar(iconoServicio(id))}</span>` : ""}<span>${escapar(nombreServicio(id))}</span></span>
         <button type="button" class="quitar" data-fecha="${f}" data-id="${id}"
           aria-label="${escapar(t("f_aria_quitar", { servicio: nombreServicio(id), dia }))}">${escapar(t("f_quitar"))}</button>
       </li>`).join("");
-    const opciones = servicios
-      .filter((s) => !elegidos.includes(s.id))
-      .map((s) => `<option value="${s.id}">${escapar(s.nombre)}${s.duracion_min ? ` (${duracion(s.duracion_min)})` : ""}</option>`)
-      .join("");
 
     return `
       <div class="dia${elegidos.length ? " activo" : ""}">
         <p class="dia-fecha">${escapar(dia)}</p>
-        ${lista ? `<ul class="dia-lista">${lista}</ul>` : ""}
-        ${opciones ? `
-          <select class="agregar" data-fecha="${f}" aria-label="${escapar(t("f_aria_agregar", { dia }))}">
-            <option value="">${escapar(t("f_agregar"))}</option>${opciones}
-          </select>` : ""}
+        ${lista ? `<ul class="dia-lista">${lista}</ul>` : `<p class="dia-libre">${escapar(t("f_dia_libre"))}</p>`}
+        <button type="button" class="abrir-selector" data-fecha="${f}" ${catalogoListo && servicios.length ? "" : "disabled"}
+          aria-label="${escapar(t("f_aria_agregar", { dia }))}">${escapar(t(elegidos.length ? "f_agregar_mas" : "f_agregar"))}</button>
       </div>`;
   }).join("");
 }
 
-$("dias").addEventListener("change", (e) => {
-  const sel = e.target.closest("select.agregar");
-  if (!sel || !sel.value) return;
-  const f = sel.dataset.fecha;
-  (seleccion[f] ||= []).push(Number(sel.value));
-  pintarDias();
-  document.querySelector(`select.agregar[data-fecha="${f}"]`)?.focus();
-});
-
 $("dias").addEventListener("click", (e) => {
+  const abrir = e.target.closest("button.abrir-selector");
+  if (abrir) return abrirSelector(abrir.dataset.fecha);
+
   const btn = e.target.closest("button.quitar");
   if (!btn) return;
   const f = btn.dataset.fecha;
   seleccion[f] = seleccion[f].filter((id) => id !== Number(btn.dataset.id));
   if (!seleccion[f].length) delete seleccion[f];
   pintarDias();
-  document.querySelector(`select.agregar[data-fecha="${f}"]`)?.focus();
+  document.querySelector(`button.abrir-selector[data-fecha="${f}"]`)?.focus();
+});
+
+// ---------- Selector de actividades (ventana con tipos) ----------
+const selector = { fecha: null, tipo: "todas", busqueda: "" };
+
+// Grupos visibles: cada tipo con sus actividades, y al final las que no tienen tipo
+function grupos() {
+  const lista = tipos
+    .map((tp) => ({ id: String(tp.id), nombre: tTipo(tp), icono: tp.icono || "", items: servicios.filter((s) => s.tipo_id === tp.id) }))
+    .filter((g) => g.items.length);
+  const sinTipo = servicios.filter((s) => !s.tipo_id);
+  if (sinTipo.length) lista.push({ id: "otros", nombre: t("s_otros"), icono: "", items: sinTipo });
+  lista.forEach((g) => g.items.sort((x, y) => tServicio(x).localeCompare(tServicio(y), locale())));
+  return lista;
+}
+
+const sinAcentos = (x) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+function abrirSelector(fecha) {
+  selector.fecha = fecha;
+  selector.busqueda = "";
+  if (selector.tipo !== "todas" && !grupos().some((g) => g.id === selector.tipo)) selector.tipo = "todas";
+  $("selBuscar").value = "";
+  $("selDia").textContent = nombreDia(fecha);
+  pintarSelector();
+  $("selector").showModal();
+  $("selLista").scrollTop = 0;
+}
+
+function pintarSelector() {
+  if (!selector.fecha) return;
+  const todos = grupos();
+  const elegidos = seleccion[selector.fecha] || [];
+  $("selDia").textContent = nombreDia(selector.fecha);
+
+  $("selTipos").innerHTML = [{ id: "todas", nombre: t("s_todas"), icono: "", items: servicios }, ...todos].map((g) => `
+    <button type="button" class="sel-tipo" data-tipo="${g.id}" aria-pressed="${selector.tipo === g.id}">
+      ${g.icono ? `<span aria-hidden="true">${escapar(g.icono)}</span>` : ""}${escapar(g.nombre)}
+      <span class="sel-tipo-n">${g.items.length}</span>
+    </button>`).join("");
+
+  const q = sinAcentos(selector.busqueda.trim());
+  const visibles = todos
+    .filter((g) => q || selector.tipo === "todas" || g.id === selector.tipo)
+    .map((g) => ({ ...g, items: q ? g.items.filter((s) => sinAcentos(tServicio(s)).includes(q)) : g.items }))
+    .filter((g) => g.items.length);
+
+  const tarjeta = (s) => {
+    const marcado = elegidos.includes(s.id);
+    const desc = tDescripcion(s);
+    return `
+      <button type="button" class="sel-item" data-id="${s.id}" aria-pressed="${marcado}">
+        <span class="sel-item-texto">
+          <span class="sel-item-nombre">${escapar(tServicio(s))}</span>
+          ${s.duracion_min ? `<span class="sel-item-meta">${escapar(duracion(s.duracion_min))}</span>` : ""}
+          ${desc ? `<span class="sel-item-desc">${escapar(desc)}</span>` : ""}
+        </span>
+        <span class="sel-marca" aria-hidden="true"></span>
+      </button>`;
+  };
+
+  let h;
+  if (!servicios.length) h = `<p class="sel-vacio">${escapar(t("s_vacio"))}</p>`;
+  else if (!visibles.length) h = `<p class="sel-vacio">${escapar(t("s_sin_resultados"))}</p>`;
+  else {
+    const conTitulos = visibles.length > 1 || selector.tipo === "todas" || q;
+    h = visibles.map((g) => `
+      <section class="sel-grupo">
+        ${conTitulos ? `<h3 class="sel-grupo-titulo">${g.icono ? `<span aria-hidden="true">${escapar(g.icono)}</span> ` : ""}${escapar(g.nombre)}</h3>` : ""}
+        <div class="sel-items">${g.items.map(tarjeta).join("")}</div>
+      </section>`).join("");
+  }
+  $("selLista").innerHTML = h;
+  pintarCuenta();
+}
+
+function pintarCuenta() {
+  const n = (seleccion[selector.fecha] || []).length;
+  $("selCuenta").textContent = n ? tp("s_elegidas", n) : t("s_elegidas_0");
+}
+
+$("selTipos").addEventListener("click", (e) => {
+  const b = e.target.closest(".sel-tipo");
+  if (!b) return;
+  selector.tipo = b.dataset.tipo;
+  selector.busqueda = "";
+  $("selBuscar").value = "";
+  pintarSelector();
+  $("selLista").scrollTop = 0;
+  document.querySelector(`.sel-tipo[data-tipo="${selector.tipo}"]`)?.focus();
+});
+
+$("selBuscar").addEventListener("input", () => {
+  selector.busqueda = $("selBuscar").value;
+  pintarSelector();
+});
+
+$("selLista").addEventListener("click", (e) => {
+  const b = e.target.closest(".sel-item");
+  if (!b) return;
+  const id = Number(b.dataset.id);
+  const lista = (seleccion[selector.fecha] ||= []);
+  const i = lista.indexOf(id);
+  if (i >= 0) lista.splice(i, 1); else lista.push(id);
+  if (!lista.length) delete seleccion[selector.fecha];
+  b.setAttribute("aria-pressed", i < 0);
+  pintarCuenta();
+});
+
+$("selListo").addEventListener("click", () => $("selector").close());
+$("selCerrar").addEventListener("click", () => $("selector").close());
+// Tocar fuera de la ventana también la cierra
+$("selector").addEventListener("click", (e) => { if (e.target === $("selector")) $("selector").close(); });
+$("selector").addEventListener("close", () => {
+  const f = selector.fecha;
+  selector.fecha = null;
+  pintarDias();
+  document.querySelector(`button.abrir-selector[data-fecha="${f}"]`)?.focus();
 });
 
 // ---------- Fechas ----------
@@ -309,6 +421,7 @@ document.addEventListener("idioma-cambiado", () => {
   if (errorCarga) $("errorCarga").textContent = t(errorCarga);
   if (!$("btnEnviar").disabled) $("btnEnviar").textContent = t("f_enviar");
   if (ultimoEnvio) mostrarGracias();
+  if ($("selector").open) pintarSelector();
 });
 
 // ---------- Inicio ----------

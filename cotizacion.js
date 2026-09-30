@@ -45,10 +45,23 @@ async function cargar() {
   if (error || !data) return mostrarError("c_e_no_encontrada");
   datos = data;
 
-  // Si el cliente no eligió un idioma en este navegador, se usa el de su solicitud
-  if (!idiomaExplicito() && data.idioma && data.idioma !== idioma) cambiarIdioma(data.idioma, false);
+  // La página se abre en el idioma guardado en la cotización (el que eligió el cliente
+  // o el que ajustó el agente). Un enlace con ?lang=xx tiene prioridad.
+  const delEnlace = idiomaValido(params.get("lang"));
+  const inicial = delEnlace || data.idioma;
+  if (inicial && inicial !== idioma) cambiarIdioma(inicial, false);
   pintar();
 }
+
+// Si el cliente cambia el idioma aquí, queda guardado en su cotización:
+// todo lo que reciba después llegará en ese idioma.
+$("selectorIdioma")?.addEventListener("change", async () => {
+  if (!datos || datos.idioma === idioma) return;
+  const nuevo = idioma;
+  const { error } = await db.rpc("cambiar_idioma_cotizacion", { p_numero: numero, p_token: token, p_idioma: nuevo });
+  if (error) return console.error(error);
+  datos.idioma = nuevo;
+});
 
 function htmlTransporte(a, puedeResponder) {
   const lugares = [
@@ -107,7 +120,7 @@ function pintar() {
         return `
           <div class="act">
             <div class="act-cab">
-              <p class="act-nombre">${escapar(a.servicio ?? "")}</p>
+              <p class="act-nombre">${escapar(tServicio({ nombre: a.servicio, traducciones: a.servicio_tr }))}</p>
               <span class="monto">${dinero(sub)}</span>
             </div>
             <p class="act-hora">${escapar(horario)}</p>

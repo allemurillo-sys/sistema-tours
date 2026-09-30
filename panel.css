@@ -308,3 +308,47 @@ details summary { cursor: pointer; }
 .btn.peligro:hover { background: var(--rojo-suave); }
 .zona-cancelar { border: 1px solid var(--rojo-suave); }
 .cancelada-info { background: #EDE7E7; }
+
+/* ---------- Idioma del cliente ---------- */
+.etiqueta.idioma { background: var(--pizarra); color: #fff; border-color: transparent; font-weight: 700; letter-spacing: .03em; }
+.select-chico { width: auto; padding: 4px 8px; font-size: .92rem; }
+
+/* ---------- Servicios agrupados por tipo ---------- */
+.tabla tr.fila-grupo th {
+  background: var(--verde-suave); color: var(--verde-hondo); font-family: var(--titulos);
+  font-size: 1rem; padding: 10px 8px; border-bottom: 0;
+}
+.tabla tr.fila-grupo .nota { font-family: var(--texto); font-weight: 400; margin-left: 8px; }
+.traducciones { margin: 6px 0 18px; border: 1px solid var(--linea); border-radius: 10px; padding: 10px 14px; background: var(--blanco); }
+.traducciones summary { cursor: pointer; font-weight: 700; }
+.traducciones[open] summary { margin-bottom: 8px; }
+.tabla.traduccion input, .tabla.traduccion textarea { width: 100%; min-width: 180px; }
+.tabla.traduccion th[scope="row"] { white-space: nowrap; padding-top: 16px; }
+
+/* ---------- Tipos de actividad ---------- */
+.tipos-lista { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.tipo-tarjeta { background: var(--blanco); border: 1px solid var(--linea); border-left: 4px solid var(--verde); border-radius: 10px; padding: 12px 14px; }
+.tipo-tarjeta.inactivo { border-left-color: var(--linea); }
+.tipo-tarjeta.inactivo .tipo-icono, .tipo-tarjeta.inactivo .tipo-nombre { opacity: .55; }
+.tipo-cabeza { display: flex; align-items: center; gap: 12px; }
+.tipo-icono { font-size: 1.6rem; width: 2.2rem; text-align: center; flex: none; }
+.tipo-textos { flex: 1; min-width: 0; }
+.tipo-nombre { margin: 0; font-weight: 700; font-size: 1.05rem; }
+.tipo-textos .nota { margin: 2px 0 0; }
+.tipo-acciones { display: flex; align-items: center; gap: 6px; flex: none; }
+.btn-icono {
+  font: inherit; font-size: .75rem; width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--linea); background: var(--blanco); color: var(--pizarra);
+}
+.btn-icono:disabled { opacity: .35; cursor: not-allowed; }
+.tipo-servicios { list-style: none; margin: 10px 0 0 calc(2.2rem + 12px); padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.tipo-servicios li { background: var(--fondo); border-radius: 999px; padding: 2px 10px; font-size: .88rem; }
+.tipo-servicios li.inactivo { opacity: .55; }
+.tipo-tarjeta .tipo-vacio { margin: 8px 0 0 calc(2.2rem + 12px); }
+.chip-gris { font-size: .75rem; font-weight: 500; background: var(--fondo); color: var(--gris); border-radius: 999px; padding: 1px 8px; margin-left: 4px; }
+.aviso.suave { margin-top: 16px; }
+@media (max-width: 600px) {
+  .tipo-cabeza { flex-wrap: wrap; }
+  .tipo-acciones { width: 100%; justify-content: flex-end; }
+  .tipo-servicios, .tipo-tarjeta .tipo-vacio { margin-left: 0; }
+}
