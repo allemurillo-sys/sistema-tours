@@ -9,6 +9,7 @@ const cal = {
   mes: null,          // "2026-10-01": primer día del mes que se ve
   elegido: null,      // "2026-10-12": día cuyo detalle se muestra
   tipo: "",           // filtro por tipo de actividad ("" = todos)
+  usuario: "",        // filtro por colaborador que atiende ("" = todos, "sin" = sin asignar)
   datos: [],          // actividades del rango visible
   cargando: false
 };
@@ -38,9 +39,12 @@ function rangoVisible() {
 const personasActividad = (a) => (a.actividad_participantes || []).reduce((s, p) => s + (p.cantidad || 0), 0);
 const iconoTipo = (servicioId) => app.tipos.find((tp) => tp.id === servicioPorId(servicioId)?.tipo_id)?.icono || "";
 function visibles() {
-  if (!cal.tipo) return cal.datos;
-  if (cal.tipo === "sin") return cal.datos.filter((a) => !app.tipos.some((tp) => tp.id === servicioPorId(a.servicio_id)?.tipo_id));
-  return cal.datos.filter((a) => servicioPorId(a.servicio_id)?.tipo_id === Number(cal.tipo));
+  let lista = cal.datos;
+  if (cal.tipo === "sin") lista = lista.filter((a) => !app.tipos.some((tp) => tp.id === servicioPorId(a.servicio_id)?.tipo_id));
+  else if (cal.tipo) lista = lista.filter((a) => servicioPorId(a.servicio_id)?.tipo_id === Number(cal.tipo));
+  if (cal.usuario === "sin") lista = lista.filter((a) => !a.cot.colaborador_id);
+  else if (cal.usuario) lista = lista.filter((a) => a.cot.colaborador_id === cal.usuario);
+  return lista;
 }
 
 // ---------- Carga ----------
@@ -56,7 +60,7 @@ async function cargarCalendario() {
 
   const { data, error } = await db.from("actividades")
     .select("id, fecha, hora_inicio, hora_fin, hora_recogida, lugar_recogida, servicio_id, cotizacion_id, " +
-            "actividad_participantes(cantidad), cotizaciones!inner(id, numero, nombre, apellido, estado, idioma)")
+            "actividad_participantes(cantidad), cotizaciones!inner(id, numero, nombre, apellido, estado, idioma, colaborador_id)")
     .in("cotizaciones.estado", ESTADOS_CALENDARIO)
     .gte("fecha", desde).lte("fecha", hasta)
     .order("fecha").order("hora_inicio", { nullsFirst: false });
@@ -85,12 +89,21 @@ function pintarCalendario() {
   const resumen = cal.cargando && !cal.datos.length ? "Cargando…" :
     delMes.length
       ? `${delMes.length} ${delMes.length === 1 ? "actividad" : "actividades"} de ${reservas} ${reservas === 1 ? "reserva" : "reservas"} este mes.`
-      : "No hay actividades de reservas confirmadas este mes.";
+      : (cal.tipo || cal.usuario ? "No hay actividades con estos filtros este mes." : "No hay actividades de reservas confirmadas este mes.");
 
   const tipos = [
     `<option value="">Todos los tipos</option>`,
     ...app.tipos.map((tp) => `<option value="${tp.id}" ${String(tp.id) === cal.tipo ? "selected" : ""}>${escapar(nombreTipo(tp))}</option>`),
     `<option value="sin" ${cal.tipo === "sin" ? "selected" : ""}>Sin tipo</option>`
+  ].join("");
+
+  const perfilesOrdenados = [...app.perfiles].sort((x, y) => (x.nombre || "").localeCompare(y.nombre || "", "es"));
+  const usuarios = [
+    `<option value="">Todos los usuarios</option>`,
+    `<option value="${app.yo.id}" ${cal.usuario === app.yo.id ? "selected" : ""}>Mis reservas</option>`,
+    ...perfilesOrdenados.filter((pf) => pf.id !== app.yo.id)
+      .map((pf) => `<option value="${pf.id}" ${cal.usuario === pf.id ? "selected" : ""}>${escapar(pf.nombre)}</option>`),
+    `<option value="sin" ${cal.usuario === "sin" ? "selected" : ""}>Sin asignar</option>`
   ].join("");
 
   // Encabezado de días (lunes a domingo)
@@ -136,10 +149,15 @@ function pintarCalendario() {
         <button type="button" class="btn" data-cal="hoy">Hoy</button>
       </div>
       <div class="cal-filtros">
+        <label class="en-linea">Usuario <select id="calUsuario">${usuarios}</select></label>
         <label class="en-linea">Tipo de actividad <select id="calTipo">${tipos}</select></label>
         <button type="button" class="btn" data-cal="imprimir">Imprimir mes</button>
       </div>
     </div>
+    ${cal.usuario || cal.tipo ? `<p class="solo-impresion cal-filtro-imp">Filtro: ${escapar([
+      cal.usuario ? (cal.usuario === "sin" ? "sin asignar" : nombrePerfil(cal.usuario)) : "",
+      cal.tipo ? (cal.tipo === "sin" ? "sin tipo" : nombreTipo(app.tipos.find((tp) => String(tp.id) === cal.tipo) || {})) : ""
+    ].filter(Boolean).join(" · "))}</p>` : ""}
     <p class="nota cal-resumen">${escapar(resumen)} Se muestran las actividades de las reservas confirmadas y finalizadas. Toca una actividad para abrir su reserva.</p>
     <div class="cal-leyenda nota">
       <span><i class="punto estado-reserva"></i> Reserva confirmada</span>
@@ -171,7 +189,7 @@ function htmlDiaElegido(porDia) {
           <span class="cal-fila-cuerpo">
             <strong>${iconoTipo(a.servicio_id) ? escapar(iconoTipo(a.servicio_id)) + " " : ""}${escapar(serv?.nombre ?? "Actividad")}</strong>
             <span>${escapar(nombreCompleto(a.cot))} · <span class="sin-cortar">${a.cot.numero}</span>${n ? ` · ${n} ${n === 1 ? "persona" : "personas"}` : ""}${a.cot.idioma && a.cot.idioma !== "es" ? ` · ${a.cot.idioma.toUpperCase()}` : ""}</span>
-            ${recogida ? `<span class="nota">${escapar(recogida)}</span>` : ""}
+            <span class="nota">Atiende: ${escapar(nombrePerfil(a.cot.colaborador_id)) || "sin asignar"}${recogida ? ` · ${escapar(recogida)}` : ""}</span>
           </span>
           <span class="chip-estado">${a.cot.estado === "finalizado" ? "Finalizada" : "Reserva"}</span>
         </button>
@@ -229,10 +247,12 @@ $("calendarioContenido").addEventListener("click", async (e) => {
 });
 
 $("calendarioContenido").addEventListener("change", (e) => {
-  if (e.target.id !== "calTipo") return;
-  cal.tipo = e.target.value;
+  if (e.target.id === "calTipo") cal.tipo = e.target.value;
+  else if (e.target.id === "calUsuario") cal.usuario = e.target.value;
+  else return;
+  const id = e.target.id;
   pintarCalendario();
-  $("calTipo")?.focus();
+  $(id)?.focus();
 });
 
 // Se recarga al abrir la sección, al actualizar los datos y al cerrar una reserva
