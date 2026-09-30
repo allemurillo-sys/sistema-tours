@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilos.css?v=11">
-  <link rel="stylesheet" href="panel.css?v=11">
+  <link rel="stylesheet" href="estilos.css?v=12">
+  <link rel="stylesheet" href="panel.css?v=12">
 </head>
 <body class="panel">
 
@@ -44,6 +44,7 @@
       </div>
       <nav class="menu" aria-label="Secciones del panel">
         <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
+        <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
         <button type="button" class="menu-btn" data-vista="servicios">Servicios</button>
         <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
         <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
@@ -61,6 +62,14 @@
         <span id="ultimaActualizacion" class="nota"></span>
       </div>
       <main id="tablero" class="tablero"></main>
+    </section>
+
+    <!-- Calendario -->
+    <section id="vistaCalendario" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Calendario de reservas</h1>
+        <div id="calendarioContenido"></div>
+      </div>
     </section>
 
     <!-- Servicios -->
@@ -103,9 +112,10 @@
   <div id="aviso" class="toast" role="status" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=11"></script>
-  <script src="panel.js?v=11"></script>
-  <script src="servicios.js?v=11"></script>
-  <script src="mantenimiento.js?v=11"></script>
+  <script src="config.js?v=12"></script>
+  <script src="panel.js?v=12"></script>
+  <script src="servicios.js?v=12"></script>
+  <script src="mantenimiento.js?v=12"></script>
+  <script src="calendario.js?v=12"></script>
 </body>
 </html>

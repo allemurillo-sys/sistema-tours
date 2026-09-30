@@ -244,6 +244,7 @@ async function actualizarTodo(silencioso = false) {
     await db.rpc("finalizar_vencidas");
     await cargarCatalogos();
     await cargarTablero();
+    document.dispatchEvent(new Event("tablero-actualizado"));
     if (!silencioso) document.dispatchEvent(new Event("datos-actualizados"));
   } finally {
     app.actualizando = false;
@@ -372,7 +373,7 @@ $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, as
 }));
 
 // ---------- Menú de secciones ----------
-const VISTAS = { reservas: "vistaReservas", servicios: "vistaServicios", mantenimiento: "vistaMantenimiento" };
+const VISTAS = { reservas: "vistaReservas", calendario: "vistaCalendario", servicios: "vistaServicios", mantenimiento: "vistaMantenimiento" };
 function mostrarVista(nombre) {
   Object.entries(VISTAS).forEach(([k, id]) => ($(id).hidden = k !== nombre));
   document.querySelectorAll(".menu-btn[data-vista]").forEach((b) => {
@@ -465,6 +466,7 @@ function cerrarDetalle() {
   $("detalle").hidden = true;
   document.body.classList.remove("detalle-abierto");
   app.actual = null;
+  document.dispatchEvent(new Event("detalle-cerrado"));
 }
 
 $("detalle").addEventListener("click", (e) => { if (e.target === $("detalle")) cerrarDetalle(); });

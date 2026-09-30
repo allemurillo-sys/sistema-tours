@@ -352,3 +352,102 @@ details summary { cursor: pointer; }
   .tipo-acciones { width: 100%; justify-content: flex-end; }
   .tipo-servicios, .tipo-tarjeta .tipo-vacio { margin-left: 0; }
 }
+
+/* ---------- Calendario de reservas ---------- */
+.cal-barra { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.cal-nav { display: flex; align-items: center; gap: 8px; }
+.cal-mes { margin: 0 6px; min-width: 11ch; text-align: center; font-family: var(--titulos); font-size: 1.45rem; }
+.btn-icono.grande { width: 40px; height: 40px; font-size: 1.4rem; line-height: 1; }
+.cal-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+label.en-linea { flex-direction: row; align-items: center; gap: 8px; white-space: nowrap; }
+label.en-linea select { width: auto; }
+.cal-resumen { margin: 4px 0 6px; }
+.cal-leyenda { display: flex; gap: 16px; margin: 0 0 12px; }
+.cal-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.punto { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+
+.cal-grid { background: var(--blanco); border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
+.cal-fila-cab, .cal-dias { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-cab {
+  padding: 8px 10px; font-size: .82rem; font-weight: 700; color: var(--gris);
+  background: var(--fondo); border-bottom: 1px solid var(--linea); text-transform: capitalize;
+}
+.cal-cab .corto { display: none; }
+.cal-celda {
+  min-height: 118px; padding: 4px 5px 6px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  border-right: 1px solid var(--linea); border-bottom: 1px solid var(--linea);
+}
+.cal-celda:nth-child(7n) { border-right: 0; }
+.cal-celda.fuera { background: #F7F9F8; }
+.cal-celda.fuera .cal-num > span:first-child { color: #A3AFB3; }
+.cal-celda.elegido { box-shadow: inset 0 0 0 2px var(--verde); }
+
+.cal-num {
+  font: inherit; font-size: .9rem; font-weight: 700; color: var(--pizarra); cursor: pointer;
+  align-self: stretch; display: flex; justify-content: space-between; align-items: center;
+  padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; text-align: left;
+}
+.cal-num:hover { background: var(--fondo); }
+.cal-celda.hoy .cal-num > span:first-child {
+  background: var(--verde); color: #fff; border-radius: 999px; min-width: 1.8em; padding: 0 6px; text-align: center;
+}
+.cal-cuenta { display: none; }
+
+.cal-items { display: grid; gap: 3px; min-width: 0; }
+.cal-item {
+  font: inherit; font-size: .78rem; line-height: 1.3; cursor: pointer; text-align: left;
+  display: flex; gap: 5px; min-width: 0; padding: 3px 6px; border-radius: 5px;
+  border: 0; border-left: 3px solid var(--c); background: var(--cs); color: var(--pizarra);
+}
+.cal-item:hover { filter: brightness(.96); }
+.cal-item:nth-child(n+4) { display: none; }
+.cal-hora { font-weight: 700; flex: none; font-variant-numeric: tabular-nums; }
+.cal-texto { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.sin-cortar { white-space: nowrap; }
+.cal-mas {
+  font: inherit; font-size: .78rem; font-weight: 700; color: var(--verde-hondo); cursor: pointer;
+  border: 0; background: none; text-align: left; padding: 2px 6px; text-decoration: underline;
+}
+
+.cal-detalle { margin-top: 18px; background: var(--blanco); border-radius: 12px; padding: 16px 18px; }
+.cal-detalle h3 { margin: 0 0 10px; font-family: var(--titulos); }
+.cal-detalle > .nota { margin: 0; }
+.cal-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cal-fila {
+  font: inherit; color: inherit; width: 100%; cursor: pointer; text-align: left;
+  display: grid; grid-template-columns: 7.5rem 1fr auto; gap: 12px; align-items: start;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--linea); border-left: 4px solid var(--c); background: var(--blanco);
+}
+.cal-fila:hover { background: var(--fondo); }
+.cal-fila-hora { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cal-fila-cuerpo { display: grid; gap: 2px; min-width: 0; }
+.cal-fila-cuerpo .nota { margin: 0; }
+.chip-estado { font-size: .78rem; font-weight: 700; background: var(--cs); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .cal-cab .largo { display: none; }
+  .cal-cab .corto { display: inline; }
+  .cal-cab { text-align: center; padding: 6px 2px; }
+  .cal-celda { min-height: 58px; padding: 2px; }
+  .cal-items, .cal-mas { display: none; }
+  .cal-num { flex-direction: column; justify-content: flex-start; align-items: center; gap: 3px; height: 100%; padding: 4px 0; }
+  .cal-cuenta {
+    display: inline-block; font-size: .72rem; min-width: 1.6em; text-align: center;
+    background: var(--verde); color: #fff; border-radius: 999px; padding: 0 5px;
+  }
+  .cal-mes { font-size: 1.2rem; min-width: 0; }
+  .cal-fila { grid-template-columns: 1fr auto; }
+  .cal-fila-hora { grid-column: 1 / -1; }
+}
+
+@media print {
+  body:not(.imprimiendo) #vistaCalendario:not([hidden]) .cal-nav button,
+  body:not(.imprimiendo) #vistaCalendario:not([hidden]) .cal-filtros,
+  body:not(.imprimiendo) #vistaCalendario:not([hidden]) .cal-detalle { display: none; }
+  #vistaCalendario .catalogo { padding: 0; max-width: none; }
+  #vistaCalendario .cal-celda { min-height: 0; break-inside: avoid; }
+  #vistaCalendario .cal-item { display: flex !important; font-size: 7pt; }
+  #vistaCalendario .cal-texto { white-space: normal; }
+  #vistaCalendario .cal-mas { display: none; }
+  #vistaCalendario .cal-celda.elegido { box-shadow: none; }
+}
