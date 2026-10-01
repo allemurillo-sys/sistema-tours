@@ -1,0 +1,72 @@
+/* =====================================================
+   SECCIÓN TARIFARIO (usa los colores de estilos.css y panel.css)
+   ===================================================== */
+.tar-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.tar-filtros label { flex: 0 1 220px; }
+.tar-filtros .tar-filtro-corto, .fila-form .tar-filtro-corto { flex: 0 0 120px; }
+.tar-filtros .tar-buscar { flex: 1 1 260px; }
+.tar-opciones { align-items: center; }
+.tar-opciones .check-linea { flex: none; margin: 0; }
+.tar-espacio { flex: 1; }
+
+.tar-resumen { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0 0 14px; font-size: .95rem; color: var(--gris); }
+.tar-resumen strong { color: var(--pizarra); font-variant-numeric: tabular-nums; }
+.tar-ojo strong { color: #8A6400; }
+.tar-alerta, .tar-alerta strong { color: var(--rojo); font-weight: 700; }
+
+/* Tabla de trabajo */
+.tar-tabla td { vertical-align: middle; }
+.tar-tabla .tar-monto { width: 7.5rem; max-width: 100%; padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+.tar-tabla .tar-monto::placeholder { color: #9AA8AE; }
+.tar-check { width: 22px; height: 22px; accent-color: var(--verde); padding: 0; }
+.tar-margen { font-weight: 700; color: var(--verde-hondo); }
+.tar-margen.bajo { color: var(--rojo); background: var(--rojo-suave); }
+.tar-tabla tr.tar-aprobada td { background: var(--verde-suave); }
+.tar-grupo th { background: var(--fondo); font-weight: 400; padding: 10px 6px 8px; }
+.tar-servicio { font-weight: 700; margin-right: 10px; }
+.tar-temporada { color: var(--gris); }
+.tar-grupo-acciones { float: right; white-space: nowrap; }
+.tar-fila-error td { background: var(--rojo-suave); }
+
+/* Formulario de tarifas nuevas */
+.tar-tabla-nueva input { padding: 6px 8px; }
+.tar-tabla-nueva .tar-monto { max-width: 130px; }
+
+.tar-pasos { margin: 0 0 16px; padding-left: 22px; line-height: 1.7; }
+.tar-vacio { background: var(--blanco); border: 1px dashed var(--linea); border-radius: 12px; padding: 22px; }
+.tar-vacio p { margin: 0 0 6px; }
+.tar-recorte {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: .9rem; max-width: 46ch;
+}
+.tar-ajustes label { flex: 1 1 220px; }
+textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 8px; width: 100%; resize: vertical; }
+
+/* Tarifario final */
+.tar-op-final h3 { color: var(--verde-hondo); }
+.tar-politicas {
+  white-space: pre-wrap; font-size: .9rem; background: var(--fondo); border-left: 4px solid var(--verde);
+  border-radius: 0; padding: 10px 14px; margin-bottom: 14px;
+}
+.tar-final tr.tar-inicio-temporada td { border-top: 1px solid var(--pizarra); }
+.tar-final td:first-child { width: 30%; }
+
+@media (max-width: 800px) {
+  .tar-grupo-acciones { float: none; display: block; margin-top: 4px; }
+}
+
+/* Impresión tamaño carta del tarifario final */
+@media print {
+  body:not(.imprimiendo) #vistaTarifario:not([hidden]) .pestanas,
+  body:not(.imprimiendo) #vistaTarifario:not([hidden]) .vista-titulo,
+  body:not(.imprimiendo) #vistaTarifario:not([hidden]) .tar-filtros,
+  body:not(.imprimiendo) #vistaTarifario:not([hidden]) .tar-no-imprimir { display: none !important; }
+  #vistaTarifario .catalogo { padding: 0; max-width: none; }
+  .tar-imp-cabeza { border-bottom: 3px solid var(--verde); padding-bottom: 8px; margin-bottom: 14px; }
+  .tar-imp-cabeza p { margin: 0; }
+  .tar-op-final { padding: 0; margin: 0 0 18px; break-inside: auto; }
+  .tar-op-final h3 { break-after: avoid; }
+  .tar-final { font-size: 9.5pt; }
+  .tar-final tr { break-inside: avoid; }
+  .tabla-scroll { overflow: visible; }
+}
