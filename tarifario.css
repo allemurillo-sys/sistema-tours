@@ -34,6 +34,7 @@
 .tar-cabecera th { font-size: .8rem; color: var(--gris); font-weight: 500; padding: 6px 6px 4px; background: var(--blanco); }
 .tar-tabla .tar-monto { display: block; margin-left: auto; }
 .tar-sug { min-height: 1.2rem; margin-top: 2px; }
+.tar-no-aplica { font-size: .78rem; color: var(--gris); font-style: italic; }
 .tar-sug .enlace { font-size: .78rem; padding: 0; white-space: nowrap; }
 .tar-ayuda { background: var(--fondo); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: .9rem; }
 .tar-ayuda p { margin: 0 0 4px; }

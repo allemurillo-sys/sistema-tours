@@ -62,7 +62,10 @@ const tarIva = (t) => (tarConIva(t) ? tar.ajustes.iva : 0);
 const tarCosto = (t) => tarR2(t.neto * (1 + tarIva(t) / 100));     // neto + IVA si aplica
 const tarSugCash = (t) => tarR2(tarCosto(t) * (1 + tar.ajustes.cash_ref / 100));
 const tarSugTc = (t) => tarR2(tarCosto(t) * (1 + tar.ajustes.tc_ref / 100));
-const tarMargenCash = (t) => (t.cash != null && tarCosto(t) > 0 ? t.cash / tarCosto(t) - 1 : null);
+// Precio Cash en 0 = el operador no ofrece tarifa Cash para esa actividad
+const tarSinCash = (t) => t.cash === 0;
+const tarMargenCash = (t) => (t.cash != null && !tarSinCash(t) && tarCosto(t) > 0 ? t.cash / tarCosto(t) - 1 : null);
+const tarTextoMargenCash = (t) => (tarSinCash(t) ? "No aplica" : tarPct(tarMargenCash(t)));
 const tarMargenTc = (t) => (t.tc != null && tarCosto(t) > 0 ? t.tc / tarCosto(t) - 1 : null);
 const tarPct = (m) => (m == null ? "—" : `${(m * 100).toFixed(1)} %`);
 const tarBajo = (m, min) => m != null && m * 100 < min;
@@ -297,7 +300,8 @@ function tarHtmlProcesar() {
       <div class="tar-ayuda">
         <p><strong>Neto:</strong> lo que nos cobra el operador. Si la casilla <strong>IVA</strong> está marcada, el neto se muestra con el ${tar.ajustes.iva} % ya incluido (debajo queda el monto sin IVA como referencia); al desmarcarla vuelve al monto original. Los precios y márgenes se calculan sobre el neto que ves.</p>
         <p><strong>Precio Cash</strong> y <strong>Precio TC:</strong> lo que le vas a cobrar al cliente. Escribe el monto final que quieras,
-          o pulsa "Usar sugerido" (Cash = neto con IVA + ${tar.ajustes.cash_ref} %; TC = neto con IVA + ${tar.ajustes.tc_ref} %).</p>
+          o pulsa "Usar sugerido" (Cash = neto con IVA + ${tar.ajustes.cash_ref} %; TC = neto con IVA + ${tar.ajustes.tc_ref} %).
+          Si el operador no ofrece tarifa Cash para esa actividad, escribe <strong>0</strong> en Precio Cash: no se mostrará en el Tarifario final.</p>
         <p><strong>Margen:</strong> se calcula solo con el precio que escribas. En rojo si queda por debajo del mínimo (Cash ${tar.ajustes.cash_min} %, TC ${tar.ajustes.tc_min} %).</p>
         <p><strong>Aprobada:</strong> márcala cuando la tarifa esté lista; desaparece de esta lista y pasa al Tarifario final. Si necesitas corregirla, en el Tarifario final pulsa "Revertir" y vuelve aquí. Todo se guarda solo al salir de cada casilla.</p>
       </div>
@@ -325,7 +329,7 @@ function tarHtmlFila(t) {
       </td>
       <td class="centro"><input type="checkbox" class="tar-check" data-tar-campo="iva" data-id="${t.id}" ${tarConIva(t) ? "checked" : ""} aria-label="Sumar IVA ${nombre}"></td>
       <td class="num">${monto("cash", t.cash)}<div class="tar-sug" data-sug="cash">${tarHtmlSug(t, "cash")}</div></td>
-      <td class="num tar-margen ${tarBajo(mc, tar.ajustes.cash_min) ? "bajo" : ""}" data-margen="cash">${tarPct(mc)}</td>
+      <td class="num tar-margen ${tarBajo(mc, tar.ajustes.cash_min) ? "bajo" : ""}" data-margen="cash">${tarTextoMargenCash(t)}</td>
       <td class="num">${monto("tc", t.tc)}<div class="tar-sug" data-sug="tc">${tarHtmlSug(t, "tc")}</div></td>
       <td class="num tar-margen ${tarBajo(mt, tar.ajustes.tc_min) ? "bajo" : ""}" data-margen="tc">${tarPct(mt)}</td>
       <td class="centro"><input type="checkbox" class="tar-check" data-tar-campo="aprobada" data-id="${t.id}" ${t.aprobada ? "checked" : ""} aria-label="Aprobar ${nombre}"></td>
@@ -343,6 +347,7 @@ const tarTextoSinIva = (t) => (tarConIva(t) ? `IVA incluido · sin IVA ${dinero(
 
 // Botón "Usar sugerido" debajo de una casilla de precio vacía
 function tarHtmlSug(t, campo) {
+  if (campo === "cash" && tarSinCash(t)) return `<span class="tar-no-aplica">Sin tarifa Cash</span>`;
   if (t[campo] != null) return "";
   const sug = campo === "cash" ? tarSugCash(t) : tarSugTc(t);
   return `<button type="button" class="enlace" data-tar="usar-sugerido" data-campo="${campo}" data-id="${t.id}">Usar sugerido ${dinero(sug)}</button>`;
@@ -353,7 +358,7 @@ function tarRefrescarFila(t) {
   if (tr) {
     const mc = tarMargenCash(t), mt = tarMargenTc(t);
     const celdaC = tr.querySelector('[data-margen="cash"]'), celdaT = tr.querySelector('[data-margen="tc"]');
-    celdaC.textContent = tarPct(mc);
+    celdaC.textContent = tarTextoMargenCash(t);
     celdaC.classList.toggle("bajo", tarBajo(mc, tar.ajustes.cash_min));
     celdaT.textContent = tarPct(mt);
     celdaT.classList.toggle("bajo", tarBajo(mt, tar.ajustes.tc_min));
@@ -390,9 +395,9 @@ async function tarGuardarCampo(input) {
       input.value = campo === "neto" ? tarValorNeto(t) : t[campo] ?? "";
       return avisar("Escribe un monto válido.", "error");
     }
-    if ((campo === "cash" || campo === "tc") && valor === 0 && t.neto > 0) {
+    if (campo === "tc" && valor === 0 && t.neto > 0) {
       input.value = t[campo] ?? "";
-      return avisar("El precio de venta debe ser mayor que cero. Si quieres dejarlo sin precio, borra la casilla.", "error");
+      return avisar("El precio TC debe ser mayor que cero. Si quieres dejarlo sin precio, borra la casilla.", "error");
     }
     if (campo === "neto" && valor == null) {
       input.value = tarValorNeto(t);
@@ -413,6 +418,7 @@ async function tarGuardarCampo(input) {
   }
   Object.assign(t, cambios);
   if (campo !== "aprobada" && cambios.aprobada === false) avisar("La tarifa cambió y quedó pendiente de aprobar otra vez.");
+  else if (campo === "cash" && tarSinCash(t)) avisar("Tarifa sin opción Cash: ese precio no aparecerá en el Tarifario final.");
   if (campo === "aprobada" && t.aprobada) {
     avisar(`${t.servicio} · ${t.categoria} aprobada: pasó al Tarifario final.`);
     if (tar.filtro.estado === "pendientes" || tar.filtro.estado === "revisar") return tarPintar();
@@ -1029,7 +1035,7 @@ function tarHtmlFinal() {
                   <td>${i === 0 ? `${escapar(g.temporada)}${tarRango(g) ? `<br><span class="nota">${tarRango(g)}</span>` : ""}` : ""}</td>
                   <td>${escapar(t.categoria)}${t.notas ? `<br><span class="nota">${escapar(t.notas)}</span>` : ""}</td>
                   ${f.verNeto ? `<td class="num">${dinero(t.neto)}</td><td class="num">${tarConIva(t) ? dinero(tarCosto(t)) : "Sin IVA"}</td>` : ""}
-                  <td class="num">${dinero(t.cash)}</td>
+                  <td class="num">${tarSinCash(t) ? `<span class="nota">—</span>` : dinero(t.cash)}</td>
                   <td class="num">${dinero(t.tc)}</td>
                   <td class="acciones-fila tar-no-imprimir"><button type="button" class="enlace" data-tar="revertir" data-id="${t.id}">Revertir</button></td>
                 </tr>`).join("")).join("")}`).join("")}
@@ -1082,7 +1088,7 @@ async function tarExportar() {
       Desde: aFecha(t.fecha_inicio), Hasta: aFecha(t.fecha_fin), "Categoría": t.categoria
     };
     if (f.verNeto) { fila.Neto = t.neto; fila.IVA = tarConIva(t) ? "Sí" : "No"; fila["Neto con IVA"] = tarCosto(t); }
-    fila.Cash = t.cash;
+    fila.Cash = tarSinCash(t) ? "—" : t.cash;
     fila.TC = t.tc;
     fila.Notas = t.notas ?? "";
     return fila;
