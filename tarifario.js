@@ -54,11 +54,13 @@ const tarR2 = (n) => Math.round(Number(n) * 100) / 100;
 const tarNorm = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
 const tarOperador = (id) => tar.operadores.find((o) => o.id === Number(id));
 const tarNombreOp = (id) => tarOperador(id)?.nombre ?? "";
-const tarBaseTc = (neto) => neto * (1 + tar.ajustes.iva / 100);
+// IVA de una tarifa: el suyo propio, o el general de Ajustes si no tiene
+const tarIva = (t) => (t.iva ?? tar.ajustes.iva);
+const tarBaseTc = (neto, iva = tar.ajustes.iva) => neto * (1 + iva / 100);
 const tarSugCash = (neto) => tarR2(neto * (1 + tar.ajustes.cash_ref / 100));
-const tarSugTc = (neto) => tarR2(tarBaseTc(neto) * (1 + tar.ajustes.tc_ref / 100));
+const tarSugTc = (neto, iva = tar.ajustes.iva) => tarR2(tarBaseTc(neto, iva) * (1 + tar.ajustes.tc_ref / 100));
 const tarMargenCash = (t) => (t.cash != null && t.neto > 0 ? t.cash / t.neto - 1 : null);
-const tarMargenTc = (t) => (t.tc != null && t.neto > 0 ? t.tc / tarBaseTc(t.neto) - 1 : null);
+const tarMargenTc = (t) => (t.tc != null && t.neto > 0 ? t.tc / tarBaseTc(t.neto, tarIva(t)) - 1 : null);
 const tarPct = (m) => (m == null ? "—" : `${(m * 100).toFixed(1)} %`);
 const tarBajo = (m, min) => m != null && m * 100 < min;
 const tarMargenBajo = (t) => tarBajo(tarMargenCash(t), tar.ajustes.cash_min) || tarBajo(tarMargenTc(t), tar.ajustes.tc_min);
@@ -66,7 +68,8 @@ const tarSinPrecio = (t) => t.cash == null || t.tc == null;
 const tarNormalizar = (t) => ({
   ...t, neto: Number(t.neto) || 0,
   cash: t.cash == null ? null : Number(t.cash),
-  tc: t.tc == null ? null : Number(t.tc)
+  tc: t.tc == null ? null : Number(t.tc),
+  iva: t.iva == null ? null : Number(t.iva)
 });
 const tarFechaCorta = (t) => fecha(t, { day: "numeric", month: "short", year: "numeric" });
 
@@ -235,11 +238,11 @@ function tarHtmlProcesar() {
   tar.grupos = [];
 
   const cuerpo = ops.map((op) => `
-    <tr class="fila-grupo"><th colspan="8">${escapar(tarNombreOp(op.id))}</th></tr>
+    <tr class="fila-grupo"><th colspan="9">${escapar(tarNombreOp(op.id))}</th></tr>
     ${op.grupos.map((g) => {
       const gi = tar.grupos.push(g) - 1;
       return `
-      <tr class="tar-grupo"><th colspan="8">
+      <tr class="tar-grupo"><th colspan="9">
         <span class="tar-servicio">${escapar(g.servicio)}</span>
         <span class="tar-temporada">${escapar(g.temporada)}${tarRango(g) ? ` · ${tarRango(g)}` : ""}</span>
         <span class="tar-grupo-acciones">
@@ -247,6 +250,12 @@ function tarHtmlProcesar() {
           <button type="button" class="enlace" data-tar="nueva-temporada" data-g="${gi}">Agregar otra temporada</button>
         </span>
       </th></tr>
+      <tr class="tar-cabecera">
+        <th scope="col">Categoría</th><th scope="col" class="num">Neto</th><th scope="col" class="num">IVA %</th>
+        <th scope="col" class="num">Precio Cash</th><th scope="col" class="num">Margen Cash</th>
+        <th scope="col" class="num">Precio TC</th><th scope="col" class="num">Margen TC</th>
+        <th scope="col" class="centro">Aprobada</th><th></th>
+      </tr>
       ${g.filas.map(tarHtmlFila).join("")}`;
     }).join("")}`).join("");
 
@@ -284,16 +293,17 @@ function tarHtmlProcesar() {
             <button type="button" class="btn primario" data-tar="aprobar-visibles">Aprobar las que se ven</button>` : ""}
         </div>
       </div>
-      <p class="nota">Escribe el precio Cash y el TC que quieres cobrar; el margen se calcula solo y cada cambio se guarda al salir de la casilla.
-        Si una casilla está vacía, el número gris es el precio sugerido (Cash: neto + ${tar.ajustes.cash_ref} %; TC: neto + ${tar.ajustes.iva} % y luego + ${tar.ajustes.tc_ref} %).
-        Los márgenes en rojo están por debajo del mínimo (Cash ${tar.ajustes.cash_min} %, TC ${tar.ajustes.tc_min} %).</p>
+      <div class="tar-ayuda">
+        <p><strong>Neto:</strong> lo que nos cobra el operador.</p>
+        <p><strong>IVA %:</strong> el impuesto que se suma al neto para calcular el TC. Cada tarifa trae el IVA general de Ajustes (${tar.ajustes.iva} %); cámbialo cuando una tarifa lo necesite, por ejemplo 0 si el neto ya trae el IVA incluido.</p>
+        <p><strong>Precio Cash</strong> y <strong>Precio TC:</strong> lo que le vas a cobrar al cliente. Escribe el monto final que quieras,
+          o pulsa "Usar sugerido" (Cash = neto + ${tar.ajustes.cash_ref} %; TC = neto + IVA % y luego + ${tar.ajustes.tc_ref} %).</p>
+        <p><strong>Margen:</strong> se calcula solo con el precio que escribas. En rojo si queda por debajo del mínimo (Cash ${tar.ajustes.cash_min} %, TC ${tar.ajustes.tc_min} %).</p>
+        <p><strong>Aprobada:</strong> márcala cuando la tarifa esté lista; solo las aprobadas pasan al Tarifario final. Todo se guarda solo al salir de cada casilla.</p>
+      </div>
       ${lista.length ? `
         <div class="tabla-scroll">
           <table class="tabla tar-tabla">
-            <thead><tr>
-              <th>Categoría</th><th class="num">Neto</th><th class="num">Cash</th><th class="num">Margen Cash</th>
-              <th class="num">TC</th><th class="num">Margen TC</th><th class="centro">Aprobada</th><th></th>
-            </tr></thead>
             <tbody>${cuerpo}</tbody>
           </table>
         </div>` : vacio}
@@ -303,16 +313,18 @@ function tarHtmlProcesar() {
 function tarHtmlFila(t) {
   const mc = tarMargenCash(t), mt = tarMargenTc(t);
   const nombre = escapar(`${t.servicio} ${t.temporada} ${t.categoria}`);
-  const monto = (campo, valor, sug) => `<input class="tar-monto" type="number" min="0" step="0.01" inputmode="decimal"
-      value="${valor ?? ""}" ${sug != null ? `placeholder="${sug.toFixed(2)}"` : ""}
-      data-tar-campo="${campo}" data-id="${t.id}" aria-label="${campo === "neto" ? "Neto" : campo === "cash" ? "Cash" : "TC"} ${nombre}">`;
+  const monto = (campo, valor) => `<input class="tar-monto" type="number" min="0" step="0.01" inputmode="decimal"
+      value="${valor ?? ""}" data-tar-campo="${campo}" data-id="${t.id}"
+      aria-label="${campo === "neto" ? "Neto" : campo === "cash" ? "Precio Cash" : "Precio TC"} ${nombre}">`;
   return `
     <tr data-fila="${t.id}" class="${t.aprobada ? "tar-aprobada" : ""}">
       <td>${escapar(t.categoria)}${t.notas ? `<br><span class="nota">${escapar(t.notas)}</span>` : ""}</td>
       <td class="num">${monto("neto", t.neto)}</td>
-      <td class="num">${monto("cash", t.cash, tarSugCash(t.neto))}</td>
+      <td class="num"><input class="tar-iva" type="number" min="0" max="100" step="0.01" inputmode="decimal"
+        value="${tarIva(t)}" data-tar-campo="iva" data-id="${t.id}" aria-label="IVA % ${nombre}"></td>
+      <td class="num">${monto("cash", t.cash)}<div class="tar-sug" data-sug="cash">${tarHtmlSug(t, "cash")}</div></td>
       <td class="num tar-margen ${tarBajo(mc, tar.ajustes.cash_min) ? "bajo" : ""}" data-margen="cash">${tarPct(mc)}</td>
-      <td class="num">${monto("tc", t.tc, tarSugTc(t.neto))}</td>
+      <td class="num">${monto("tc", t.tc)}<div class="tar-sug" data-sug="tc">${tarHtmlSug(t, "tc")}</div></td>
       <td class="num tar-margen ${tarBajo(mt, tar.ajustes.tc_min) ? "bajo" : ""}" data-margen="tc">${tarPct(mt)}</td>
       <td class="centro"><input type="checkbox" class="tar-check" data-tar-campo="aprobada" data-id="${t.id}" ${t.aprobada ? "checked" : ""} aria-label="Aprobar ${nombre}"></td>
       <td class="acciones-fila">
@@ -320,6 +332,13 @@ function tarHtmlFila(t) {
         <button type="button" class="enlace peligro" data-tar="eliminar-fila" data-id="${t.id}">Eliminar</button>
       </td>
     </tr>`;
+}
+
+// Botón "Usar sugerido" debajo de una casilla de precio vacía
+function tarHtmlSug(t, campo) {
+  if (t[campo] != null) return "";
+  const sug = campo === "cash" ? tarSugCash(t.neto) : tarSugTc(t.neto, tarIva(t));
+  return `<button type="button" class="enlace" data-tar="usar-sugerido" data-campo="${campo}" data-id="${t.id}">Usar sugerido ${dinero(sug)}</button>`;
 }
 
 function tarRefrescarFila(t) {
@@ -331,8 +350,9 @@ function tarRefrescarFila(t) {
     celdaC.classList.toggle("bajo", tarBajo(mc, tar.ajustes.cash_min));
     celdaT.textContent = tarPct(mt);
     celdaT.classList.toggle("bajo", tarBajo(mt, tar.ajustes.tc_min));
-    tr.querySelector('[data-tar-campo="cash"]').placeholder = tarSugCash(t.neto).toFixed(2);
-    tr.querySelector('[data-tar-campo="tc"]').placeholder = tarSugTc(t.neto).toFixed(2);
+    tr.querySelector('[data-tar-campo="iva"]').value = tarIva(t);
+    tr.querySelector('[data-sug="cash"]').innerHTML = tarHtmlSug(t, "cash");
+    tr.querySelector('[data-sug="tc"]').innerHTML = tarHtmlSug(t, "tc");
     tr.querySelector('[data-tar-campo="aprobada"]').checked = t.aprobada;
     tr.classList.toggle("tar-aprobada", t.aprobada);
   }
@@ -359,6 +379,14 @@ async function tarGuardarCampo(input) {
       input.value = t[campo] ?? "";
       return avisar("Escribe un monto válido.", "error");
     }
+    if (campo === "iva") {
+      if (valor != null && valor > 100) { input.value = tarIva(t); return avisar("El IVA debe estar entre 0 y 100 %.", "error"); }
+      if (valor === t.iva || (valor == null && t.iva == null)) { input.value = tarIva(t); return; }
+    }
+    if ((campo === "cash" || campo === "tc") && valor === 0 && t.neto > 0) {
+      input.value = t[campo] ?? "";
+      return avisar("El precio de venta debe ser mayor que cero. Si quieres dejarlo sin precio, borra la casilla.", "error");
+    }
     if (campo === "neto" && valor == null) {
       input.value = t.neto;
       return avisar("El neto no puede quedar vacío.", "error");
@@ -366,7 +394,7 @@ async function tarGuardarCampo(input) {
     if (valor === t[campo]) return;
     cambios[campo] = valor;
     // Si cambia el neto o se borra un precio, la tarifa vuelve a revisión
-    if (t.aprobada && (campo === "neto" || valor == null)) cambios.aprobada = false;
+    if (t.aprobada && campo !== "iva" && (campo === "neto" || valor == null)) cambios.aprobada = false;
   }
 
   cambios.actualizado = new Date().toISOString();
@@ -387,7 +415,7 @@ async function tarLlenarSugeridos(btn) {
   await conBoton(btn, async () => {
     try {
       await tarEnPartes(lista, 20, (t) => db.from("tar_tarifas").update({
-        cash: t.cash ?? tarSugCash(t.neto), tc: t.tc ?? tarSugTc(t.neto), actualizado: new Date().toISOString()
+        cash: t.cash ?? tarSugCash(t.neto), tc: t.tc ?? tarSugTc(t.neto, tarIva(t)), actualizado: new Date().toISOString()
       }).eq("id", t.id));
     } catch (e) { fallo(e); }
     tar.tarifas = await tarLeerTarifas(tar.anio);
@@ -474,6 +502,7 @@ function tarHtmlEditor() {
       <div class="fila-form">
         <label>Categoría <input id="tarEdCategoria" list="tarListaCategorias" value="${escapar(t.categoria)}"></label>
         <label>Neto <input id="tarEdNeto" type="number" min="0" step="0.01" value="${t.neto}"></label>
+        <label>IVA % <input id="tarEdIva" type="number" min="0" max="100" step="0.01" value="${tarIva(t)}"></label>
         <label>Cash <input id="tarEdCash" type="number" min="0" step="0.01" value="${t.cash ?? ""}"></label>
         <label>TC <input id="tarEdTc" type="number" min="0" step="0.01" value="${t.tc ?? ""}"></label>
       </div>
@@ -482,13 +511,21 @@ function tarHtmlEditor() {
     const g = e.grupo;
     titulo = "Editar temporada";
     cuerpo = `<p class="nota">Los cambios se aplican a las ${g.filas.length} categorías de esta temporada.</p>`
-      + tarHtmlCamposGrupo({ ...g, operador: tarNombreOp(g.operador_id) }, false);
+      + tarHtmlCamposGrupo({ ...g, operador: tarNombreOp(g.operador_id) }, false) + `
+      <div class="fila-form">
+        <label class="tar-filtro-corto">IVA % <input id="tarEdIva" type="number" min="0" max="100" step="0.01"
+          value="${new Set(g.filas.map(tarIva)).size === 1 ? tarIva(g.filas[0]) : ""}"></label>
+      </div>
+      <p class="nota">Si dejas el IVA vacío, cada categoría conserva el que tiene.</p>`;
   } else {
     const b = e.base || {};
     titulo = "Agregar tarifas";
     const cats = b.categorias?.length ? b.categorias.map((c) => ({ categoria: c })) : TAR_CATEGORIAS.map((c) => ({ categoria: c }));
     cuerpo = tarHtmlCamposGrupo({ ...b, temporada: b.servicio ? "" : "Regular" }, true) + `
-      <label>Notas (opcional, se aplican a todas las categorías) <input id="tarEdNotas"></label>
+      <div class="fila-form">
+        <label class="tar-filtro-corto">IVA % <input id="tarEdIva" type="number" min="0" max="100" step="0.01" value="${tar.ajustes.iva}"></label>
+        <label>Notas (opcional, se aplican a todas las categorías) <input id="tarEdNotas"></label>
+      </div>
       <h4>Precios por categoría</h4>
       <p class="nota">Las filas sin neto no se guardan. Cash y TC los puedes dejar vacíos y ponerlos después.</p>
       <div class="tabla-scroll">
@@ -532,6 +569,10 @@ async function tarGuardarEditor(btn) {
   const d = tarLeerCamposGrupo();
   if (!d) return;
 
+  const iva = tarNumCampo($("tarEdIva"));
+  if (iva != null && (isNaN(iva) || iva < 0 || iva > 100)) return avisar("El IVA debe estar entre 0 y 100 %.", "error");
+  if (iva == null && e.tipo !== "grupo") return avisar("Escribe el IVA (0 si no aplica).", "error");
+
   await conBoton(btn, async () => {
     const operador_id = await tarOperadorId(d.operador);
     if (!operador_id) return;
@@ -543,7 +584,7 @@ async function tarGuardarEditor(btn) {
       const neto = tarNumCampo($("tarEdNeto"));
       if (neto == null) return avisar("Escribe el neto.", "error");
       const cambios = {
-        ...d, operador: undefined, operador_id, neto,
+        ...d, operador: undefined, operador_id, neto, iva,
         categoria: $("tarEdCategoria").value.trim() || t.categoria,
         cash: tarNumCampo($("tarEdCash")), tc: tarNumCampo($("tarEdTc")),
         notas: $("tarEdNotas").value.trim() || null, actualizado: ahora
@@ -553,6 +594,7 @@ async function tarGuardarEditor(btn) {
       ({ error } = await db.from("tar_tarifas").update(cambios).eq("id", t.id));
     } else if (e.tipo === "grupo") {
       const cambios = { ...d, operador_id, actualizado: ahora };
+      if (iva != null) cambios.iva = iva;
       delete cambios.operador;
       ({ error } = await db.from("tar_tarifas").update(cambios).in("id", e.grupo.filas.map((t) => t.id)));
     } else {
@@ -568,7 +610,7 @@ async function tarGuardarEditor(btn) {
       if (!filas.length) return avisar("Escribe al menos una categoría con su neto.", "error");
       const nuevas = filas.map((f) => ({
         anio, operador_id, servicio: d.servicio, temporada: d.temporada,
-        fecha_inicio: d.fecha_inicio, fecha_fin: d.fecha_fin, notas, ...f
+        fecha_inicio: d.fecha_inicio, fecha_fin: d.fecha_fin, notas, iva, ...f
       }));
       ({ error } = await db.from("tar_tarifas").insert(nuevas));
       if (!error && anio !== tar.anio) tar.anio = anio;
@@ -596,7 +638,8 @@ const TAR_COLUMNAS = {
   neto: ["neto", "tarifa neta", "precio neto"],
   cash: ["cash", "tarifa cash", "efectivo"],
   tc: ["tc", "tarifa tc", "tarjeta"],
-  notas: ["notas", "observaciones"]
+  notas: ["notas", "observaciones"],
+  iva: ["iva", "iva %", "impuesto"]
 };
 
 function tarHtmlImportar() {
@@ -720,7 +763,7 @@ async function tarLeerArchivo(archivo) {
     if (!f.operador && !f.servicio && !f.categoria && (f.neto === "" || f.neto == null)) return; // fila vacía
 
     const netoOriginal = f.neto;
-    f.neto = tarMonto(f.neto); f.cash = tarMonto(f.cash); f.tc = tarMonto(f.tc);
+    f.neto = tarMonto(f.neto); f.cash = tarMonto(f.cash); f.tc = tarMonto(f.tc); f.iva = tarMonto(f.iva);
     const desde = tarFechaCelda(f.fecha_inicio, XLSX), hasta = tarFechaCelda(f.fecha_fin, XLSX);
 
     if (!f.operador) f.error = "Falta el operador";
@@ -729,6 +772,7 @@ async function tarLeerArchivo(archivo) {
     else if (f.neto === undefined) f.error = `Neto no válido: ${netoOriginal}`;
     else if (f.neto == null) f.error = "Falta el neto";
     else if (f.cash === undefined || f.tc === undefined) f.error = "Cash o TC no es un número";
+    else if (f.iva === undefined || f.iva > 100) f.error = "IVA no válido";
     else if (desde === undefined || hasta === undefined) f.error = "Fecha no válida (usa día/mes/año)";
     else if (desde && hasta && desde > hasta) f.error = "Desde es posterior a Hasta";
     f.fecha_inicio = desde || null; f.fecha_fin = hasta || null;
@@ -771,13 +815,14 @@ async function tarImportar(btn) {
         if (f.notas) c.notas = f.notas;
         if (f.cash != null) c.cash = f.cash;
         if (f.tc != null) c.tc = f.tc;
+        if (f.iva != null) c.iva = f.iva;
         if (existe.aprobada && (f.neto !== existe.neto || f.cash != null || f.tc != null)) c.aprobada = false;
         cambios.push({ id: existe.id, c });
       } else {
         nuevas.push({
           anio: tar.anio, operador_id, servicio: f.servicio, temporada: f.temporada,
           fecha_inicio: f.fecha_inicio, fecha_fin: f.fecha_fin, categoria: f.categoria,
-          neto: f.neto, cash: f.cash, tc: f.tc, notas: f.notas
+          neto: f.neto, cash: f.cash, tc: f.tc, notas: f.notas, iva: f.iva ?? tar.ajustes.iva
         });
       }
     });
@@ -922,7 +967,7 @@ function tarHtmlFinal() {
   const f = tar.final;
   const lista = tarFinalFiltradas();
   const ops = tarAgrupar(lista);
-  const cols = f.verNeto ? 6 : 5;
+  const cols = f.verNeto ? 7 : 5;
 
   const bloques = ops.map((op) => {
     const o = tarOperador(op.id);
@@ -938,14 +983,14 @@ function tarHtmlFinal() {
         ${f.politicas && o?.politicas ? `<div class="tar-politicas">${escapar(o.politicas)}</div>` : ""}
         <div class="tabla-scroll">
           <table class="tabla tar-final">
-            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th>` : ""}<th class="num">Cash</th><th class="num">TC</th></tr></thead>
+            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th></tr></thead>
             <tbody>${porServicio.map((s) => `
               <tr class="fila-grupo"><th colspan="${cols}">${escapar(s.servicio)}</th></tr>
               ${s.grupos.map((g) => g.filas.map((t, i) => `
                 <tr class="${i === 0 ? "tar-inicio-temporada" : ""}">
                   <td>${i === 0 ? `${escapar(g.temporada)}${tarRango(g) ? `<br><span class="nota">${tarRango(g)}</span>` : ""}` : ""}</td>
                   <td>${escapar(t.categoria)}${t.notas ? `<br><span class="nota">${escapar(t.notas)}</span>` : ""}</td>
-                  ${f.verNeto ? `<td class="num">${dinero(t.neto)}</td>` : ""}
+                  ${f.verNeto ? `<td class="num">${dinero(t.neto)}</td><td class="num">${tarIva(t)} %</td>` : ""}
                   <td class="num">${dinero(t.cash)}</td>
                   <td class="num">${dinero(t.tc)}</td>
                 </tr>`).join("")).join("")}`).join("")}
@@ -997,7 +1042,7 @@ async function tarExportar() {
       Operador: tarNombreOp(t.operador_id), Servicio: t.servicio, Temporada: t.temporada,
       Desde: aFecha(t.fecha_inicio), Hasta: aFecha(t.fecha_fin), "Categoría": t.categoria
     };
-    if (f.verNeto) fila.Neto = t.neto;
+    if (f.verNeto) { fila.Neto = t.neto; fila.IVA = tarIva(t); }
     fila.Cash = t.cash;
     fila.TC = t.tc;
     fila.Notas = t.notas ?? "";
@@ -1024,7 +1069,7 @@ function tarHtmlAjustes() {
       <p class="nota">Se usan para el precio sugerido y para marcar en rojo los márgenes bajos. El precio final siempre lo decides tú.</p>
       <div class="fila-form tar-ajustes">
         ${campo("cash_ref", "Margen sugerido Cash (%)", "Neto + este porcentaje.")}
-        ${campo("iva", "Impuesto TC (%)", "Se suma primero al neto.")}
+        ${campo("iva", "IVA general para TC (%)", "Se usa en las tarifas nuevas y en las que no tienen un IVA propio.")}
         ${campo("tc_ref", "Margen sugerido TC (%)", "Se suma después del impuesto.")}
       </div>
       <div class="fila-form tar-ajustes">
@@ -1062,6 +1107,13 @@ $("tarContenido").addEventListener("click", async (e) => {
   if (accion === "ir-importar") { tar.pestana = "importar"; return tarPintar(); }
   if (accion === "editar-fila") { tar.editando = { tipo: "fila", id: Number(b.dataset.id) }; return tarPintar(); }
   if (accion === "eliminar-fila") return tarEliminarFila(b.dataset.id);
+  if (accion === "usar-sugerido") {
+    const t = tar.tarifas.find((x) => x.id === Number(b.dataset.id));
+    const input = b.closest("td").querySelector("[data-tar-campo]");
+    if (!t || !input) return;
+    input.value = (b.dataset.campo === "cash" ? tarSugCash(t.neto) : tarSugTc(t.neto, tarIva(t))).toFixed(2);
+    return tarGuardarCampo(input);
+  }
   if (accion === "editar-grupo") { tar.editando = { tipo: "grupo", grupo: grupo() }; return tarPintar(); }
   if (accion === "nueva-temporada") {
     const g = grupo();
