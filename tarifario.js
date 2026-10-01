@@ -218,7 +218,7 @@ function tarFiltradas() {
     && (f.estado === "todas"
       || (f.estado === "aprobadas" && t.aprobada)
       || (f.estado === "pendientes" && !t.aprobada)
-      || (f.estado === "revisar" && (tarSinPrecio(t) || tarMargenBajo(t))))
+      || (f.estado === "revisar" && !t.aprobada && (tarSinPrecio(t) || tarMargenBajo(t))))
     && (!txt || tarNorm(`${t.servicio} ${t.temporada} ${t.categoria} ${tarNombreOp(t.operador_id)}`).includes(txt)));
 }
 
@@ -279,8 +279,6 @@ function tarHtmlProcesar() {
         <select data-tar-filtro="estado">
           <option value="pendientes" ${f.estado === "pendientes" ? "selected" : ""}>Pendientes de aprobar</option>
           <option value="revisar" ${f.estado === "revisar" ? "selected" : ""}>Sin precio o con margen bajo</option>
-          <option value="aprobadas" ${f.estado === "aprobadas" ? "selected" : ""}>Aprobadas</option>
-          <option value="todas" ${f.estado === "todas" ? "selected" : ""}>Todas</option>
         </select>
       </label>
       <label class="tar-buscar">Buscar <input id="tarBuscar" type="search" value="${escapar(f.texto)}" placeholder="Servicio, temporada o categoría" data-tar-filtro="texto"></label>
@@ -301,7 +299,7 @@ function tarHtmlProcesar() {
         <p><strong>Precio Cash</strong> y <strong>Precio TC:</strong> lo que le vas a cobrar al cliente. Escribe el monto final que quieras,
           o pulsa "Usar sugerido" (Cash = neto con IVA + ${tar.ajustes.cash_ref} %; TC = neto con IVA + ${tar.ajustes.tc_ref} %).</p>
         <p><strong>Margen:</strong> se calcula solo con el precio que escribas. En rojo si queda por debajo del mínimo (Cash ${tar.ajustes.cash_min} %, TC ${tar.ajustes.tc_min} %).</p>
-        <p><strong>Aprobada:</strong> márcala cuando la tarifa esté lista; solo las aprobadas pasan al Tarifario final. Todo se guarda solo al salir de cada casilla.</p>
+        <p><strong>Aprobada:</strong> márcala cuando la tarifa esté lista; desaparece de esta lista y pasa al Tarifario final. Si necesitas corregirla, en el Tarifario final pulsa "Revertir" y vuelve aquí. Todo se guarda solo al salir de cada casilla.</p>
       </div>
       ${lista.length ? `
         <div class="tabla-scroll">
@@ -415,7 +413,23 @@ async function tarGuardarCampo(input) {
   }
   Object.assign(t, cambios);
   if (campo !== "aprobada" && cambios.aprobada === false) avisar("La tarifa cambió y quedó pendiente de aprobar otra vez.");
+  if (campo === "aprobada" && t.aprobada) {
+    avisar(`${t.servicio} · ${t.categoria} aprobada: pasó al Tarifario final.`);
+    if (tar.filtro.estado === "pendientes" || tar.filtro.estado === "revisar") return tarPintar();
+  }
   tarRefrescarFila(t);
+}
+
+// Devuelve una tarifa aprobada a Procesar para poder editarla
+async function tarRevertir(id) {
+  const t = tar.tarifas.find((x) => x.id === Number(id));
+  if (!t) return;
+  if (!confirm(`¿Devolver ${t.servicio} · ${t.temporada} · ${t.categoria} a Procesar para editarla?\nSaldrá del Tarifario final hasta que la vuelvas a aprobar.`)) return;
+  const { error } = await db.from("tar_tarifas").update({ aprobada: false, actualizado: new Date().toISOString() }).eq("id", t.id);
+  if (error) return fallo(error);
+  t.aprobada = false;
+  tarPintar();
+  avisar("La tarifa volvió a Procesar como pendiente. Edítala allí y apruébala de nuevo.");
 }
 
 async function tarLlenarSugeridos(btn) {
@@ -991,7 +1005,7 @@ function tarHtmlFinal() {
   const f = tar.final;
   const lista = tarFinalFiltradas();
   const ops = tarAgrupar(lista);
-  const cols = f.verNeto ? 7 : 5;
+  const cols = f.verNeto ? 8 : 6;
 
   const bloques = ops.map((op) => {
     const o = tarOperador(op.id);
@@ -1007,7 +1021,7 @@ function tarHtmlFinal() {
         ${f.politicas && o?.politicas ? `<div class="tar-politicas">${escapar(o.politicas)}</div>` : ""}
         <div class="tabla-scroll">
           <table class="tabla tar-final">
-            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">Neto con IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th></tr></thead>
+            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">Neto con IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th><th class="tar-no-imprimir"></th></tr></thead>
             <tbody>${porServicio.map((s) => `
               <tr class="fila-grupo"><th colspan="${cols}">${escapar(s.servicio)}</th></tr>
               ${s.grupos.map((g) => g.filas.map((t, i) => `
@@ -1017,6 +1031,7 @@ function tarHtmlFinal() {
                   ${f.verNeto ? `<td class="num">${dinero(t.neto)}</td><td class="num">${tarConIva(t) ? dinero(tarCosto(t)) : "Sin IVA"}</td>` : ""}
                   <td class="num">${dinero(t.cash)}</td>
                   <td class="num">${dinero(t.tc)}</td>
+                  <td class="acciones-fila tar-no-imprimir"><button type="button" class="enlace" data-tar="revertir" data-id="${t.id}">Revertir</button></td>
                 </tr>`).join("")).join("")}`).join("")}
             </tbody>
           </table>
@@ -1156,6 +1171,7 @@ $("tarContenido").addEventListener("click", async (e) => {
   if (accion === "guardar-operador") return tarGuardarOperador(b);
   if (accion === "eliminar-operador") return tarEliminarOperador(b.dataset.id);
   if (accion === "exportar") return tarExportar();
+  if (accion === "revertir") return tarRevertir(b.dataset.id);
   if (accion === "imprimir") return window.print();
   if (accion === "guardar-ajustes") return tarGuardarAjustes(b);
 });
