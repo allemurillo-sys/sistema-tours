@@ -18,7 +18,10 @@
 .tar-tabla td { vertical-align: middle; }
 .tar-tabla .tar-monto { width: 7.5rem; max-width: 100%; padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums; }
 .tar-tabla .tar-monto::placeholder { color: #9AA8AE; }
-.tar-tabla .tar-iva { width: 4.8rem; padding: 6px 8px; text-align: right; display: block; margin-left: auto; font-variant-numeric: tabular-nums; }
+.tar-costo { font-weight: 700; font-size: 1.05rem; color: var(--verde-hondo); font-variant-numeric: tabular-nums; }
+.tar-costo:empty, .tar-sin-iva:empty { display: none; }
+.tar-sin-iva { font-size: .75rem; color: var(--gris); margin-top: 2px; }
+.tar-check-form { flex: 0 0 auto; margin: 0 0 10px; }
 .tar-check { width: 22px; height: 22px; accent-color: var(--verde); padding: 0; }
 .tar-margen { font-weight: 700; color: var(--verde-hondo); }
 .tar-margen.bajo { color: var(--rojo); background: var(--rojo-suave); }
