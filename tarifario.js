@@ -200,6 +200,7 @@ function tarPintar() {
   });
   let h;
   if (tar.editando?.tipo === "operador") h = tarHtmlFormOperador();
+  else if (tar.editando?.tipo === "moneda-masiva") h = tarHtmlFormMoneda();
   else if (tar.editando) h = tarHtmlEditor();
   else if (tar.pestana === "procesar") h = tarHtmlProcesar();
   else if (tar.pestana === "importar") h = tarHtmlImportar();
@@ -232,6 +233,15 @@ function tarFiltradas() {
       || (f.estado === "aprobadas" && t.aprobada)
       || (f.estado === "pendientes" && !t.aprobada)
       || (f.estado === "revisar" && !t.aprobada && (tarSinPrecio(t) || tarMargenBajo(t))))
+    && (!txt || tarNorm(`${t.servicio} ${t.temporada} ${t.categoria} ${tarNombreOp(t.operador_id)}`).includes(txt)));
+}
+
+// Igual que tarFiltradas() pero sin filtrar por estado (incluye pendientes y ya aprobadas):
+// se usa para corregir la moneda de tarifas que ya existían, estén aprobadas o no.
+function tarFiltradasOperadorTexto() {
+  const f = tar.filtro, txt = tarNorm(f.texto);
+  return tar.tarifas.filter((t) =>
+    (!f.operador || t.operador_id === Number(f.operador))
     && (!txt || tarNorm(`${t.servicio} ${t.temporada} ${t.categoria} ${tarNombreOp(t.operador_id)}`).includes(txt)));
 }
 
@@ -303,6 +313,7 @@ function tarHtmlProcesar() {
         <h3>Precios de venta</h3>
         <div class="sec-botones">
           <button type="button" class="btn" data-tar="nueva">Agregar tarifa</button>
+          <button type="button" class="btn" data-tar="cambiar-moneda">Cambiar moneda</button>
           ${lista.length ? `
             <button type="button" class="btn" data-tar="sugeridos">Llenar vacíos con el sugerido</button>
             <button type="button" class="btn primario" data-tar="aprobar-visibles">Aprobar las que se ven</button>` : ""}
@@ -315,6 +326,7 @@ function tarHtmlProcesar() {
           Si el operador no ofrece tarifa Cash para esa actividad, escribe <strong>0</strong> en Precio Cash: no se mostrará en el Tarifario final.</p>
         <p><strong>Margen:</strong> se calcula solo con el precio que escribas. En rojo si queda por debajo del mínimo (Cash ${tar.ajustes.cash_min} %, TC ${tar.ajustes.tc_min} %).</p>
         <p><strong>Aprobada:</strong> márcala cuando la tarifa esté lista; desaparece de esta lista y pasa al Tarifario final. Si necesitas corregirla, en el Tarifario final pulsa "Revertir" y vuelve aquí. Todo se guarda solo al salir de cada casilla.</p>
+        <p><strong>Cambiar moneda:</strong> corrige de una sola vez la moneda (dólares o colones) de varias tarifas ya creadas, usando los filtros de Operador y Buscar de arriba (incluye también las que ya estén aprobadas).</p>
       </div>
       ${lista.length ? `
         <div class="tabla-scroll">
@@ -492,6 +504,54 @@ async function tarEliminarFila(id) {
   tar.tarifas = tar.tarifas.filter((x) => x.id !== t.id);
   tarPintar();
   avisar("Tarifa eliminada.");
+}
+
+// ---------- Cambiar moneda en varias tarifas ya creadas de una sola vez ----------
+function tarHtmlFormMoneda() {
+  const f = tar.filtro;
+  const lista = tarFiltradasOperadorTexto();
+  const filtroTexto = [f.operador ? tarNombreOp(f.operador) : "Todos los operadores", f.texto ? `Búsqueda: ${f.texto}` : ""]
+    .filter(Boolean).join(" · ");
+  return `
+    <div class="det-seccion sin-margen">
+      <h3>Cambiar moneda de tarifas ya creadas</h3>
+      <p class="nota">Se usan los filtros de Operador y Buscar de la pestaña Procesar: <strong>${escapar(filtroTexto)}</strong>.
+        Coinciden <strong>${lista.length}</strong> tarifa(s) de ${tar.anio} (incluye las ya aprobadas). Si quieres cambiar solo un operador o un servicio, cierra esto, ajusta esos filtros y vuelve a abrir "Cambiar moneda".</p>
+      <label class="tar-filtro-corto">Moneda nueva
+        <select id="tarMonedaMasiva" autofocus>
+          <option value="USD">Dólares (USD)</option>
+          <option value="CRC">Colones (CRC)</option>
+        </select>
+      </label>
+      <p class="nota">Las tarifas que ya estaban aprobadas y cambien de moneda volverán a quedar pendientes de aprobar, para que revises los precios en esa moneda.</p>
+      <div class="sec-botones">
+        <button type="button" class="btn primario" data-tar="guardar-moneda-masiva">Cambiar moneda</button>
+        <button type="button" class="btn" data-tar="cancelar">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+async function tarCambiarMonedaMasiva(btn) {
+  const moneda = $("tarMonedaMasiva").value === "CRC" ? "CRC" : "USD";
+  const lista = tarFiltradasOperadorTexto();
+  if (!lista.length) return avisar("No hay tarifas que coincidan con esos filtros.", "error");
+  const cambian = lista.filter((t) => t.moneda !== moneda);
+  if (!cambian.length) return avisar(`Esas ${lista.length} tarifa(s) ya estaban en ${moneda === "CRC" ? "colones" : "dólares"}.`);
+  const aprobadas = cambian.filter((t) => t.aprobada).length;
+  let texto = `Se cambiará la moneda de ${cambian.length} tarifa(s) a ${moneda === "CRC" ? "Colones" : "Dólares"}.`;
+  if (aprobadas) texto += ` ${aprobadas} estaban aprobadas y volverán a quedar pendientes.`;
+  if (!confirm(`${texto} ¿Continuar?`)) return;
+  await conBoton(btn, async () => {
+    try {
+      await tarEnPartes(cambian, 20, (t) => db.from("tar_tarifas").update({
+        moneda, actualizado: new Date().toISOString(), ...(t.aprobada ? { aprobada: false } : {})
+      }).eq("id", t.id));
+    } catch (e) { return fallo(e); }
+    tar.editando = null;
+    tar.tarifas = await tarLeerTarifas(tar.anio);
+    tarPintar();
+    avisar(`Moneda cambiada en ${cambian.length} tarifa(s).${aprobadas ? ` ${aprobadas} volvieron a quedar pendientes de aprobar.` : ""}`);
+  });
 }
 
 // =====================================================
@@ -1183,6 +1243,8 @@ $("tarContenido").addEventListener("click", async (e) => {
 
   if (accion === "cancelar") { tar.editando = null; return tarPintar(); }
   if (accion === "nueva") { tar.editando = { tipo: "nuevo" }; return tarPintar(); }
+  if (accion === "cambiar-moneda") { tar.editando = { tipo: "moneda-masiva" }; return tarPintar(); }
+  if (accion === "guardar-moneda-masiva") return tarCambiarMonedaMasiva(b);
   if (accion === "ir-importar") { tar.pestana = "importar"; return tarPintar(); }
   if (accion === "editar-fila") { tar.editando = { tipo: "fila", id: Number(b.dataset.id) }; return tarPintar(); }
   if (accion === "eliminar-fila") return tarEliminarFila(b.dataset.id);
