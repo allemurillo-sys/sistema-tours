@@ -9,6 +9,15 @@
 const TAR_CATEGORIAS = ["Adulto", "Adulto mayor", "Estudiante", "Niño"];
 const TAR_ANIO_DEFECTO = new Date().getMonth() >= 5 ? new Date().getFullYear() + 1 : new Date().getFullYear();
 
+// Cada tarifa (o temporada completa) puede estar en dólares o en colones.
+// dinero() de panel.js siempre usa dólares; aquí usamos tarDinero() para respetar la moneda de cada tarifa.
+function tarDinero(n, moneda = "USD") {
+  return new Intl.NumberFormat(moneda === "CRC" ? "es-CR" : "en-US", {
+    style: "currency", currency: moneda === "CRC" ? "CRC" : "USD", maximumFractionDigits: moneda === "CRC" ? 0 : 2
+  }).format(Number(n) || 0);
+}
+const tarMonedaEtiqueta = (moneda) => (moneda === "CRC" ? "₡ Colones" : "$ Dólares");
+
 const tar = {
   pestana: "procesar",
   anio: TAR_ANIO_DEFECTO,
@@ -75,7 +84,8 @@ const tarNormalizar = (t) => ({
   ...t, neto: Number(t.neto) || 0,
   cash: t.cash == null ? null : Number(t.cash),
   tc: t.tc == null ? null : Number(t.tc),
-  iva: t.iva == null ? null : Number(t.iva)
+  iva: t.iva == null ? null : Number(t.iva),
+  moneda: t.moneda === "CRC" ? "CRC" : "USD"
 });
 const tarFechaCorta = (t) => fecha(t, { day: "numeric", month: "short", year: "numeric" });
 
@@ -251,6 +261,7 @@ function tarHtmlProcesar() {
       <tr class="tar-grupo"><th colspan="9">
         <span class="tar-servicio">${escapar(g.servicio)}</span>
         <span class="tar-temporada">${escapar(g.temporada)}${tarRango(g) ? ` · ${tarRango(g)}` : ""}</span>
+        <span class="tar-moneda">${tarMonedaEtiqueta(g.filas[0]?.moneda)}</span>
         <span class="tar-grupo-acciones">
           <button type="button" class="enlace" data-tar="editar-grupo" data-g="${gi}">Editar temporada</button>
           <button type="button" class="enlace" data-tar="nueva-temporada" data-g="${gi}">Agregar otra temporada</button>
@@ -343,14 +354,14 @@ function tarHtmlFila(t) {
 // La casilla Neto muestra el neto con IVA cuando la casilla IVA está marcada,
 // y el neto original del operador cuando no. En la base siempre se guarda el neto sin IVA.
 const tarValorNeto = (t) => (tarConIva(t) ? tarCosto(t).toFixed(2) : t.neto);
-const tarTextoSinIva = (t) => (tarConIva(t) ? `IVA incluido · sin IVA ${dinero(t.neto)}` : "");
+const tarTextoSinIva = (t) => (tarConIva(t) ? `IVA incluido · sin IVA ${tarDinero(t.neto, t.moneda)}` : "");
 
 // Botón "Usar sugerido" debajo de una casilla de precio vacía
 function tarHtmlSug(t, campo) {
   if (campo === "cash" && tarSinCash(t)) return `<span class="tar-no-aplica">Sin tarifa Cash</span>`;
   if (t[campo] != null) return "";
   const sug = campo === "cash" ? tarSugCash(t) : tarSugTc(t);
-  return `<button type="button" class="enlace" data-tar="usar-sugerido" data-campo="${campo}" data-id="${t.id}">Usar sugerido ${dinero(sug)}</button>`;
+  return `<button type="button" class="enlace" data-tar="usar-sugerido" data-campo="${campo}" data-id="${t.id}">Usar sugerido ${tarDinero(sug, t.moneda)}</button>`;
 }
 
 function tarRefrescarFila(t) {
@@ -507,8 +518,14 @@ function tarHtmlCamposGrupo(d, conAnio) {
       <label>Temporada <input id="tarEdTemporada" list="tarListaTemporadas" value="${escapar(d.temporada ?? "Regular")}"></label>
       <label>Desde <input id="tarEdDesde" type="date" value="${d.fecha_inicio ?? ""}"></label>
       <label>Hasta <input id="tarEdHasta" type="date" value="${d.fecha_fin ?? ""}"></label>
+      <label class="tar-filtro-corto">Moneda
+        <select id="tarEdMoneda">
+          <option value="USD" ${d.moneda === "CRC" ? "" : "selected"}>Dólares (USD)</option>
+          <option value="CRC" ${d.moneda === "CRC" ? "selected" : ""}>Colones (CRC)</option>
+        </select>
+      </label>
     </div>
-    <p class="nota">Si la tarifa aplica todo el año, deja las fechas vacías.</p>`;
+    <p class="nota">Si la tarifa aplica todo el año, deja las fechas vacías. La moneda se aplica a todo este tour/temporada.</p>`;
 }
 
 function tarHtmlFilaCategoria(c = {}) {
@@ -541,7 +558,7 @@ function tarHtmlEditor() {
     const g = e.grupo;
     titulo = "Editar temporada";
     cuerpo = `<p class="nota">Los cambios se aplican a las ${g.filas.length} categorías de esta temporada.</p>`
-      + tarHtmlCamposGrupo({ ...g, operador: tarNombreOp(g.operador_id) }, false) + `
+      + tarHtmlCamposGrupo({ ...g, operador: tarNombreOp(g.operador_id), moneda: g.filas[0]?.moneda }, false) + `
       <div class="fila-form">
         <label>IVA (${tar.ajustes.iva} %)
           <select id="tarEdIva">
@@ -589,7 +606,8 @@ function tarLeerCamposGrupo() {
     servicio: $("tarEdServicio").value.trim(),
     temporada: $("tarEdTemporada").value.trim() || "Todo el año",
     fecha_inicio: $("tarEdDesde").value || null,
-    fecha_fin: $("tarEdHasta").value || null
+    fecha_fin: $("tarEdHasta").value || null,
+    moneda: $("tarEdMoneda").value === "CRC" ? "CRC" : "USD"
   };
   if (!d.operador) return avisar("Escribe el operador.", "error");
   if (!d.servicio) return avisar("Escribe el servicio.", "error");
@@ -624,12 +642,14 @@ async function tarGuardarEditor(btn) {
         notas: $("tarEdNotas").value.trim() || null, actualizado: ahora
       };
       delete cambios.operador;
-      if (t.aprobada && (neto !== t.neto || cambios.cash == null || cambios.tc == null)) cambios.aprobada = false;
+      if (t.aprobada && (neto !== t.neto || cambios.cash == null || cambios.tc == null || d.moneda !== t.moneda)) cambios.aprobada = false;
       ({ error } = await db.from("tar_tarifas").update(cambios).eq("id", t.id));
     } else if (e.tipo === "grupo") {
       const cambios = { ...d, operador_id, actualizado: ahora };
       if (iva !== undefined) cambios.iva = iva;
       delete cambios.operador;
+      // Si cambia la moneda, esas tarifas vuelven a pendiente de aprobar (los precios ya no corresponden a la moneda anterior)
+      if (e.grupo.filas.some((t) => t.moneda !== d.moneda)) cambios.aprobada = false;
       ({ error } = await db.from("tar_tarifas").update(cambios).in("id", e.grupo.filas.map((t) => t.id)));
     } else {
       const anio = Number($("tarEdAnio").value);
@@ -644,7 +664,7 @@ async function tarGuardarEditor(btn) {
       if (!filas.length) return avisar("Escribe al menos una categoría con su neto.", "error");
       const nuevas = filas.map((f) => ({
         anio, operador_id, servicio: d.servicio, temporada: d.temporada,
-        fecha_inicio: d.fecha_inicio, fecha_fin: d.fecha_fin, notas, iva, ...f
+        fecha_inicio: d.fecha_inicio, fecha_fin: d.fecha_fin, notas, iva, moneda: d.moneda, ...f
       }));
       ({ error } = await db.from("tar_tarifas").insert(nuevas));
       if (!error && anio !== tar.anio) tar.anio = anio;
@@ -673,7 +693,8 @@ const TAR_COLUMNAS = {
   cash: ["cash", "tarifa cash", "efectivo"],
   tc: ["tc", "tarifa tc", "tarjeta"],
   notas: ["notas", "observaciones"],
-  iva: ["iva", "iva %", "impuesto"]
+  iva: ["iva", "iva %", "impuesto"],
+  moneda: ["moneda", "currency", "tipo de moneda"]
 };
 
 function tarHtmlImportar() {
@@ -701,7 +722,7 @@ function tarHtmlImportar() {
         <p class="nota">Compara esta lista con el documento del operador antes de importar. Las tarifas que ya existen se actualizan con el nuevo neto y fechas; si el neto cambió, vuelven a quedar pendientes de aprobar.</p>
         <div class="tabla-scroll">
           <table class="tabla tar-tabla">
-            <thead><tr><th>Fila</th><th>Operador</th><th>Servicio</th><th>Temporada</th><th>Categoría</th>
+            <thead><tr><th>Fila</th><th>Operador</th><th>Servicio</th><th>Temporada</th><th>Categoría</th><th>Moneda</th>
               <th class="num">Neto</th><th class="num">Cash</th><th class="num">TC</th><th>Estado</th></tr></thead>
             <tbody>${imp.filas.map((f) => `
               <tr class="${f.error ? "tar-fila-error" : ""}">
@@ -710,9 +731,10 @@ function tarHtmlImportar() {
                 <td>${escapar(f.servicio)}</td>
                 <td>${escapar(f.temporada)}${tarRango(f) ? `<br><span class="nota">${tarRango(f)}</span>` : ""}</td>
                 <td>${escapar(f.categoria)}</td>
-                <td class="num">${f.neto != null && !isNaN(f.neto) ? dinero(f.neto) : ""}</td>
-                <td class="num">${f.cash != null && !isNaN(f.cash) ? dinero(f.cash) : ""}</td>
-                <td class="num">${f.tc != null && !isNaN(f.tc) ? dinero(f.tc) : ""}</td>
+                <td>${f.moneda === "CRC" ? "₡ Colones" : "$ Dólares"}</td>
+                <td class="num">${f.neto != null && !isNaN(f.neto) ? tarDinero(f.neto, f.moneda) : ""}</td>
+                <td class="num">${f.cash != null && !isNaN(f.cash) ? tarDinero(f.cash, f.moneda) : ""}</td>
+                <td class="num">${f.tc != null && !isNaN(f.tc) ? tarDinero(f.tc, f.moneda) : ""}</td>
                 <td>${f.error ? `<span class="tar-alerta">${escapar(f.error)}</span>` : f.estado === "nueva" ? "Nueva" : "Actualiza"}</td>
               </tr>`).join("")}</tbody>
           </table>
@@ -733,7 +755,7 @@ function tarHtmlImportar() {
         <label>Archivo de Excel <input id="tarArchivo" type="file" accept=".xlsx,.xls,.csv"></label>
         <button type="button" class="btn" data-tar="plantilla">Descargar plantilla</button>
       </div>
-      <p class="nota">Columnas que se reconocen: Operador, Servicio, Temporada, Desde, Hasta, Categoría, Neto, Cash, TC y Notas. Cash y TC son opcionales.</p>
+      <p class="nota">Columnas que se reconocen: Operador, Servicio, Temporada, Desde, Hasta, Categoría, Neto, Cash, TC, Moneda y Notas. Cash, TC y Moneda son opcionales (si no se indica, la moneda es Dólares).</p>
     </div>
     ${vista}`;
 }
@@ -764,6 +786,14 @@ function tarIvaCelda(v) {
   const s = tarNorm(v);
   if (["si", "x", "s", "yes", "1"].includes(s) || /^\d+(\.\d+)?\s*%?$/.test(s) && Number(s.replace("%", "")) > 0) return "si";
   if (["no", "n", "0", "0%"].includes(s)) return "no";
+  return undefined;
+}
+// Columna Moneda del Excel: "USD" | "CRC" | null (vacía: USD por defecto) | undefined (no se entiende)
+function tarMonedaCelda(v) {
+  if (v === "" || v == null) return null;
+  const s = tarNorm(v);
+  if (["usd", "dolar", "dolares", "$", "us$"].includes(s)) return "USD";
+  if (["crc", "colon", "colones", "₡"].includes(s)) return "CRC";
   return undefined;
 }
 
@@ -808,6 +838,7 @@ async function tarLeerArchivo(archivo) {
 
     const netoOriginal = f.neto;
     f.neto = tarMonto(f.neto); f.cash = tarMonto(f.cash); f.tc = tarMonto(f.tc); f.iva = tarIvaCelda(f.iva);
+    f.moneda = tarMonedaCelda(f.moneda);
     const desde = tarFechaCelda(f.fecha_inicio, XLSX), hasta = tarFechaCelda(f.fecha_fin, XLSX);
 
     if (!f.operador) f.error = "Falta el operador";
@@ -817,6 +848,7 @@ async function tarLeerArchivo(archivo) {
     else if (f.neto == null) f.error = "Falta el neto";
     else if (f.cash === undefined || f.tc === undefined) f.error = "Cash o TC no es un número";
     else if (f.iva === undefined) f.error = "IVA no válido (usa Sí o No)";
+    else if (f.moneda === undefined) f.error = "Moneda no válida (usa Dólares o Colones)";
     else if (desde === undefined || hasta === undefined) f.error = "Fecha no válida (usa día/mes/año)";
     else if (desde && hasta && desde > hasta) f.error = "Desde es posterior a Hasta";
     f.fecha_inicio = desde || null; f.fecha_fin = hasta || null;
@@ -860,13 +892,14 @@ async function tarImportar(btn) {
         if (f.cash != null) c.cash = f.cash;
         if (f.tc != null) c.tc = f.tc;
         if (f.iva != null) c.iva = f.iva === "si" ? null : 0;
-        if (existe.aprobada && (f.neto !== existe.neto || f.cash != null || f.tc != null)) c.aprobada = false;
+        if (f.moneda != null) c.moneda = f.moneda;
+        if (existe.aprobada && (f.neto !== existe.neto || f.cash != null || f.tc != null || (f.moneda != null && f.moneda !== existe.moneda))) c.aprobada = false;
         cambios.push({ id: existe.id, c });
       } else {
         nuevas.push({
           anio: tar.anio, operador_id, servicio: f.servicio, temporada: f.temporada,
           fecha_inicio: f.fecha_inicio, fecha_fin: f.fecha_fin, categoria: f.categoria,
-          neto: f.neto, cash: f.cash, tc: f.tc, notas: f.notas, iva: f.iva === "no" ? 0 : null
+          neto: f.neto, cash: f.cash, tc: f.tc, notas: f.notas, iva: f.iva === "no" ? 0 : null, moneda: f.moneda || "USD"
         });
       }
     });
@@ -894,14 +927,14 @@ async function tarDescargarPlantilla() {
   try { XLSX = await tarCargarXLSX(); } catch (e) { return fallo(e, ""); }
   const a = tar.anio;
   const filas = [
-    ["Operador", "Servicio", "Temporada", "Desde", "Hasta", "Categoría", "Neto", "Cash", "TC", "Notas"],
-    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Adulto", 80, "", "", ""],
-    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Niño", 60, "", "", "Niños de 6 a 11 años"],
-    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Adulto", 90, "", "", ""],
-    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Niño", 70, "", "", ""]
+    ["Operador", "Servicio", "Temporada", "Desde", "Hasta", "Categoría", "Neto", "Cash", "TC", "Moneda", "Notas"],
+    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Adulto", 80, "", "", "USD", ""],
+    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Niño", 60, "", "", "USD", "Niños de 6 a 11 años"],
+    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Adulto", 90, "", "", "USD", ""],
+    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Niño", 70, "", "", "USD", ""]
   ];
   const hoja = XLSX.utils.aoa_to_sheet(filas, { cellDates: true, dateNF: "dd/mm/yyyy" });
-  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 10, 10, 10, 30].map((w) => ({ wch: w }));
+  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 10, 10, 10, 10, 30].map((w) => ({ wch: w }));
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, "Tarifas");
   XLSX.writeFile(libro, "Plantilla tarifas.xlsx");
@@ -1032,11 +1065,11 @@ function tarHtmlFinal() {
               <tr class="fila-grupo"><th colspan="${cols}">${escapar(s.servicio)}</th></tr>
               ${s.grupos.map((g) => g.filas.map((t, i) => `
                 <tr class="${i === 0 ? "tar-inicio-temporada" : ""}">
-                  <td>${i === 0 ? `${escapar(g.temporada)}${tarRango(g) ? `<br><span class="nota">${tarRango(g)}</span>` : ""}` : ""}</td>
+                  <td>${i === 0 ? `${escapar(g.temporada)} <span class="tar-moneda">${tarMonedaEtiqueta(g.filas[0]?.moneda)}</span>${tarRango(g) ? `<br><span class="nota">${tarRango(g)}</span>` : ""}` : ""}</td>
                   <td>${escapar(t.categoria)}${t.notas ? `<br><span class="nota">${escapar(t.notas)}</span>` : ""}</td>
-                  ${f.verNeto ? `<td class="num">${dinero(t.neto)}</td><td class="num">${tarConIva(t) ? dinero(tarCosto(t)) : "Sin IVA"}</td>` : ""}
-                  <td class="num">${tarSinCash(t) ? `<span class="nota">—</span>` : dinero(t.cash)}</td>
-                  <td class="num">${dinero(t.tc)}</td>
+                  ${f.verNeto ? `<td class="num">${tarDinero(t.neto, t.moneda)}</td><td class="num">${tarConIva(t) ? tarDinero(tarCosto(t), t.moneda) : "Sin IVA"}</td>` : ""}
+                  <td class="num">${tarSinCash(t) ? `<span class="nota">—</span>` : tarDinero(t.cash, t.moneda)}</td>
+                  <td class="num">${tarDinero(t.tc, t.moneda)}</td>
                   <td class="acciones-fila tar-no-imprimir"><button type="button" class="enlace" data-tar="revertir" data-id="${t.id}">Revertir</button></td>
                 </tr>`).join("")).join("")}`).join("")}
             </tbody>
@@ -1085,7 +1118,8 @@ async function tarExportar() {
   const filas = [...tarFinalFiltradas()].sort(tarOrden).map((t) => {
     const fila = {
       Operador: tarNombreOp(t.operador_id), Servicio: t.servicio, Temporada: t.temporada,
-      Desde: aFecha(t.fecha_inicio), Hasta: aFecha(t.fecha_fin), "Categoría": t.categoria
+      Desde: aFecha(t.fecha_inicio), Hasta: aFecha(t.fecha_fin), "Categoría": t.categoria,
+      Moneda: t.moneda === "CRC" ? "Colones" : "Dólares"
     };
     if (f.verNeto) { fila.Neto = t.neto; fila.IVA = tarConIva(t) ? "Sí" : "No"; fila["Neto con IVA"] = tarCosto(t); }
     fila.Cash = tarSinCash(t) ? "—" : t.cash;
@@ -1094,7 +1128,7 @@ async function tarExportar() {
     return fila;
   });
   const hoja = XLSX.utils.json_to_sheet(filas, { cellDates: true, dateNF: "dd/mm/yyyy" });
-  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 10, 10, 10, 30].map((w) => ({ wch: w }));
+  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 12, 10, 10, 10, 30].map((w) => ({ wch: w }));
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, `Tarifario ${tar.anio}`);
   XLSX.writeFile(libro, `Tarifario ${tar.anio}.xlsx`);
@@ -1162,7 +1196,7 @@ $("tarContenido").addEventListener("click", async (e) => {
   if (accion === "editar-grupo") { tar.editando = { tipo: "grupo", grupo: grupo() }; return tarPintar(); }
   if (accion === "nueva-temporada") {
     const g = grupo();
-    tar.editando = { tipo: "nuevo", base: { operador: tarNombreOp(g.operador_id), servicio: g.servicio, categorias: g.filas.map((t) => t.categoria) } };
+    tar.editando = { tipo: "nuevo", base: { operador: tarNombreOp(g.operador_id), servicio: g.servicio, categorias: g.filas.map((t) => t.categoria), moneda: g.filas[0]?.moneda } };
     return tarPintar();
   }
   if (accion === "agregar-categoria") return $("tarEdCategorias").insertAdjacentHTML("beforeend", tarHtmlFilaCategoria());

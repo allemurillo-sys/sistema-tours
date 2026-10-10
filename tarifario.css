@@ -29,6 +29,8 @@
 .tar-grupo th { background: var(--fondo); font-weight: 400; padding: 10px 6px 8px; }
 .tar-servicio { font-weight: 700; margin-right: 10px; }
 .tar-temporada { color: var(--gris); }
+.tar-moneda { font-size: .78rem; color: var(--gris); font-weight: 500; margin-left: 10px; white-space: nowrap; }
+.tar-final td .tar-moneda { margin-left: 6px; }
 .tar-grupo-acciones { float: right; white-space: nowrap; }
 .tar-fila-error td { background: var(--rojo-suave); }
 .tar-cabecera th { font-size: .8rem; color: var(--gris); font-weight: 500; padding: 6px 6px 4px; background: var(--blanco); }
