@@ -138,3 +138,35 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
   .tcmp-tabla tr { break-inside: avoid; }
 }
 .tcmp-resumen .tcmp-dif { display: inline; }
+
+/* Selección de tarifas */
+.tcmp-cuenta.verde { background: var(--verde); }
+.tcmp-cuenta[hidden] { display: none; }
+.tcmp-sel-grupo { margin-left: auto; font-size: .88rem; }
+.tcmp-tabla tr.tcmp-elegida td { background: var(--verde-suave); }
+.tcmp-barra {
+  position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  background: var(--pizarra); color: #fff; border-radius: 12px; padding: 10px 16px; margin-top: 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+}
+.tcmp-barra[hidden] { display: none; }
+.tcmp-barra .enlace { color: #fff; }
+.tcmp-seleccion td { vertical-align: top; }
+.tcmp-seleccion .tar-monto { margin-bottom: 2px; }
+.tcmp-seleccion tr.tcmp-ref td { background: var(--verde-suave); }
+.tcmp-dif.menos { color: var(--verde-hondo); }
+.tar-margen-chico.bajo { color: var(--rojo); font-weight: 700; }
+.tcmp-pend { display: block; font-size: .75rem; color: #8A6400; }
+.tcmp-ajuste h3 { margin-top: 0; }
+.tcmp-ajuste .fila-form { align-items: flex-end; }
+.solo-lector { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tcmp-seleccion .solo-impresion { display: none; }
+.tcmp-seleccion td:nth-child(3), .tcmp-seleccion td:nth-child(4) { min-width: 140px; }
+.tcmp-seleccion .tcmp-dif { white-space: normal; }
+.tcmp-seleccion td.num { min-width: 7rem; }
+.tcmp-seleccion td:first-child { min-width: 0; width: 2rem; }
+.tcmp-seleccion .tar-monto { width: 6.5rem; }
+@media print {
+  .tcmp-seleccion { font-size: 9pt; }
+  .tcmp-seleccion .solo-impresion { display: block; }
+}

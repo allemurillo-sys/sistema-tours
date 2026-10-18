@@ -101,11 +101,12 @@ function tarParecido(a, b) {
   return { puntos: comunes.length / Math.min(A.size, B.size) + comunes.length / (A.size + B.size), comunes };
 }
 
-// Sugerencia de "Comparar como" y de tipo para un servicio, a partir de los servicios de otros operadores
+// Sugerencia de "Comparar como" y de tipo para un servicio, a partir de otros servicios parecidos
+// (de otros operadores o del mismo operador)
 function tarSugerencia(s) {
   let mejor = null;
   tar.cmpTodos.forEach((o) => {
-    if (o.operador_id === s.operador_id) return;
+    if (o.operador_id === s.operador_id && tarNorm(o.servicio) === tarNorm(s.servicio)) return;
     const p = tarParecido(s.servicio, o.ficha?.comparar || o.servicio);
     if (p.puntos < 0.75) return;
     if (!mejor || p.puntos > mejor.p.puntos) mejor = { o, p };
@@ -161,12 +162,14 @@ function tarHtmlComparar() {
     <div class="tar-filtros tar-opciones tar-no-imprimir">
       <div class="tcmp-modos" role="group" aria-label="Modo">
         <button type="button" class="btn ${c.modo === "comparar" ? "primario" : ""}" data-tcmp="modo" data-modo="comparar">Comparar proveedores</button>
+        <button type="button" class="btn ${c.modo === "seleccion" ? "primario" : ""}" data-tcmp="modo" data-modo="seleccion">
+          Selección <span class="tcmp-cuenta verde" id="tcmpCuentaSel" ${tarSeleccionadas().length ? "" : "hidden"}>${tarSeleccionadas().length}</span></button>
         <button type="button" class="btn ${c.modo === "clasificar" ? "primario" : ""}" data-tcmp="modo" data-modo="clasificar">
           Clasificar servicios${faltan ? ` <span class="tcmp-cuenta">${faltan}</span>` : ""}</button>
       </div>
     </div>
     ${aviso}
-    ${c.modo === "clasificar" ? tarHtmlClasificar() : tarHtmlCompararVista()}`;
+    ${c.modo === "clasificar" ? tarHtmlClasificar() : c.modo === "seleccion" ? tarHtmlSeleccion() : tarHtmlCompararVista() + tarHtmlBarraSel()}`;
 }
 
 // ---------- Comparación ----------
@@ -207,7 +210,7 @@ function tarGruposComparar() {
       variasTemporadas: miembros.some((m) => m.temporadas.size > 1)
     };
   }).filter((g) =>
-    (!c.solo2 || g.operadores.size >= 2)
+    (!c.solo2 || g.miembros.length >= 2)
     && (!c.tipo || (c.tipo === "sin" ? !g.tipos.length : g.tipos.includes(Number(c.tipo))))
     && (!txt || tarNorm([g.nombre, ...g.miembros.flatMap((m) => [m.servicio, tarNombreOp(m.operador_id), m.ficha?.incluye, tarNombreTipo(m.ficha?.tipo_id)])].join(" ")).includes(txt))
   ).sort((a, b) => tarTipoOrden(a.tipos[0]) - tarTipoOrden(b.tipos[0]) || a.nombre.localeCompare(b.nombre, "es"));
@@ -229,7 +232,7 @@ function tarHtmlCompararVista() {
   if (!aprobadas) contenido = `<div class="tar-vacio"><p><strong>Todavía no hay tarifas aprobadas en ${tar.anio}.</strong></p>
       <p>La comparación usa el Tarifario final: aprueba las tarifas en Procesar y aparecerán aquí.</p></div>`;
   else if (!grupos.length) contenido = `<div class="tar-vacio"><p><strong>No hay actividades para comparar con estos filtros.</strong></p>
-      <p>${c.solo2 ? "Solo se muestran actividades que ofrecen 2 o más operadores. " : ""}Para juntar servicios con nombres distintos (por ejemplo "Canopy Tour" y "Zipline 12 cables"), ponles el mismo nombre en "Comparar como" dentro de <button type="button" class="enlace" data-tcmp="modo" data-modo="clasificar">Clasificar servicios</button>.</p></div>`;
+      <p>${c.solo2 ? "Solo se muestran actividades con 2 o más servicios para comparar. " : ""}Para juntar servicios con nombres distintos (por ejemplo "Canopy Tour" y "Zipline 12 cables"), ponles el mismo nombre en "Comparar como" dentro de <button type="button" class="enlace" data-tcmp="modo" data-modo="clasificar">Clasificar servicios</button>.</p></div>`;
   else contenido = grupos.map(tarHtmlGrupoComparar).join("");
 
   return `
@@ -243,13 +246,14 @@ function tarHtmlCompararVista() {
       <label class="tar-buscar">Buscar <input id="tarBuscarCmp" type="search" value="${escapar(c.texto)}" placeholder="Actividad, operador o lo que incluye" data-tcmp-filtro="texto"></label>
     </div>
     <div class="tar-filtros tar-opciones tar-no-imprimir">
-      <label class="check-linea chico"><input type="checkbox" data-tcmp-filtro="solo2" ${c.solo2 ? "checked" : ""}> Solo actividades con 2 o más operadores</label>
+      <label class="check-linea chico"><input type="checkbox" data-tcmp-filtro="solo2" ${c.solo2 ? "checked" : ""}> Solo actividades con 2 o más servicios para comparar</label>
       <span class="tar-espacio"></span>
       ${grupos.length ? `<button type="button" class="btn primario" data-tar="imprimir">Imprimir</button>` : ""}
     </div>
     <div class="tar-ayuda tar-no-imprimir">
       <p>Se comparan las tarifas <strong>aprobadas</strong> (Tarifario final) de la categoría elegida, ordenadas de la más barata a la más cara según el neto.
-        El <strong>Neto</strong> ya incluye el IVA cuando la tarifa tiene la casilla IVA marcada. Debajo de cada precio se ve cuánto más cuesta que el más bajo.</p>
+        El <strong>Neto</strong> ya incluye el IVA cuando la tarifa tiene la casilla IVA marcada. Debajo de cada precio se ve cuánto más cuesta que el más bajo.
+        Marca con la casilla las opciones que te interesen y ábrelas en <strong>Selección</strong> para verlas juntas, de la más barata a la más cara, y ajustar sus precios.</p>
       <p>En <strong>Incluye</strong>, lo marcado con ✚ solo lo ofrecen algunos operadores, y "No incluye" muestra lo que otros sí dan.
         ${tar.ajustes.tipo_cambio ? `Las tarifas en colones se comparan con las de dólares usando el tipo de cambio de Ajustes (₡${tar.ajustes.tipo_cambio}).` : "Para comparar tarifas en colones con tarifas en dólares, escribe el tipo de cambio en Ajustes."}</p>
     </div>
@@ -328,7 +332,7 @@ function tarHtmlGrupoComparar(g) {
 
   const tipos = g.tipos.map((id) => `<span class="tcmp-tipo">${escapar(tarNombreTipo(id))}</span>`).join("");
   const notas = [
-    g.variasTemporadas && !tar.comparar.fecha ? "Hay operadores con varias temporadas: elige una fecha en \"Vigentes el\" para comparar los precios de un mismo día." : "",
+    g.variasTemporadas && !tar.comparar.fecha ? "Hay servicios con varias temporadas: elige una fecha en \"Vigentes el\" para comparar los precios de un mismo día." : "",
     g.sinCategoria.length ? `Sin tarifa ${escapar(tar.comparar.categoria)}: ${g.sinCategoria.map((m) => `${escapar(m.servicio)} (${escapar(tarNombreOp(m.operador_id))})`).join(", ")}.` : ""
   ].filter(Boolean);
 
@@ -336,15 +340,18 @@ function tarHtmlGrupoComparar(g) {
     <section class="det-seccion sin-margen tcmp-grupo">
       <div class="tcmp-cabeza">
         <h3>${escapar(g.nombre)}</h3>${tipos}
-        <span class="chip-gris">${g.operadores.size} ${g.operadores.size === 1 ? "operador" : "operadores"}</span>
+        <span class="chip-gris">${g.miembros.length} servicios · ${g.operadores.size} ${g.operadores.size === 1 ? "operador" : "operadores"}</span>
+        ${filas.length ? `<button type="button" class="enlace tcmp-sel-grupo tar-no-imprimir" data-tcmp="sel-grupo" data-ids="${filas.map((f) => f.t.id).join(",")}">${filas.every((f) => tar.seleccion.has(f.t.id)) ? "Quitar de la selección" : "Seleccionar todas"}</button>` : ""}
       </div>
       ${resumen ? `<p class="tcmp-resumen">${resumen}</p>` : ""}
       ${filas.length ? `
         <div class="tabla-scroll">
           <table class="tabla tcmp-tabla">
-            <thead><tr><th>Operador</th><th>Servicio</th><th>Incluye</th><th class="num">Neto</th><th class="num">Cash</th><th class="num">TC</th></tr></thead>
+            <thead><tr><th class="tar-no-imprimir"><span class="solo-lector">Seleccionar</span></th><th>Operador</th><th>Servicio</th><th>Incluye</th><th class="num">Neto</th><th class="num">Cash</th><th class="num">TC</th></tr></thead>
             <tbody>${filas.map((f) => `
-              <tr>
+              <tr class="${tar.seleccion.has(f.t.id) ? "tcmp-elegida" : ""}">
+                <td class="centro tar-no-imprimir"><input type="checkbox" class="tar-check" data-tcmp-sel data-id="${f.t.id}" ${tar.seleccion.has(f.t.id) ? "checked" : ""}
+                  aria-label="Seleccionar ${escapar(`${f.t.servicio} ${tarNombreOp(f.t.operador_id)}`)}"></td>
                 <td><strong>${escapar(tarNombreOp(f.t.operador_id))}</strong></td>
                 <td>${escapar(f.t.servicio)}<br><span class="nota">${escapar(f.t.temporada)}${tarRango(f.t) ? ` · ${tarRango(f.t)}` : ""}</span>${f.t.notas ? `<br><span class="nota">${escapar(f.t.notas)}</span>` : ""}</td>
                 <td>${htmlIncluye(f.t)}</td>
@@ -356,6 +363,254 @@ function tarHtmlGrupoComparar(g) {
         </div>` : ""}
       ${notas.map((n) => `<p class="nota tcmp-nota">${n}</p>`).join("")}
     </section>`;
+}
+
+// =====================================================
+// SELECCIÓN: las tarifas que el agente marcó, de la más barata a la más cara,
+// con la diferencia respecto a la de neto más bajo. Los precios se editan aquí mismo
+// y el cambio se guarda en la tarifa: se ve igual en Procesar, Tarifario final y Comparar.
+// =====================================================
+const TAR_SEL_CLAVE = "tarSeleccion";
+tar.seleccion = new Set((() => { try { return JSON.parse(localStorage.getItem(TAR_SEL_CLAVE) || "[]"); } catch { return []; } })().map(Number));
+tar.selDeshacer = null;   // precios anteriores al último ajuste en bloque
+tar.selAjuste = { campo: "ambos", accion: "subir", valor: "", redondear: false };
+
+function tarRecordarSel() {
+  try { localStorage.setItem(TAR_SEL_CLAVE, JSON.stringify([...tar.seleccion])); } catch { /* sin almacenamiento: solo en esta sesión */ }
+}
+const tarSeleccionadas = () => tar.tarifas.filter((t) => tar.seleccion.has(t.id));
+
+function tarHtmlBarraSel() {
+  const n = tarSeleccionadas().length;
+  return `<div class="tcmp-barra tar-no-imprimir" id="tcmpBarra" ${n ? "" : "hidden"}>
+    <span><strong id="tcmpBarraN">${n}</strong> tarifa(s) seleccionada(s)</span>
+    <button type="button" class="btn primario" data-tcmp="modo" data-modo="seleccion">Ver selección</button>
+    <button type="button" class="enlace" data-tcmp="limpiar-sel">Quitar todas</button>
+  </div>`;
+}
+function tarActualizarCuentaSel() {
+  const n = tarSeleccionadas().length;
+  if ($("tcmpBarra")) { $("tcmpBarra").hidden = !n; $("tcmpBarraN").textContent = n; }
+  if ($("tcmpCuentaSel")) { $("tcmpCuentaSel").hidden = !n; $("tcmpCuentaSel").textContent = n; }
+}
+
+// Lo que incluye un servicio comparado con los demás de una lista de fichas
+function tarHtmlIncluyeEntre(fichas, ficha) {
+  const items = tarItems(ficha?.incluye);
+  if (!items.length) return `<span class="nota">Sin información</span>`;
+  const conInfo = fichas.filter((f) => tarItems(f?.incluye).length);
+  const todos = new Map();
+  conInfo.forEach((f) => tarItems(f.incluye).forEach((x) => { if (!todos.has(tarNorm(x))) todos.set(tarNorm(x), x); }));
+  const enTodos = (k) => conInfo.every((f) => tarItems(f.incluye).some((x) => tarNorm(x) === k));
+  const propios = new Set(items.map(tarNorm));
+  const faltan = conInfo.length > 1 ? [...todos.keys()].filter((k) => !propios.has(k)).map((k) => todos.get(k)) : [];
+  return `<ul class="tcmp-items">${items.map((x) => {
+    const extra = conInfo.length > 1 && !enTodos(tarNorm(x));
+    return `<li class="${extra ? "extra" : ""}">${extra ? `<span aria-hidden="true">✚ </span>` : ""}${escapar(x)}</li>`;
+  }).join("")}</ul>${faltan.length ? `<p class="tcmp-falta">No incluye: ${faltan.map(escapar).join(", ")}</p>` : ""}`;
+}
+
+function tarFilasSeleccion() {
+  const lista = tarSeleccionadas();
+  const monedas = new Set(lista.map((t) => t.moneda));
+  const base = monedas.size === 1 ? [...monedas][0] : "USD";
+  const filas = lista.map((t) => ({
+    t,
+    neto: tarConvertir(tarCosto(t), t.moneda, base),
+    cash: tarSinCash(t) || t.cash == null ? null : tarConvertir(t.cash, t.moneda, base),
+    tc: t.tc == null ? null : tarConvertir(t.tc, t.moneda, base)
+  })).sort((a, b) => (a.neto ?? Infinity) - (b.neto ?? Infinity)
+    || tarNombreOp(a.t.operador_id).localeCompare(tarNombreOp(b.t.operador_id), "es") || a.t.servicio.localeCompare(b.t.servicio, "es"));
+  return { filas, base, ref: filas.find((f) => f.neto != null) };
+}
+
+function tarHtmlSeleccion() {
+  const { filas, base, ref } = tarFilasSeleccion();
+  if (!filas.length) return `<div class="tar-vacio"><p><strong>No hay tarifas seleccionadas en ${tar.anio}.</strong></p>
+    <p>En <button type="button" class="enlace" data-tcmp="modo" data-modo="comparar">Comparar proveedores</button>, filtra y marca con la casilla las opciones que quieras ver aquí.</p></div>`;
+
+  const dif = (f, campo) => {
+    if (f === ref) return `<span class="tcmp-bajo">Referencia</span>`;
+    if (campo === "cash" && tarSinCash(f.t)) return "";
+    if (f[campo] == null || !ref || ref[campo] == null) return f[campo] == null && f.t.moneda !== base ? `<span class="tcmp-dif">falta tipo de cambio</span>` : "";
+    const d = tarR2(f[campo] - ref[campo]);
+    if (!d) return `<span class="tcmp-dif">igual</span>`;
+    const pct = ref[campo] ? ` (${d > 0 ? "+" : "−"}${Math.abs((f[campo] / ref[campo] - 1) * 100).toFixed(0)} %)` : "";
+    return `<span class="tcmp-dif ${d > 0 ? "" : "menos"}">${d > 0 ? "+" : "−"}${tarDinero(Math.abs(d), base)}${pct}</span>`;
+  };
+  const monto = (t, campo, valor) => `<input class="tar-monto tar-no-imprimir" type="number" min="0" step="0.01" inputmode="decimal" value="${valor ?? ""}"
+      data-tsel-campo="${campo}" data-id="${t.id}" aria-label="${campo === "neto" ? "Neto" : campo === "cash" ? "Precio Cash" : "Precio TC"} ${escapar(`${t.servicio} ${t.categoria}`)}">
+      <span class="solo-impresion tcmp-monto">${campo === "cash" && tarSinCash(t) ? "Sin Cash" : valor == null || valor === "" ? "—" : tarDinero(valor, t.moneda)}</span>`;
+  const fichas = filas.map((f) => tarFicha(f.t.operador_id, f.t.servicio));
+  const a = tar.selAjuste;
+  const resumenRef = ref ? `Referencia: <strong>${escapar(ref.t.servicio)}</strong> de ${escapar(tarNombreOp(ref.t.operador_id))} (${escapar(ref.t.categoria)}), neto ${tarDinero(tarCosto(ref.t), ref.t.moneda)}` : "";
+
+  return `
+    <div class="tar-filtros tar-opciones tar-no-imprimir">
+      <span>${resumenRef}</span>
+      <span class="tar-espacio"></span>
+      <button type="button" class="btn" data-tcmp="limpiar-sel">Quitar todas</button>
+      <button type="button" class="btn primario" data-tar="imprimir">Imprimir</button>
+    </div>
+    <div class="tar-ayuda tar-no-imprimir">
+      <p>Las tarifas que seleccionaste, de la más barata a la más cara según el <strong>neto</strong> (con IVA cuando aplica). La primera es la <strong>referencia</strong>: debajo de cada precio se ve la diferencia con ella.</p>
+      <p>Puedes corregir el neto, el IVA y los precios Cash y TC aquí mismo: se guardan solos al salir de cada casilla y <strong>el cambio queda en la tarifa</strong>, así que se ve igual en Procesar, Tarifario final y Comparar. Las tarifas aprobadas siguen aprobadas.</p>
+    </div>
+    <div class="solo-impresion tar-imp-cabeza">
+      <p class="imp-marca">The House of Tours</p>
+      <p class="imp-titulo">Selección de tarifas ${tar.anio}</p>
+      ${resumenRef ? `<p class="nota">${resumenRef}</p>` : ""}
+    </div>
+    <div class="det-seccion sin-margen">
+      <div class="tabla-scroll">
+        <table class="tabla tar-tabla tcmp-tabla tcmp-seleccion">
+          <thead><tr><th class="num">#</th><th>Operador</th><th>Servicio</th><th>Incluye</th><th class="num">Neto</th><th class="centro tar-no-imprimir">IVA</th>
+            <th class="num">Cash</th><th class="num">TC</th><th class="tar-no-imprimir"></th></tr></thead>
+          <tbody>${filas.map((f, i) => {
+            const t = f.t, mc = tarMargenCash(t), mt = tarMargenTc(t);
+            return `
+            <tr class="${f === ref ? "tcmp-ref" : ""}">
+              <td class="num">${i + 1}</td>
+              <td><strong>${escapar(tarNombreOp(t.operador_id))}</strong>${t.aprobada ? "" : `<br><label class="check-linea chico tar-no-imprimir"><input type="checkbox" class="tar-check" data-tsel-campo="aprobada" data-id="${t.id}"> Aprobar</label><span class="tcmp-pend">Pendiente de aprobar</span>`}</td>
+              <td>${escapar(t.servicio)}${tarNombreTipo(tarTipoDe(t)) ? ` <span class="tcmp-tipo">${escapar(tarNombreTipo(tarTipoDe(t)))}</span>` : ""}
+                <br><span class="nota">${escapar(t.categoria)} · ${escapar(t.temporada)}${tarRango(t) ? ` · ${tarRango(t)}` : ""}</span>
+                ${t.notas ? `<br><span class="nota">${escapar(t.notas)}</span>` : ""}</td>
+              <td>${tarHtmlIncluyeEntre(fichas, fichas[i])}</td>
+              <td class="num">${monto(t, "neto", tarValorNeto(t))}
+                <span class="tcmp-dif">${tarConIva(t) ? `Con IVA · sin IVA ${tarDinero(t.neto, t.moneda)}` : "Sin IVA"}</span>${dif(f, "neto")}</td>
+              <td class="centro tar-no-imprimir"><input type="checkbox" class="tar-check" data-tsel-campo="iva" data-id="${t.id}" ${tarConIva(t) ? "checked" : ""} aria-label="Sumar IVA"></td>
+              <td class="num">${monto(t, "cash", t.cash)}
+                <span class="tcmp-dif tar-margen-chico ${tarBajo(mc, tar.ajustes.cash_min) ? "bajo" : ""}">Margen ${tarTextoMargenCash(t)}</span>${dif(f, "cash")}</td>
+              <td class="num">${monto(t, "tc", t.tc)}
+                <span class="tcmp-dif tar-margen-chico ${tarBajo(mt, tar.ajustes.tc_min) ? "bajo" : ""}">Margen ${tarPct(mt)}</span>${dif(f, "tc")}</td>
+              <td class="tar-no-imprimir"><button type="button" class="enlace peligro" data-tcmp="quitar-sel" data-id="${t.id}">Quitar</button></td>
+            </tr>`;
+          }).join("")}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="det-seccion sin-margen tar-no-imprimir tcmp-ajuste">
+      <h3>Ajustar precios de las ${filas.length} seleccionadas</h3>
+      <div class="fila-form">
+        <label>Precio
+          <select id="tselCampo">
+            <option value="ambos" ${a.campo === "ambos" ? "selected" : ""}>Cash y TC</option>
+            <option value="cash" ${a.campo === "cash" ? "selected" : ""}>Solo Cash</option>
+            <option value="tc" ${a.campo === "tc" ? "selected" : ""}>Solo TC</option>
+          </select></label>
+        <label>Ajuste
+          <select id="tselAccion">
+            <option value="subir" ${a.accion === "subir" ? "selected" : ""}>Subir el precio actual un %</option>
+            <option value="bajar" ${a.accion === "bajar" ? "selected" : ""}>Bajar el precio actual un %</option>
+            <option value="margen" ${a.accion === "margen" ? "selected" : ""}>Dejar un margen de % sobre el neto</option>
+            <option value="sugerido" ${a.accion === "sugerido" ? "selected" : ""}>Usar el precio sugerido de Ajustes</option>
+          </select></label>
+        <label class="tar-filtro-corto">Porcentaje <input id="tselValor" type="number" min="0" step="0.1" value="${escapar(a.valor)}" placeholder="%"></label>
+        <label class="check-linea tar-check-form"><input id="tselRedondear" type="checkbox" ${a.redondear ? "checked" : ""}> Redondear (a $1 o ₡100)</label>
+      </div>
+      <div class="sec-botones">
+        <button type="button" class="btn primario" data-tcmp="aplicar-ajuste">Aplicar a las seleccionadas</button>
+        ${tar.selDeshacer ? `<button type="button" class="btn" data-tcmp="deshacer-ajuste">Deshacer el último ajuste</button>` : ""}
+      </div>
+      <p class="nota">Las tarifas sin opción Cash (precio 0) no se tocan en Cash. El cambio se guarda en cada tarifa y se aplica en todo el tarifario.</p>
+    </div>`;
+}
+
+// Guarda una casilla de la Selección (misma validación que en Procesar, pero sin quitar la aprobación)
+async function tarGuardarCampoSel(input) {
+  const t = tar.tarifas.find((x) => x.id === Number(input.dataset.id));
+  if (!t) return;
+  const campo = input.dataset.tselCampo;
+  const cambios = {};
+  if (campo === "aprobada") {
+    if (input.checked && tarSinPrecio(t)) { input.checked = false; return avisar("Escribe el precio Cash y el TC antes de aprobar esta tarifa.", "error"); }
+    cambios.aprobada = input.checked;
+  } else if (campo === "iva") {
+    cambios.iva = input.checked ? null : 0;
+  } else {
+    const texto = input.value.trim();
+    let valor = texto === "" ? null : tarR2(texto);
+    const restaurar = () => { input.value = campo === "neto" ? tarValorNeto(t) : t[campo] ?? ""; };
+    if (valor != null && (isNaN(valor) || valor < 0)) { restaurar(); return avisar("Escribe un monto válido.", "error"); }
+    if (campo === "tc" && valor === 0) { restaurar(); return avisar("El precio TC debe ser mayor que cero.", "error"); }
+    if (campo === "neto" && valor == null) { restaurar(); return avisar("El neto no puede quedar vacío.", "error"); }
+    if (campo === "neto" && tarConIva(t)) valor = tarR2(valor / (1 + tar.ajustes.iva / 100));
+    if (valor === t[campo]) { restaurar(); return; }
+    cambios[campo] = valor;
+    // Sin precio Cash o TC una tarifa no puede quedar aprobada
+    if (t.aprobada && valor == null) cambios.aprobada = false;
+  }
+  cambios.actualizado = new Date().toISOString();
+  const { error } = await db.from("tar_tarifas").update(cambios).eq("id", t.id);
+  if (error) { tarPintar(); return fallo(error); }
+  Object.assign(t, cambios);
+  avisar(cambios.aprobada === false ? "Guardado. La tarifa quedó sin precio completo y pasó a pendiente de aprobar." : "Guardado: el cambio se aplica en todo el tarifario.");
+
+  // Se vuelve a ordenar la tabla, conservando la casilla a la que se pasó el cursor
+  await new Promise((r) => setTimeout(r, 0));   // espera a que el cursor llegue a la siguiente casilla
+  const foco = document.activeElement?.dataset;
+  const destino = foco?.tselCampo ? [foco.id, foco.tselCampo] : null;
+  tarPintar();
+  if (destino) $("tarContenido").querySelector(`[data-id="${destino[0]}"][data-tsel-campo="${destino[1]}"]`)?.focus();
+}
+
+async function tarAplicarAjusteSel(btn) {
+  const a = tar.selAjuste = {
+    campo: $("tselCampo").value, accion: $("tselAccion").value, valor: $("tselValor").value, redondear: $("tselRedondear").checked
+  };
+  const p = Number(a.valor);
+  if (a.accion !== "sugerido" && (a.valor === "" || isNaN(p) || p < 0)) return avisar("Escribe el porcentaje.", "error");
+  if (a.accion === "bajar" && p >= 100) return avisar("El porcentaje para bajar debe ser menor que 100.", "error");
+  const redondeo = (n, moneda) => (a.redondear ? (moneda === "CRC" ? Math.round(n / 100) * 100 : Math.round(n)) : tarR2(n));
+  const nuevo = (t, campo) => {
+    if (campo === "cash" && tarSinCash(t)) return undefined;
+    const actual = t[campo];
+    let v;
+    if (a.accion === "subir") v = actual == null ? undefined : actual * (1 + p / 100);
+    else if (a.accion === "bajar") v = actual == null ? undefined : actual * (1 - p / 100);
+    else if (a.accion === "margen") v = tarCosto(t) * (1 + p / 100);
+    else v = campo === "cash" ? tarSugCash(t) : tarSugTc(t);
+    if (v === undefined) return undefined;
+    v = redondeo(v, t.moneda);
+    return v > 0 && v !== actual ? v : undefined;
+  };
+  const campos = a.campo === "ambos" ? ["cash", "tc"] : [a.campo];
+  const cambios = tarSeleccionadas().map((t) => {
+    const c = {};
+    campos.forEach((k) => { const v = nuevo(t, k); if (v !== undefined) c[k] = v; });
+    return { t, c };
+  }).filter((x) => Object.keys(x.c).length);
+  if (!cambios.length) return avisar("Con ese ajuste ningún precio cambia.");
+  if (!confirm(`Se van a cambiar los precios de ${cambios.length} tarifa(s). El cambio se guarda en cada tarifa y se ve en todo el tarifario. ¿Continuar?`)) return;
+
+  await conBoton(btn, async () => {
+    const antes = cambios.map(({ t }) => ({ id: t.id, cash: t.cash, tc: t.tc }));
+    const ahora = new Date().toISOString();
+    try {
+      await tarEnPartes(cambios, 20, ({ t, c }) => db.from("tar_tarifas").update({ ...c, actualizado: ahora }).eq("id", t.id));
+    } catch (e) {
+      fallo(e, "El ajuste no terminó. Revisa los precios.");
+    }
+    tar.tarifas = await tarLeerTarifas(tar.anio);
+    tar.selDeshacer = antes;
+    tarPintar();
+    avisar(`Precios ajustados en ${cambios.length} tarifa(s).`);
+  });
+}
+
+async function tarDeshacerAjusteSel(btn) {
+  const antes = tar.selDeshacer;
+  if (!antes || !confirm(`¿Volver a dejar los precios Cash y TC como estaban antes del último ajuste (${antes.length} tarifa(s))?`)) return;
+  await conBoton(btn, async () => {
+    const ahora = new Date().toISOString();
+    try {
+      await tarEnPartes(antes, 20, (x) => db.from("tar_tarifas").update({ cash: x.cash, tc: x.tc, actualizado: ahora }).eq("id", x.id));
+    } catch (e) { fallo(e); }
+    tar.tarifas = await tarLeerTarifas(tar.anio);
+    tar.selDeshacer = null;
+    tarPintar();
+    avisar("Se deshizo el último ajuste.");
+  });
 }
 
 // ---------- Clasificar servicios ----------
@@ -459,7 +714,20 @@ $("tarContenido").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-tcmp]");
   if (!b) return;
   const accion = b.dataset.tcmp;
-  if (accion === "modo") { tar.comparar.modo = b.dataset.modo; return tarPintar(); }
+  if (accion === "modo") { tar.comparar.modo = b.dataset.modo; tarPintar(); return window.scrollTo({ top: $("vistaTarifario").offsetTop }); }
+  if (accion === "quitar-sel") { tar.seleccion.delete(Number(b.dataset.id)); tarRecordarSel(); return tarPintar(); }
+  if (accion === "limpiar-sel") {
+    if (!confirm("¿Quitar todas las tarifas de la selección? (Las tarifas no se borran.)")) return;
+    tarSeleccionadas().forEach((t) => tar.seleccion.delete(t.id)); tarRecordarSel(); return tarPintar();
+  }
+  if (accion === "sel-grupo") {
+    const ids = b.dataset.ids.split(",").map(Number);
+    const todas = ids.every((id) => tar.seleccion.has(id));
+    ids.forEach((id) => (todas ? tar.seleccion.delete(id) : tar.seleccion.add(id)));
+    tarRecordarSel(); return tarPintar();
+  }
+  if (accion === "aplicar-ajuste") return tarAplicarAjusteSel(b);
+  if (accion === "deshacer-ajuste") return tarDeshacerAjusteSel(b);
   if (accion === "aplicar-sugerencias") return tarAplicarSugerencias(b);
   if (accion === "usar-sug") {
     const s = tar.cmpServicios[Number(b.dataset.i)];
@@ -486,6 +754,14 @@ $("tarContenido").addEventListener("focusin", (e) => {
 $("tarContenido").addEventListener("change", (e) => {
   const el = e.target;
   if (el.dataset.tcmpCampo) return tarGuardarCampoFicha(el);
+  if (el.dataset.tselCampo) return tarGuardarCampoSel(el);
+  if (el.hasAttribute("data-tcmp-sel")) {
+    const id = Number(el.dataset.id);
+    if (el.checked) tar.seleccion.add(id); else tar.seleccion.delete(id);
+    el.closest("tr")?.classList.toggle("tcmp-elegida", el.checked);
+    tarRecordarSel();
+    return tarActualizarCuentaSel();
+  }
   const f = el.dataset.tcmpFiltro;
   if (f && f !== "texto" && f !== "buscar") {
     tar.comparar[f] = el.type === "checkbox" ? el.checked : el.value;
