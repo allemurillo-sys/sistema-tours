@@ -84,3 +84,57 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
   .tar-final tr { break-inside: avoid; }
   .tabla-scroll { overflow: visible; }
 }
+
+/* =====================================================
+   COMPARAR PROVEEDORES Y CLASIFICAR SERVICIOS
+   ===================================================== */
+.tcmp-modos { display: flex; flex-wrap: wrap; gap: 8px; }
+.tcmp-cuenta {
+  display: inline-block; min-width: 1.4rem; margin-left: 6px; padding: 0 6px; border-radius: 999px;
+  background: var(--rojo); color: #fff; font-size: .78rem; font-weight: 700; text-align: center;
+}
+.tcmp-tipo {
+  display: inline-block; font-size: .75rem; font-weight: 600; background: var(--verde-suave); color: var(--verde-hondo);
+  border-radius: 999px; padding: 1px 9px; margin-left: 8px; vertical-align: middle; white-space: nowrap;
+}
+.tar-incluye { display: block; font-weight: 400; font-size: .85rem; color: var(--gris); margin-top: 2px; }
+
+.tcmp-grupo { margin-bottom: 16px; }
+.tcmp-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 4px; }
+.tcmp-cabeza h3 { margin: 0; color: var(--verde-hondo); }
+.tcmp-resumen { display: flex; flex-wrap: wrap; gap: 4px 22px; margin: 4px 0 10px; font-size: .92rem; }
+.tcmp-tabla td { vertical-align: top; }
+.tcmp-tabla td:nth-child(3) { min-width: 200px; }
+.tcmp-monto { display: block; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tcmp-monto.minimo { color: var(--verde-hondo); }
+.tcmp-dif { display: block; font-size: .75rem; color: var(--gris); white-space: nowrap; }
+.tcmp-bajo {
+  display: inline-block; font-size: .72rem; font-weight: 700; background: var(--verde-suave); color: var(--verde-hondo);
+  border-radius: 999px; padding: 0 8px; margin-top: 2px;
+}
+.tcmp-items { list-style: none; margin: 0; padding: 0; font-size: .88rem; }
+.tcmp-items li { display: inline; }
+.tcmp-items li:not(:last-child)::after { content: ", "; color: var(--gris); }
+.tcmp-items li.extra { font-weight: 700; color: var(--verde-hondo); }
+.tcmp-falta { margin: 3px 0 0; font-size: .8rem; color: var(--rojo); }
+.tcmp-nota { margin: 8px 0 0; }
+
+.tcmp-clasificar td { vertical-align: top; }
+.tcmp-clasificar select, .tcmp-clasificar input { min-width: 160px; }
+.tcmp-clasificar textarea { min-width: 220px; }
+.tcmp-clasificar tr.tcmp-pendiente td:first-child { box-shadow: inset 4px 0 0 var(--amarillo); }
+.tcmp-sug { font-size: .8rem; padding: 0; text-align: left; }
+.tcmp-clasificar .tar-sug .nota { display: block; font-size: .75rem; }
+.tcmp-usados { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tcmp-chip {
+  font: inherit; font-size: .8rem; background: var(--blanco); border: 1px solid var(--linea); color: var(--pizarra);
+  border-radius: 999px; padding: 3px 10px; cursor: pointer;
+}
+.tcmp-chip:hover { border-color: var(--verde); color: var(--verde-hondo); }
+
+@media print {
+  .tcmp-grupo { padding: 0; margin: 0 0 16px; break-inside: avoid; }
+  .tcmp-tabla { font-size: 9pt; }
+  .tcmp-tabla tr { break-inside: avoid; }
+}
+.tcmp-resumen .tcmp-dif { display: inline; }

@@ -23,9 +23,9 @@ const tar = {
   anio: TAR_ANIO_DEFECTO,
   tarifas: [],
   operadores: [],
-  ajustes: { iva: 13, cash_ref: 20, tc_ref: 40, cash_min: 15, tc_min: 30 },
+  ajustes: { iva: 13, cash_ref: 20, tc_ref: 40, cash_min: 15, tc_min: 30, tipo_cambio: 0 },
   filtro: { operador: "", estado: "pendientes", texto: "" },
-  final: { operador: "", fecha: "", texto: "", verNeto: true, politicas: false },
+  final: { operador: "", tipo: "", fecha: "", texto: "", verNeto: true, politicas: false },
   editando: null,      // { tipo: "fila" | "grupo" | "nuevo" | "operador", ... }
   importacion: null,   // { archivo, filas }
   grupos: []           // grupos pintados en Procesar (para los botones de cada temporada)
@@ -164,7 +164,7 @@ async function tarCargar() {
   }
   tar.operadores = op.data;
   aj.data.forEach((a) => (tar.ajustes[a.clave] = Number(a.valor)));
-  tar.tarifas = await tarLeerTarifas(tar.anio);
+  [tar.tarifas] = await Promise.all([tarLeerTarifas(tar.anio), tarLeerFichas()]);
 }
 
 async function tarLeerTarifas(anio) {
@@ -206,6 +206,7 @@ function tarPintar() {
   else if (tar.pestana === "importar") h = tarHtmlImportar();
   else if (tar.pestana === "operadores") h = tarHtmlOperadores();
   else if (tar.pestana === "final") h = tarHtmlFinal();
+  else if (tar.pestana === "comparar") h = tarHtmlComparar();
   else h = tarHtmlAjustes();
   $("tarContenido").innerHTML = h;
   $("tarContenido").querySelector("[autofocus]")?.focus();
@@ -731,6 +732,10 @@ async function tarGuardarEditor(btn) {
     }
 
     if (error) return fallo(error);
+    if (e.tipo === "fila" || e.tipo === "grupo") {
+      const antes = e.tipo === "fila" ? tar.tarifas.find((x) => x.id === e.id) : e.grupo;
+      if (antes) await tarMoverFicha(antes.operador_id, antes.servicio, operador_id, d.servicio);
+    }
     tar.editando = null;
     tar.tarifas = await tarLeerTarifas(tar.anio);
     if (e.tipo === "nuevo" && tar.filtro.estado === "aprobadas") tar.filtro.estado = "pendientes";
@@ -754,7 +759,10 @@ const TAR_COLUMNAS = {
   tc: ["tc", "tarifa tc", "tarjeta"],
   notas: ["notas", "observaciones"],
   iva: ["iva", "iva %", "impuesto"],
-  moneda: ["moneda", "currency", "tipo de moneda"]
+  moneda: ["moneda", "currency", "tipo de moneda"],
+  tipo_actividad: ["tipo de actividad", "tipo actividad", "tipo de tour"],
+  comparar: ["comparar como", "comparar", "actividad comparable"],
+  incluye: ["incluye", "que incluye", "incluido"]
 };
 
 function tarHtmlImportar() {
@@ -788,14 +796,14 @@ function tarHtmlImportar() {
               <tr class="${f.error ? "tar-fila-error" : ""}">
                 <td>${f.fila}</td>
                 <td>${escapar(f.operador)}</td>
-                <td>${escapar(f.servicio)}</td>
+                <td>${escapar(f.servicio)}${f.tipo_id ? ` <span class="tcmp-tipo">${escapar(tarNombreTipo(f.tipo_id))}</span>` : ""}${f.incluye ? `<br><span class="nota">Incluye: ${escapar(f.incluye)}</span>` : ""}</td>
                 <td>${escapar(f.temporada)}${tarRango(f) ? `<br><span class="nota">${tarRango(f)}</span>` : ""}</td>
                 <td>${escapar(f.categoria)}</td>
                 <td>${f.moneda === "CRC" ? "₡ Colones" : "$ Dólares"}</td>
                 <td class="num">${f.neto != null && !isNaN(f.neto) ? tarDinero(f.neto, f.moneda) : ""}</td>
                 <td class="num">${f.cash != null && !isNaN(f.cash) ? tarDinero(f.cash, f.moneda) : ""}</td>
                 <td class="num">${f.tc != null && !isNaN(f.tc) ? tarDinero(f.tc, f.moneda) : ""}</td>
-                <td>${f.error ? `<span class="tar-alerta">${escapar(f.error)}</span>` : f.estado === "nueva" ? "Nueva" : "Actualiza"}</td>
+                <td>${f.error ? `<span class="tar-alerta">${escapar(f.error)}</span>` : f.estado === "nueva" ? "Nueva" : "Actualiza"}${!f.error && f.aviso ? `<br><span class="tar-ojo">${escapar(f.aviso)}</span>` : ""}</td>
               </tr>`).join("")}</tbody>
           </table>
         </div>
@@ -815,7 +823,7 @@ function tarHtmlImportar() {
         <label>Archivo de Excel <input id="tarArchivo" type="file" accept=".xlsx,.xls,.csv"></label>
         <button type="button" class="btn" data-tar="plantilla">Descargar plantilla</button>
       </div>
-      <p class="nota">Columnas que se reconocen: Operador, Servicio, Temporada, Desde, Hasta, Categoría, Neto, Cash, TC, Moneda y Notas. Cash, TC y Moneda son opcionales (si no se indica, la moneda es Dólares).</p>
+      <p class="nota">Columnas que se reconocen: Operador, Servicio, Temporada, Desde, Hasta, Categoría, Neto, Cash, TC, Moneda, Notas, Tipo de actividad, Comparar como e Incluye. Cash, TC, Moneda y las tres últimas son opcionales (si no se indica, la moneda es Dólares). El tipo de actividad debe llamarse igual que en Servicios › Tipos de actividad.</p>
     </div>
     ${vista}`;
 }
@@ -899,6 +907,11 @@ async function tarLeerArchivo(archivo) {
     const netoOriginal = f.neto;
     f.neto = tarMonto(f.neto); f.cash = tarMonto(f.cash); f.tc = tarMonto(f.tc); f.iva = tarIvaCelda(f.iva);
     f.moneda = tarMonedaCelda(f.moneda);
+    // Datos del servicio (opcionales): tipo de actividad, comparar como e incluye
+    const tipoTexto = texto(f.tipo_actividad);
+    f.tipo_id = tarTipoCelda(tipoTexto);
+    if (f.tipo_id === undefined) { f.aviso = `El tipo de actividad "${tipoTexto}" no existe en Servicios: no se asigna`; f.tipo_id = null; }
+    f.comparar = texto(f.comparar) || null; f.incluye = texto(f.incluye) || null;
     const desde = tarFechaCelda(f.fecha_inicio, XLSX), hasta = tarFechaCelda(f.fecha_fin, XLSX);
 
     if (!f.operador) f.error = "Falta el operador";
@@ -973,12 +986,13 @@ async function tarImportar(btn) {
       tar.tarifas = await tarLeerTarifas(tar.anio);
       return fallo(e, "La importación no terminó. Revisa en Procesar qué se guardó.");
     }
+    const fichas = await tarGuardarFichasImportadas(filas, ids);
     tar.importacion = null;
     tar.tarifas = await tarLeerTarifas(tar.anio);
     tar.pestana = "procesar";
     tar.filtro = { operador: "", estado: "pendientes", texto: "" };
     tarPintar();
-    avisar(`Importación lista: ${nuevas.length} nuevas y ${cambios.length} actualizadas. Ahora ponles precio y apruébalas.`);
+    avisar(`Importación lista: ${nuevas.length} nuevas y ${cambios.length} actualizadas${fichas ? `; ${fichas} servicio(s) clasificados` : ""}. Ahora ponles precio y apruébalas.`);
   });
 }
 
@@ -987,14 +1001,14 @@ async function tarDescargarPlantilla() {
   try { XLSX = await tarCargarXLSX(); } catch (e) { return fallo(e, ""); }
   const a = tar.anio;
   const filas = [
-    ["Operador", "Servicio", "Temporada", "Desde", "Hasta", "Categoría", "Neto", "Cash", "TC", "Moneda", "Notas"],
-    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Adulto", 80, "", "", "USD", ""],
-    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Niño", 60, "", "", "USD", "Niños de 6 a 11 años"],
-    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Adulto", 90, "", "", "USD", ""],
-    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Niño", 70, "", "", "USD", ""]
+    ["Operador", "Servicio", "Temporada", "Desde", "Hasta", "Categoría", "Neto", "Cash", "TC", "Moneda", "Notas", "Tipo de actividad", "Comparar como", "Incluye"],
+    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Adulto", 80, "", "", "USD", "", "Aventura", "Canopy", "Transporte, almuerzo, guía bilingüe"],
+    ["Operador de ejemplo", "Tour de ejemplo", "Regular", new Date(a, 4, 1), new Date(a, 10, 30), "Niño", 60, "", "", "USD", "Niños de 6 a 11 años", "", "", ""],
+    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Adulto", 90, "", "", "USD", "", "", "", ""],
+    ["Operador de ejemplo", "Tour de ejemplo", "Alta", new Date(a, 11, 1), new Date(a + 1, 3, 30), "Niño", 70, "", "", "USD", "", "", "", ""]
   ];
   const hoja = XLSX.utils.aoa_to_sheet(filas, { cellDates: true, dateNF: "dd/mm/yyyy" });
-  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 10, 10, 10, 10, 30].map((w) => ({ wch: w }));
+  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 10, 10, 10, 10, 30, 18, 18, 36].map((w) => ({ wch: w }));
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, "Tarifas");
   XLSX.writeFile(libro, "Plantilla tarifas.xlsx");
@@ -1094,10 +1108,14 @@ async function tarEliminarOperador(id) {
 // =====================================================
 function tarFinalFiltradas() {
   const f = tar.final, txt = tarNorm(f.texto);
-  return tar.tarifas.filter((t) => t.aprobada
-    && (!f.operador || t.operador_id === Number(f.operador))
-    && (!f.fecha || ((!t.fecha_inicio || t.fecha_inicio <= f.fecha) && (!t.fecha_fin || t.fecha_fin >= f.fecha)))
-    && (!txt || tarNorm(`${t.servicio} ${t.temporada} ${t.categoria} ${tarNombreOp(t.operador_id)}`).includes(txt)));
+  return tar.tarifas.filter((t) => {
+    const ficha = tarFicha(t.operador_id, t.servicio);
+    return t.aprobada
+      && (!f.operador || t.operador_id === Number(f.operador))
+      && (!f.tipo || (f.tipo === "sin" ? !ficha?.tipo_id : ficha?.tipo_id === Number(f.tipo)))
+      && (!f.fecha || ((!t.fecha_inicio || t.fecha_inicio <= f.fecha) && (!t.fecha_fin || t.fecha_fin >= f.fecha)))
+      && (!txt || tarNorm(`${t.servicio} ${t.temporada} ${t.categoria} ${tarNombreOp(t.operador_id)} ${tarNombreTipo(ficha?.tipo_id)} ${ficha?.comparar ?? ""} ${ficha?.incluye ?? ""}`).includes(txt));
+  });
 }
 
 function tarHtmlFinal() {
@@ -1122,7 +1140,7 @@ function tarHtmlFinal() {
           <table class="tabla tar-final">
             <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">Neto con IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th><th class="tar-no-imprimir"></th></tr></thead>
             <tbody>${porServicio.map((s) => `
-              <tr class="fila-grupo"><th colspan="${cols}">${escapar(s.servicio)}</th></tr>
+              <tr class="fila-grupo"><th colspan="${cols}">${tarHtmlServicioFinal(op.id, s.servicio)}</th></tr>
               ${s.grupos.map((g) => g.filas.map((t, i) => `
                 <tr class="${i === 0 ? "tar-inicio-temporada" : ""}">
                   <td>${i === 0 ? `${escapar(g.temporada)} <span class="tar-moneda">${tarMonedaEtiqueta(g.filas[0]?.moneda)}</span>${tarRango(g) ? `<br><span class="nota">${tarRango(g)}</span>` : ""}` : ""}</td>
@@ -1141,6 +1159,7 @@ function tarHtmlFinal() {
   const pendientes = tar.tarifas.filter((t) => !t.aprobada).length;
   const filtroTexto = [
     f.operador ? tarNombreOp(f.operador) : "",
+    f.tipo ? (f.tipo === "sin" ? "Sin tipo de actividad" : tarNombreTipo(f.tipo)) : "",
     f.fecha ? `Vigentes el ${tarFechaCorta(f.fecha)}` : "",
     f.texto ? `Búsqueda: ${f.texto}` : ""
   ].filter(Boolean).join(" · ");
@@ -1149,8 +1168,9 @@ function tarHtmlFinal() {
     <div class="tar-filtros">
       ${tarHtmlAnio()}
       <label>Operador <select data-tar-final="operador">${tarOpcionesOperadores(f.operador)}</select></label>
+      <label>Tipo de actividad <select data-tar-final="tipo">${tarOpcionesTipos(f.tipo)}</select></label>
       <label class="tar-filtro-corto">Vigentes el <input type="date" value="${f.fecha}" data-tar-final="fecha"></label>
-      <label class="tar-buscar">Buscar <input id="tarBuscarFinal" type="search" value="${escapar(f.texto)}" placeholder="Servicio o categoría" data-tar-final="texto"></label>
+      <label class="tar-buscar">Buscar <input id="tarBuscarFinal" type="search" value="${escapar(f.texto)}" placeholder="Servicio, categoría o lo que incluye" data-tar-final="texto"></label>
     </div>
     <div class="tar-filtros tar-opciones">
       <label class="check-linea chico"><input type="checkbox" data-tar-final="verNeto" ${f.verNeto ? "checked" : ""}> Mostrar neto</label>
@@ -1170,25 +1190,36 @@ function tarHtmlFinal() {
       <p>Las tarifas aparecen aquí cuando las apruebas en la pestaña Procesar.</p></div>`}`;
 }
 
+// Encabezado de cada servicio en el Tarifario final: nombre, tipo de actividad y lo que incluye
+function tarHtmlServicioFinal(operador_id, servicio) {
+  const ficha = tarFicha(operador_id, servicio);
+  const tipo = tarNombreTipo(ficha?.tipo_id);
+  return `${escapar(servicio)}${tipo ? ` <span class="tcmp-tipo">${escapar(tipo)}</span>` : ""}`
+    + (ficha?.incluye ? `<span class="tar-incluye">Incluye: ${escapar(tarItems(ficha.incluye).join(", "))}</span>` : "");
+}
+
 async function tarExportar() {
   let XLSX;
   try { XLSX = await tarCargarXLSX(); } catch (e) { return fallo(e, ""); }
   const f = tar.final;
   const aFecha = (t) => (t ? new Date(t + "T12:00:00") : "");
   const filas = [...tarFinalFiltradas()].sort(tarOrden).map((t) => {
+    const ficha = tarFicha(t.operador_id, t.servicio);
     const fila = {
-      Operador: tarNombreOp(t.operador_id), Servicio: t.servicio, Temporada: t.temporada,
+      Operador: tarNombreOp(t.operador_id), Servicio: t.servicio,
+      "Tipo de actividad": tarTipoPorId(ficha?.tipo_id)?.nombre ?? "", Temporada: t.temporada,
       Desde: aFecha(t.fecha_inicio), Hasta: aFecha(t.fecha_fin), "Categoría": t.categoria,
       Moneda: t.moneda === "CRC" ? "Colones" : "Dólares"
     };
     if (f.verNeto) { fila.Neto = t.neto; fila.IVA = tarConIva(t) ? "Sí" : "No"; fila["Neto con IVA"] = tarCosto(t); }
     fila.Cash = tarSinCash(t) ? "—" : t.cash;
     fila.TC = t.tc;
+    fila.Incluye = ficha?.incluye ?? "";
     fila.Notas = t.notas ?? "";
     return fila;
   });
   const hoja = XLSX.utils.json_to_sheet(filas, { cellDates: true, dateNF: "dd/mm/yyyy" });
-  hoja["!cols"] = [24, 28, 14, 12, 12, 16, 12, 10, 10, 10, 30].map((w) => ({ wch: w }));
+  hoja["!cols"] = [24, 28, 16, 14, 12, 12, 16, 12, 10, 10, 10, 10, 10, 36, 30].map((w) => ({ wch: w }));
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, `Tarifario ${tar.anio}`);
   XLSX.writeFile(libro, `Tarifario ${tar.anio}.xlsx`);
@@ -1214,6 +1245,7 @@ function tarHtmlAjustes() {
       <div class="fila-form tar-ajustes">
         ${campo("cash_min", "Margen mínimo Cash (%)", "Por debajo se marca en rojo.")}
         ${campo("tc_min", "Margen mínimo TC (%)", "Por debajo se marca en rojo.")}
+        ${campo("tipo_cambio", "Tipo de cambio (₡ por cada $1)", "Solo para comparar tarifas en colones con tarifas en dólares (pestaña Comparar). 0 = no convertir.")}
       </div>
       <p class="nota">Ejemplo con neto de $80 y la casilla IVA marcada: neto con IVA ${dinero(tarCosto({ neto: 80 }))}; Cash sugerido ${dinero(tarSugCash({ neto: 80 }))}; TC sugerido ${dinero(tarSugTc({ neto: 80 }))}.</p>
       <div class="sec-botones"><button type="button" class="btn primario" data-tar="guardar-ajustes">Guardar</button></div>
