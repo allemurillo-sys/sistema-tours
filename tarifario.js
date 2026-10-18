@@ -38,8 +38,8 @@ VISTAS.tarifario = "vistaTarifario";
 const tarEsAdmin = () => app.yo?.rol === "administrador";
 const tarSoloConsulta = () => !tarEsAdmin() && !!app.yo && puede("ver_tarifario");
 const tarTieneAcceso = () => tarEsAdmin() || tarSoloConsulta();
-// Los netos solo los ve quien tiene "Ver costos netos y utilidad"
-const tarPuedeVerNeto = () => tarEsAdmin() || puede("ver_utilidad");
+// Todos los que entran al tarifario ven el neto (con IVA y sin IVA)
+const tarPuedeVerNeto = () => tarTieneAcceso();
 
 function tarRevisarAcceso() {
   $("btnMenuTarifario").hidden = !tarTieneAcceso();
@@ -1150,14 +1150,14 @@ function tarHtmlFinal() {
         ${f.politicas && o?.politicas ? `<div class="tar-politicas">${escapar(o.politicas)}</div>` : ""}
         <div class="tabla-scroll">
           <table class="tabla tar-final">
-            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">Neto con IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th>${consulta ? "" : `<th class="tar-no-imprimir"></th>`}</tr></thead>
+            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto con IVA</th><th class="num">Neto sin IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th>${consulta ? "" : `<th class="tar-no-imprimir"></th>`}</tr></thead>
             <tbody>${porServicio.map((s) => `
               <tr class="fila-grupo"><th colspan="${cols}">${tarHtmlServicioFinal(op.id, s.servicio)}</th></tr>
               ${s.grupos.map((g) => g.filas.map((t, i) => `
                 <tr class="${i === 0 ? "tar-inicio-temporada" : ""}">
                   <td>${i === 0 ? `${escapar(g.temporada)} <span class="tar-moneda">${tarMonedaEtiqueta(g.filas[0]?.moneda)}</span>${tarRango(g) ? `<br><span class="nota">${tarRango(g)}</span>` : ""}` : ""}</td>
                   <td>${escapar(t.categoria)}${t.notas ? `<br><span class="nota">${escapar(t.notas)}</span>` : ""}</td>
-                  ${f.verNeto ? `<td class="num">${tarDinero(t.neto, t.moneda)}</td><td class="num">${tarConIva(t) ? tarDinero(tarCosto(t), t.moneda) : "Sin IVA"}</td>` : ""}
+                  ${f.verNeto ? `<td class="num">${tarConIva(t) ? tarDinero(tarCosto(t), t.moneda) : `<span class="nota">No aplica IVA</span>`}</td><td class="num">${tarDinero(t.neto, t.moneda)}</td>` : ""}
                   <td class="num">${tarSinCash(t) ? `<span class="nota">—</span>` : tarDinero(t.cash, t.moneda)}</td>
                   <td class="num">${tarDinero(t.tc, t.moneda)}</td>
                   ${consulta ? "" : `<td class="acciones-fila tar-no-imprimir"><button type="button" class="enlace" data-tar="revertir" data-id="${t.id}">Revertir</button></td>`}
@@ -1223,7 +1223,7 @@ async function tarExportar() {
       Desde: aFecha(t.fecha_inicio), Hasta: aFecha(t.fecha_fin), "Categoría": t.categoria,
       Moneda: t.moneda === "CRC" ? "Colones" : "Dólares"
     };
-    if (f.verNeto) { fila.Neto = t.neto; fila.IVA = tarConIva(t) ? "Sí" : "No"; fila["Neto con IVA"] = tarCosto(t); }
+    if (f.verNeto) { fila["Neto con IVA"] = tarConIva(t) ? tarCosto(t) : "No aplica"; fila["Neto sin IVA"] = t.neto; fila.IVA = tarConIva(t) ? "Sí" : "No"; }
     fila.Cash = tarSinCash(t) ? "—" : t.cash;
     fila.TC = t.tc;
     fila.Incluye = ficha?.incluye ?? "";
