@@ -31,13 +31,22 @@ const tar = {
   grupos: []           // grupos pintados en Procesar (para los botones de cada temporada)
 };
 
-// ---------- Acceso: el botón del menú solo aparece para administradores ----------
+// ---------- Acceso ----------
+// Administrador: todo el tarifario. Otros usuarios con el permiso "ver_tarifario"
+// (Mantenimiento › Autorizaciones): solo consultan el Tarifario final, sin editar ni revertir.
 VISTAS.tarifario = "vistaTarifario";
 const tarEsAdmin = () => app.yo?.rol === "administrador";
+const tarSoloConsulta = () => !tarEsAdmin() && !!app.yo && puede("ver_tarifario");
+const tarTieneAcceso = () => tarEsAdmin() || tarSoloConsulta();
+// Los netos solo los ve quien tiene "Ver costos netos y utilidad"
+const tarPuedeVerNeto = () => tarEsAdmin() || puede("ver_utilidad");
 
 function tarRevisarAcceso() {
-  $("btnMenuTarifario").hidden = !tarEsAdmin();
-  if (!tarEsAdmin() && !$("vistaTarifario").hidden) mostrarVista("reservas");
+  $("btnMenuTarifario").hidden = !tarTieneAcceso();
+  // En modo consulta solo queda la pestaña Tarifario final
+  document.querySelectorAll(".pestana[data-tar-pestana]").forEach((b) => (b.hidden = tarSoloConsulta() && b.dataset.tarPestana !== "final"));
+  if (tarSoloConsulta()) { tar.pestana = "final"; tar.editando = null; }
+  if (!tarTieneAcceso() && !$("vistaTarifario").hidden) mostrarVista("reservas");
 }
 // panel.js escribe el nombre del usuario cada vez que carga su perfil
 new MutationObserver(tarRevisarAcceso).observe($("usuarioNombre"), { childList: true, characterData: true, subtree: true });
@@ -45,14 +54,15 @@ tarRevisarAcceso(); // por si el perfil ya se cargó antes que este archivo
 
 document.addEventListener("vista-abierta", (e) => {
   if (e.detail !== "tarifario") return;
-  if (!tarEsAdmin()) return mostrarVista("reservas");
+  if (!tarTieneAcceso()) return mostrarVista("reservas");
   tarAbrir();
 });
 document.addEventListener("datos-actualizados", () => {
-  if (!$("vistaTarifario").hidden && !tar.editando && tarEsAdmin()) tarAbrir();
+  if (!$("vistaTarifario").hidden && !tar.editando && tarTieneAcceso()) tarAbrir();
 });
 
 document.querySelectorAll(".pestana[data-tar-pestana]").forEach((b) => b.addEventListener("click", () => {
+  if (tarSoloConsulta() && b.dataset.tarPestana !== "final") return;
   tar.pestana = b.dataset.tarPestana;
   tar.editando = null;
   tarPintar();
@@ -193,6 +203,7 @@ async function tarOperadorId(nombre) {
 
 // ---------- Pintar ----------
 function tarPintar() {
+  if (tarSoloConsulta()) { tar.pestana = "final"; tar.editando = null; tar.final.verNeto &&= tarPuedeVerNeto(); }
   document.querySelectorAll(".pestana[data-tar-pestana]").forEach((b) => {
     const activa = b.dataset.tarPestana === tar.pestana;
     b.classList.toggle("activa", activa);
@@ -1122,7 +1133,8 @@ function tarHtmlFinal() {
   const f = tar.final;
   const lista = tarFinalFiltradas();
   const ops = tarAgrupar(lista);
-  const cols = f.verNeto ? 8 : 6;
+  const consulta = tarSoloConsulta();
+  const cols = (f.verNeto ? 8 : 6) - (consulta ? 1 : 0);
 
   const bloques = ops.map((op) => {
     const o = tarOperador(op.id);
@@ -1138,7 +1150,7 @@ function tarHtmlFinal() {
         ${f.politicas && o?.politicas ? `<div class="tar-politicas">${escapar(o.politicas)}</div>` : ""}
         <div class="tabla-scroll">
           <table class="tabla tar-final">
-            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">Neto con IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th><th class="tar-no-imprimir"></th></tr></thead>
+            <thead><tr><th>Temporada</th><th>Categoría</th>${f.verNeto ? `<th class="num">Neto</th><th class="num">Neto con IVA</th>` : ""}<th class="num">Cash</th><th class="num">TC</th>${consulta ? "" : `<th class="tar-no-imprimir"></th>`}</tr></thead>
             <tbody>${porServicio.map((s) => `
               <tr class="fila-grupo"><th colspan="${cols}">${tarHtmlServicioFinal(op.id, s.servicio)}</th></tr>
               ${s.grupos.map((g) => g.filas.map((t, i) => `
@@ -1148,7 +1160,7 @@ function tarHtmlFinal() {
                   ${f.verNeto ? `<td class="num">${tarDinero(t.neto, t.moneda)}</td><td class="num">${tarConIva(t) ? tarDinero(tarCosto(t), t.moneda) : "Sin IVA"}</td>` : ""}
                   <td class="num">${tarSinCash(t) ? `<span class="nota">—</span>` : tarDinero(t.cash, t.moneda)}</td>
                   <td class="num">${tarDinero(t.tc, t.moneda)}</td>
-                  <td class="acciones-fila tar-no-imprimir"><button type="button" class="enlace" data-tar="revertir" data-id="${t.id}">Revertir</button></td>
+                  ${consulta ? "" : `<td class="acciones-fila tar-no-imprimir"><button type="button" class="enlace" data-tar="revertir" data-id="${t.id}">Revertir</button></td>`}
                 </tr>`).join("")).join("")}`).join("")}
             </tbody>
           </table>
@@ -1156,7 +1168,7 @@ function tarHtmlFinal() {
       </section>`;
   }).join("");
 
-  const pendientes = tar.tarifas.filter((t) => !t.aprobada).length;
+  const pendientes = consulta ? 0 : tar.tarifas.filter((t) => !t.aprobada).length;
   const filtroTexto = [
     f.operador ? tarNombreOp(f.operador) : "",
     f.tipo ? (f.tipo === "sin" ? "Sin tipo de actividad" : tarNombreTipo(f.tipo)) : "",
@@ -1173,7 +1185,7 @@ function tarHtmlFinal() {
       <label class="tar-buscar">Buscar <input id="tarBuscarFinal" type="search" value="${escapar(f.texto)}" placeholder="Servicio, categoría o lo que incluye" data-tar-final="texto"></label>
     </div>
     <div class="tar-filtros tar-opciones">
-      <label class="check-linea chico"><input type="checkbox" data-tar-final="verNeto" ${f.verNeto ? "checked" : ""}> Mostrar neto</label>
+      ${tarPuedeVerNeto() ? `<label class="check-linea chico"><input type="checkbox" data-tar-final="verNeto" ${f.verNeto ? "checked" : ""}> Mostrar neto</label>` : ""}
       <label class="check-linea chico"><input type="checkbox" data-tar-final="politicas" ${f.politicas ? "checked" : ""}> Incluir políticas</label>
       <span class="tar-espacio"></span>
       ${lista.length ? `
@@ -1187,7 +1199,7 @@ function tarHtmlFinal() {
       ${filtroTexto ? `<p class="nota">${escapar(filtroTexto)}</p>` : ""}
     </div>
     ${lista.length ? bloques : `<div class="tar-vacio"><p><strong>No hay tarifas aprobadas que mostrar.</strong></p>
-      <p>Las tarifas aparecen aquí cuando las apruebas en la pestaña Procesar.</p></div>`}`;
+      <p>${consulta ? "Todavía no hay tarifas publicadas para este año." : "Las tarifas aparecen aquí cuando las apruebas en la pestaña Procesar."}</p></div>`}`;
 }
 
 // Encabezado de cada servicio en el Tarifario final: nombre, tipo de actividad y lo que incluye
@@ -1271,6 +1283,7 @@ $("tarContenido").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-tar]");
   if (!b) return;
   const accion = b.dataset.tar;
+  if (tarSoloConsulta() && accion !== "exportar" && accion !== "imprimir") return;
   const grupo = () => tar.grupos[Number(b.dataset.g)];
 
   if (accion === "cancelar") { tar.editando = null; return tarPintar(); }
@@ -1312,7 +1325,7 @@ $("tarContenido").addEventListener("click", async (e) => {
 
 $("tarContenido").addEventListener("change", async (e) => {
   const el = e.target;
-  if (el.dataset.tarCampo) return tarGuardarCampo(el);
+  if (el.dataset.tarCampo) return tarSoloConsulta() ? undefined : tarGuardarCampo(el);
   if (el.id === "tarAnio") {
     tar.anio = Number(el.value);
     tar.importacion = null;

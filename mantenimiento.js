@@ -13,6 +13,7 @@ const PERMISOS = [
   { id: "registrar_pagos", nombre: "Registrar pagos", detalle: "Definir el prepago, registrar y eliminar pagos de las reservas." },
   { id: "reabrir_finalizadas", nombre: "Reabrir reservas finalizadas", detalle: "Devolver una reserva finalizada a la columna Reserva para revisarla." },
   { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." },
+  { id: "ver_tarifario", nombre: "Consultar el tarifario final", detalle: "Ver, buscar, imprimir y descargar en Excel las tarifas aprobadas del Tarifario, sin poder editarlas ni revertirlas. Los netos solo se muestran si también tiene \"Ver costos netos y utilidad\"." },
   { id: "cancelar_reservas", nombre: "Cancelar reservas confirmadas", detalle: "Cancelar o reactivar reservas que el cliente ya confirmó. Cualquier usuario puede cancelar cotizaciones sin confirmar." }
 ];
 

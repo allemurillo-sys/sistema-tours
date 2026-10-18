@@ -712,7 +712,7 @@ async function tarAplicarSugerencias(btn) {
 // ---------- Eventos ----------
 $("tarContenido").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-tcmp]");
-  if (!b) return;
+  if (!b || tarSoloConsulta()) return;
   const accion = b.dataset.tcmp;
   if (accion === "modo") { tar.comparar.modo = b.dataset.modo; tarPintar(); return window.scrollTo({ top: $("vistaTarifario").offsetTop }); }
   if (accion === "quitar-sel") { tar.seleccion.delete(Number(b.dataset.id)); tarRecordarSel(); return tarPintar(); }
@@ -753,6 +753,7 @@ $("tarContenido").addEventListener("focusin", (e) => {
 
 $("tarContenido").addEventListener("change", (e) => {
   const el = e.target;
+  if (tarSoloConsulta()) return;
   if (el.dataset.tcmpCampo) return tarGuardarCampoFicha(el);
   if (el.dataset.tselCampo) return tarGuardarCampoSel(el);
   if (el.hasAttribute("data-tcmp-sel")) {
