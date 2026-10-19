@@ -49,7 +49,7 @@ function htmlListaServicios(editable) {
       .join("");
     return `
       <tr class="${s.activo ? "" : "inactivo"}">
-        <td><strong>${escapar(s.nombre)}</strong>${s.duracion_min ? `<br><span class="nota">${s.duracion_min} min</span>` : ""}</td>
+        <td><strong>${escapar(s.nombre)}</strong>${typeof tarEtiquetaServicio === "function" ? tarEtiquetaServicio(s.id) : ""}${s.duracion_min ? `<br><span class="nota">${s.duracion_min} min</span>` : ""}</td>
         <td>${escapar(nombreOperador(s.operador_id)) || `<span class="nota">Sin operador</span>`}</td>
         <td>${TRANSPORTE_TEXTO[s.transporte] ?? ""}</td>
         <td>${precios || `<span class="nota">Sin precios</span>`}</td>
@@ -152,6 +152,7 @@ function htmlFormServicio(ed) {
       <label class="check-linea"><input id="fsActivo" type="checkbox" ${s.activo !== false ? "checked" : ""}> Activo (aparece en el formulario de los clientes)</label>
 
       <h4>Precios por tipo de cliente</h4>
+      ${s.id && typeof tarAvisoServicio === "function" ? tarAvisoServicio(s.id) : ""}
       <p class="nota">Deja ambos campos vacíos en los tipos de cliente que no aplican a este servicio.</p>
       <div class="tabla-scroll">
         <table class="tabla precios">
@@ -365,7 +366,7 @@ function htmlListaOperadores(editable) {
     const servicios = app.servicios.filter((s) => s.operador_id === o.id).map((s) => escapar(s.nombre)).join(", ");
     return `
       <tr class="${o.activo ? "" : "inactivo"}">
-        <td><strong>${escapar(o.nombre)}</strong>${o.contacto ? `<br><span class="nota">${escapar(o.contacto)}</span>` : ""}</td>
+        <td><strong>${escapar(o.nombre)}</strong>${typeof tarEtiquetaOperador === "function" ? tarEtiquetaOperador(o.id) : ""}${o.contacto ? `<br><span class="nota">${escapar(o.contacto)}</span>` : ""}</td>
         <td>${escapar(o.telefono ?? "")}</td>
         <td>${o.correo ? `<a href="mailto:${escapar(o.correo)}">${escapar(o.correo)}</a>` : ""}</td>
         <td>${servicios || `<span class="nota">Ninguno</span>`}</td>

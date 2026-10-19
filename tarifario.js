@@ -218,6 +218,7 @@ function tarPintar() {
   else if (tar.pestana === "operadores") h = tarHtmlOperadores();
   else if (tar.pestana === "final") h = tarHtmlFinal();
   else if (tar.pestana === "comparar") h = tarHtmlComparar();
+  else if (tar.pestana === "conexion") h = tarHtmlConexion();
   else h = tarHtmlAjustes();
   $("tarContenido").innerHTML = h;
   $("tarContenido").querySelector("[autofocus]")?.focus();

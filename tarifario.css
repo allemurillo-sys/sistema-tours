@@ -170,3 +170,7 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
   .tcmp-seleccion { font-size: 9pt; }
   .tcmp-seleccion .solo-impresion { display: block; }
 }
+
+/* Conexión Tarifario → Servicios */
+.tsync-pendiente td:first-child { box-shadow: inset 4px 0 0 var(--amarillo); }
+.tsync-cambia strong { color: #8A6400; }
