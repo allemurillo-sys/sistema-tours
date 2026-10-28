@@ -9,7 +9,7 @@ const ROLES = ["colaborador", "jefatura", "gerente", "administrador"];
 const NOMBRE_ROL = { colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
 const PERMISOS = [
   { id: "ver_utilidad", nombre: "Ver costos netos y utilidad", detalle: "Muestra el neto y la utilidad en cotizaciones, servicios y reportes." },
-  { id: "editar_catalogo", nombre: "Modificar el catálogo", detalle: "Crear y editar servicios, precios, operadores y propiedades." },
+  { id: "editar_catalogo", nombre: "Modificar el catálogo", detalle: "Crear y editar las propiedades (los servicios, precios y operadores se administran en el Tarifario)." },
   { id: "registrar_pagos", nombre: "Registrar pagos", detalle: "Definir el prepago, registrar y eliminar pagos de las reservas." },
   { id: "reabrir_finalizadas", nombre: "Reabrir reservas finalizadas", detalle: "Devolver una reserva finalizada a la columna Reserva para revisarla." },
   { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." },

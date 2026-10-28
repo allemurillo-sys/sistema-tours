@@ -2,7 +2,8 @@
 // SECCIÓN TARIFARIO (solo administradores)
 // Tarifas de los tour operadores: importar desde Excel, escribir los precios
 // Cash y TC (el sistema calcula el margen), aprobar y consultar el tarifario final.
-// Está aislada del sistema de reservas: usa sus propias tablas (tar_...).
+// Es la fuente única del sistema: desde aquí salen los operadores, servicios, tipos de actividad,
+// fotos y precios que usan el formulario del cliente y el panel (ver tarifario-catalogo.js).
 // Usa las utilidades de panel.js ($, db, app, escapar, dinero, fecha, avisar, fallo, conBoton, pad, aTexto).
 // =====================================================
 
@@ -174,7 +175,8 @@ async function tarCargar() {
   }
   tar.operadores = op.data;
   aj.data.forEach((a) => (tar.ajustes[a.clave] = Number(a.valor)));
-  [tar.tarifas] = await Promise.all([tarLeerTarifas(tar.anio), tarLeerFichas()]);
+  [tar.tarifas] = await Promise.all([tarLeerTarifas(tar.anio), tarLeerFichas(),
+    typeof tarLeerCatalogoExtra === "function" ? tarLeerCatalogoExtra() : null]);
 }
 
 async function tarLeerTarifas(anio) {
@@ -212,12 +214,16 @@ function tarPintar() {
   let h;
   if (tar.editando?.tipo === "operador") h = tarHtmlFormOperador();
   else if (tar.editando?.tipo === "moneda-masiva") h = tarHtmlFormMoneda();
+  else if (tar.editando?.tipo === "ficha") h = tarHtmlFichaCliente();
+  else if (tar.editando?.tipo === "tipo") h = tarHtmlFormTipo();
   else if (tar.editando) h = tarHtmlEditor();
   else if (tar.pestana === "procesar") h = tarHtmlProcesar();
   else if (tar.pestana === "importar") h = tarHtmlImportar();
   else if (tar.pestana === "operadores") h = tarHtmlOperadores();
   else if (tar.pestana === "final") h = tarHtmlFinal();
   else if (tar.pestana === "comparar") h = tarHtmlComparar();
+  else if (tar.pestana === "catalogo") h = tarHtmlCatalogo();
+  else if (tar.pestana === "tipos") h = tarHtmlTipos();
   else if (tar.pestana === "conexion") h = tarHtmlConexion();
   else h = tarHtmlAjustes();
   $("tarContenido").innerHTML = h;
@@ -589,8 +595,8 @@ function tarHtmlCamposGrupo(d, conAnio) {
     </div>
     <div class="fila-form">
       <label>Temporada <input id="tarEdTemporada" list="tarListaTemporadas" value="${escapar(d.temporada ?? "Regular")}"></label>
-      <label>Desde <input id="tarEdDesde" type="date" value="${d.fecha_inicio ?? ""}"></label>
-      <label>Hasta <input id="tarEdHasta" type="date" value="${d.fecha_fin ?? ""}"></label>
+      <label>Desde <input id="tarEdDesde" type="date" value="${d.fecha_inicio ?? ""}" required></label>
+      <label>Hasta <input id="tarEdHasta" type="date" value="${d.fecha_fin ?? ""}" required></label>
       <label class="tar-filtro-corto">Moneda
         <select id="tarEdMoneda">
           <option value="USD" ${d.moneda === "CRC" ? "" : "selected"}>Dólares (USD)</option>
@@ -598,7 +604,8 @@ function tarHtmlCamposGrupo(d, conAnio) {
         </select>
       </label>
     </div>
-    <p class="nota">Si la tarifa aplica todo el año, deja las fechas vacías. La moneda se aplica a todo este tour/temporada.</p>`;
+    <p class="nota">Las fechas son obligatorias: el precio que ve el cliente depende de la fecha de la actividad.
+      Si la tarifa aplica todo el año, <button type="button" class="enlace" data-tar="todo-anio">usa del 1 de enero al 31 de diciembre</button>. La moneda se aplica a todo este tour/temporada.</p>`;
 }
 
 function tarHtmlFilaCategoria(c = {}) {
@@ -684,7 +691,8 @@ function tarLeerCamposGrupo() {
   };
   if (!d.operador) return avisar("Escribe el operador.", "error");
   if (!d.servicio) return avisar("Escribe el servicio.", "error");
-  if (d.fecha_inicio && d.fecha_fin && d.fecha_inicio > d.fecha_fin) return avisar("La fecha Desde no puede ser posterior a Hasta.", "error");
+  if (!d.fecha_inicio || !d.fecha_fin) return avisar("Escribe las fechas Desde y Hasta de la temporada (son obligatorias).", "error");
+  if (d.fecha_inicio > d.fecha_fin) return avisar("La fecha Desde no puede ser posterior a Hasta.", "error");
   return d;
 }
 const tarNumCampo = (el) => (el.value.trim() === "" ? null : tarR2(el.value));
@@ -835,7 +843,7 @@ function tarHtmlImportar() {
         <label>Archivo de Excel <input id="tarArchivo" type="file" accept=".xlsx,.xls,.csv"></label>
         <button type="button" class="btn" data-tar="plantilla">Descargar plantilla</button>
       </div>
-      <p class="nota">Columnas que se reconocen: Operador, Servicio, Temporada, Desde, Hasta, Categoría, Neto, Cash, TC, Moneda, Notas, Tipo de actividad, Comparar como e Incluye. Cash, TC, Moneda y las tres últimas son opcionales (si no se indica, la moneda es Dólares). El tipo de actividad debe llamarse igual que en Servicios › Tipos de actividad.</p>
+      <p class="nota">Columnas que se reconocen: Operador, Servicio, Temporada, Desde, Hasta, Categoría, Neto, Cash, TC, Moneda, Notas, Tipo de actividad, Comparar como e Incluye. Desde y Hasta son obligatorias (si la temporada se llama "Todo el año" y no tiene fechas, se usa del 1 de enero al 31 de diciembre del año elegido). Cash, TC, Moneda y las tres últimas son opcionales (si no se indica, la moneda es Dólares). El tipo de actividad debe llamarse igual que en Tarifario › Tipos de actividad.</p>
     </div>
     ${vista}`;
 }
@@ -922,7 +930,7 @@ async function tarLeerArchivo(archivo) {
     // Datos del servicio (opcionales): tipo de actividad, comparar como e incluye
     const tipoTexto = texto(f.tipo_actividad);
     f.tipo_id = tarTipoCelda(tipoTexto);
-    if (f.tipo_id === undefined) { f.aviso = `El tipo de actividad "${tipoTexto}" no existe en Servicios: no se asigna`; f.tipo_id = null; }
+    if (f.tipo_id === undefined) { f.aviso = `El tipo de actividad "${tipoTexto}" no existe en Tarifario › Tipos de actividad: no se asigna`; f.tipo_id = null; }
     f.comparar = texto(f.comparar) || null; f.incluye = texto(f.incluye) || null;
     const desde = tarFechaCelda(f.fecha_inicio, XLSX), hasta = tarFechaCelda(f.fecha_fin, XLSX);
 
@@ -936,7 +944,13 @@ async function tarLeerArchivo(archivo) {
     else if (f.moneda === undefined) f.error = "Moneda no válida (usa Dólares o Colones)";
     else if (desde === undefined || hasta === undefined) f.error = "Fecha no válida (usa día/mes/año)";
     else if (desde && hasta && desde > hasta) f.error = "Desde es posterior a Hasta";
-    f.fecha_inicio = desde || null; f.fecha_fin = hasta || null;
+    else if (!desde && !hasta && tarNorm(f.temporada) === "todo el ano") {
+      f.aviso = [f.aviso, `Sin fechas: se usará todo ${tar.anio} (1 ene al 31 dic)`].filter(Boolean).join(" · ");
+    }
+    else if (!desde || !hasta) f.error = "Faltan las fechas Desde y Hasta (son obligatorias)";
+    const todoAnio = !f.error && !desde && !hasta;
+    f.fecha_inicio = todoAnio ? `${tar.anio}-01-01` : desde || null;
+    f.fecha_fin = todoAnio ? `${tar.anio}-12-31` : hasta || null;
 
     if (!f.error) {
       const clave = [f.operador, f.servicio, f.temporada, f.categoria].map(tarNorm).join("|");
@@ -1037,7 +1051,7 @@ function tarHtmlOperadores() {
         <h3>Operadores del tarifario</h3>
         <button type="button" class="btn primario" data-tar="nuevo-operador">Nuevo operador</button>
       </div>
-      <p class="nota">Aquí guardas el contacto y las políticas de cada operador (cancelación, pagos, edades). Los operadores también se crean solos al importar un Excel. Esta lista es independiente de la de Servicios.</p>
+      <p class="nota">Aquí guardas el contacto y las políticas de cada operador (cancelación, pagos, edades). Los operadores también se crean solos al importar un Excel. Es la lista única de proveedores: el resto del sistema la toma de aquí.</p>
       ${tar.operadores.length ? `
         <div class="tabla-scroll">
           <table class="tabla">
@@ -1258,11 +1272,12 @@ function tarHtmlAjustes() {
       <div class="fila-form tar-ajustes">
         ${campo("cash_min", "Margen mínimo Cash (%)", "Por debajo se marca en rojo.")}
         ${campo("tc_min", "Margen mínimo TC (%)", "Por debajo se marca en rojo.")}
-        ${campo("tipo_cambio", "Tipo de cambio (₡ por cada $1)", "Solo para comparar tarifas en colones con tarifas en dólares (pestaña Comparar). 0 = no convertir.")}
+        ${campo("tipo_cambio", "Tipo de cambio (₡ por cada $1)", "Convierte a dólares las tarifas en colones: para comparar y para el precio que ve el cliente. 0 = no convertir (esas tarifas no se muestran al cliente).")}
       </div>
       <p class="nota">Ejemplo con neto de $80 y la casilla IVA marcada: neto con IVA ${dinero(tarCosto({ neto: 80 }))}; Cash sugerido ${dinero(tarSugCash({ neto: 80 }))}; TC sugerido ${dinero(tarSugTc({ neto: 80 }))}.</p>
       <div class="sec-botones"><button type="button" class="btn primario" data-tar="guardar-ajustes">Guardar</button></div>
-    </div>`;
+    </div>
+    ${typeof tarHtmlCategorias === "function" ? tarHtmlCategorias() : ""}`;
 }
 
 async function tarGuardarAjustes(btn) {
@@ -1306,6 +1321,12 @@ $("tarContenido").addEventListener("click", async (e) => {
     const g = grupo();
     tar.editando = { tipo: "nuevo", base: { operador: tarNombreOp(g.operador_id), servicio: g.servicio, categorias: g.filas.map((t) => t.categoria), moneda: g.filas[0]?.moneda } };
     return tarPintar();
+  }
+  if (accion === "todo-anio") {
+    const anio = Number($("tarEdAnio")?.value) || Number(($("tarEdDesde").value || "").slice(0, 4)) || tar.anio;
+    $("tarEdDesde").value = `${anio}-01-01`;
+    $("tarEdHasta").value = `${anio}-12-31`;
+    return;
   }
   if (accion === "agregar-categoria") return $("tarEdCategorias").insertAdjacentHTML("beforeend", tarHtmlFilaCategoria());
   if (accion === "guardar-editor") return tarGuardarEditor(b);

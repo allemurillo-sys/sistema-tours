@@ -174,3 +174,43 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
 /* Conexión Tarifario → Servicios */
 .tsync-pendiente td:first-child { box-shadow: inset 4px 0 0 var(--amarillo); }
 .tsync-cambia strong { color: #8A6400; }
+
+/* =====================================================
+   CATÁLOGO PARA CLIENTES (tarifario-catalogo.js)
+   ===================================================== */
+.tcat-tabla td { vertical-align: top; }
+.tcat-tabla td:first-child { min-width: 220px; }
+.tabla tr.tcat-con-alerta td:first-child { box-shadow: inset 4px 0 0 var(--rojo); }
+.tcat-varios {
+  display: inline-block; font-size: .72rem; font-weight: 700; background: var(--amarillo-suave); color: #6B4E00;
+  border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; white-space: nowrap;
+}
+.tcat-mini { display: flex; gap: 10px; align-items: center; min-width: 210px; }
+.tcat-mini img, .tcat-sin-foto {
+  flex: none; width: 64px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--fondo);
+  display: grid; place-items: center; font-size: 1.2rem;
+}
+.tcat-falta { color: var(--rojo); }
+.tcat-alertas { list-style: none; margin: 0; padding: 0; font-size: .85rem; min-width: 220px; }
+.tcat-alertas li { padding-left: 14px; position: relative; margin-bottom: 3px; }
+.tcat-alertas li::before { content: ""; position: absolute; left: 0; top: .5em; width: 7px; height: 7px; border-radius: 50%; }
+.tcat-alerta { color: var(--rojo); }
+.tcat-alerta::before { background: var(--rojo); }
+.tcat-aviso { color: #6B4E00; }
+.tcat-aviso::before { background: var(--amarillo); }
+.tcat-alertas .enlace { font-size: .85rem; padding: 0; }
+
+.tcat-subir { cursor: pointer; }
+.tcat-fotos { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.tcat-foto { position: relative; background: var(--fondo); border-radius: 10px; overflow: hidden; border: 1px solid var(--linea); }
+.tcat-foto img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.tcat-principal {
+  position: absolute; top: 8px; left: 8px; background: var(--verde); color: #fff; font-size: .72rem; font-weight: 700;
+  border-radius: 999px; padding: 2px 9px;
+}
+.tcat-foto-acciones { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--blanco); }
+.tcat-foto-acciones .enlace { margin-left: auto; }
+
+.tcat-precios { list-style: none; margin: 10px 0 0; padding: 0; max-width: 420px; }
+.tcat-precios li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--linea); }
+.tcat-precios strong { font-variant-numeric: tabular-nums; }

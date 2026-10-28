@@ -12,6 +12,8 @@
 // La actualización es automática (al cambiar algo del tarifario y al entrar al panel)
 // y solo la hace un administrador. La pestaña "Servicios" del Tarifario muestra qué se envía.
 // Usa utilidades de panel.js, servicios.js y tarifario.js.
+// Mientras el panel siga tomando los precios de servicio_precios (hasta la etapa 3 del plan),
+// esta copia se mantiene. Las categorías usan la equivalencia de Tarifario › Ajustes (tar_categorias).
 // =====================================================
 
 const tarSync = {
@@ -26,7 +28,7 @@ const tarSync = {
 const tarFromOriginal = db.from.bind(db);
 db.from = function (tabla) {
   const q = tarFromOriginal(tabla);
-  if (["tar_tarifas", "tar_fichas", "tar_operadores", "tar_ajustes"].includes(tabla)) {
+  if (["tar_tarifas", "tar_fichas", "tar_operadores", "tar_ajustes", "tar_categorias"].includes(tabla)) {
     ["insert", "update", "upsert", "delete"].forEach((m) => {
       const original = q[m]?.bind(q);
       if (original) q[m] = (...args) => { tarProgramarSync(); return original(...args); };
@@ -67,6 +69,9 @@ const TAR_SINONIMOS = [
 const tarNormCat = (s) => tarNorm(String(s ?? "").replace(/\(.*?\)/g, ""));
 const tarSingular = (s) => s.replace(/(es|s)$/, "");
 function tarCategoriaCliente(nombre) {
+  // Primero la equivalencia que definió el administrador (categoria_id vacío = no se muestra)
+  const m = tar.mapaCategorias?.get(tarNorm(nombre));
+  if (m) return m.categoria_id ? app.categorias.find((c) => c.id === Number(m.categoria_id)) || null : null;
   const n = tarNormCat(nombre);
   const grupo = TAR_SINONIMOS.find((g) => g.includes(n)) || [n];
   return app.categorias.find((c) => grupo.includes(tarNormCat(c.nombre)))
@@ -96,13 +101,15 @@ async function tarSyncCargar() {
     tarifas.push(...data);
     if (data.length < 1000) break;
   }
-  const [op, fi, aj, prueba1, prueba2] = await Promise.all([
+  const [op, fi, aj, prueba1, prueba2, mc] = await Promise.all([
     tarFromOriginal("tar_operadores").select("*"),
     tarFromOriginal("tar_fichas").select("*"),
     tarFromOriginal("tar_ajustes").select("*"),
     tarFromOriginal("tar_fichas").select("servicio_id").limit(1),
-    tarFromOriginal("tar_operadores").select("operador_id").limit(1)
+    tarFromOriginal("tar_operadores").select("operador_id").limit(1),
+    tarFromOriginal("tar_categorias").select("*")
   ]);
+  if (!mc.error) tar.mapaCategorias = new Map(mc.data.map((x) => [x.clave, x]));
   for (const r of [op, fi, aj]) if (r.error) throw r.error;
   tarSync.faltaSql = !!(prueba1.error || prueba2.error);
   aj.data.forEach((a) => (tar.ajustes[a.clave] = Number(a.valor)));
@@ -155,7 +162,10 @@ function tarSyncPlan(d) {
     [...porCategoria.values()].sort((a, b) => tarOrdenCat(a[0].categoria, b[0].categoria)).forEach((filas) => {
       const { t, cuando } = tarVigente(filas, hoy);
       const categoria = tarCategoriaCliente(t.categoria);
-      if (!categoria) return avisos.push(`La categoría "${t.categoria}" no existe en Servicios (tipos de cliente): no se envía.`);
+      if (!categoria) {
+        if (!tar.mapaCategorias?.has(tarNorm(t.categoria))) avisos.push(`La categoría "${t.categoria}" no tiene equivalencia (Tarifario › Ajustes): no se envía.`);
+        return;
+      }
       let rack = t.tc, neto = tarCosto(t);
       if (t.moneda === "CRC") {
         if (!tc) return avisos.push(`${t.categoria}: la tarifa está en colones y falta el tipo de cambio en Tarifario › Ajustes.`);
@@ -268,7 +278,7 @@ async function tarSincronizar({ silencioso = false } = {}) {
     const hubo = res && (res.operadores || res.nuevos || res.actualizados || res.precios);
     if (hubo) {
       avisar(`Servicios actualizado desde el tarifario: ${[
-        res.nuevos && `${res.nuevos} servicio(s) nuevo(s), ocultos hasta que los actives`,
+        res.nuevos && `${res.nuevos} servicio(s) nuevo(s), ocultos hasta que completes su ficha en Tarifario › Catálogo`,
         res.precios && `${res.precios} precio(s)`,
         res.actualizados && `${res.actualizados} servicio(s) con tipo u operador corregido`,
         res.operadores && `${res.operadores} operador(es) nuevo(s)`
@@ -296,7 +306,7 @@ function tarGuardarVinculos(d) {
 
 function tarRepintarDespuesSync() {
   if (!$("vistaServicios").hidden && !catalogo.editando) pintarCatalogo();
-  if (!$("vistaTarifario").hidden && tar.pestana === "conexion" && !tar.editando) tarPintar();
+  if (!$("vistaTarifario").hidden && ["conexion", "catalogo"].includes(tar.pestana) && !tar.editando) tarPintar();
 }
 
 // ---------- Marcas que usa servicios.js ----------

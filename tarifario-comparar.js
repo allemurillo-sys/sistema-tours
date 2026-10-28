@@ -659,7 +659,7 @@ function tarHtmlClasificar() {
       ${sugeribles ? `<button type="button" class="btn" data-tcmp="aplicar-sugerencias">Aplicar las ${sugeribles} sugerencia(s)</button>` : ""}
     </div>
     <div class="tar-ayuda">
-      <p><strong>Tipo de actividad:</strong> el mismo de Servicios (Aventura, Naturaleza…). Sirve para filtrar el Tarifario final y la comparación.</p>
+      <p><strong>Tipo de actividad:</strong> los de la pestaña Tipos de actividad (Aventura, Naturaleza…). Sirve para filtrar el Tarifario final y la comparación.</p>
       <p><strong>Comparar como:</strong> escribe el mismo nombre en los servicios que son iguales o parecidos aunque cada operador los llame distinto
         (por ejemplo "Canopy" para "Canopy Tour" y "Zipline 12 cables"). Los que se llaman exactamente igual se comparan solos.</p>
       <p><strong>Incluye:</strong> sepáralo con comas y escríbelo igual en todos los operadores para que la comparación encuentre las diferencias. Toca un elemento de la lista de abajo para agregarlo a la última casilla Incluye que usaste.</p>
