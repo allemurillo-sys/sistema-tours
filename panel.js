@@ -84,6 +84,8 @@ const app = {
   verCanceladas: false,
   actualizando: false,
   actual: null,            // { cot, solicitudes, actividades, pagos, bitacora }
+  tarifas: new Map(),      // "servicio|fecha" → tarifa de la temporada (TC, Cash y neto por tipo de cliente) y otros proveedores
+  codigos: [],             // códigos de reserva (R00001…) para buscar en el tablero
   editandoCliente: false,
   temporizador: null
 };
@@ -157,6 +159,59 @@ function netoBase(servicioId, categoriaId) {
   const p = app.precios.find((x) => x.servicio_id === Number(servicioId) && x.categoria_id === Number(categoriaId));
   return p ? Number(p.neto) || 0 : 0;
 }
+// =====================================================
+// TARIFAS DEL TARIFARIO SEGÚN LA FECHA DE LA ACTIVIDAD
+// Precio TC o Cash de la temporada que cubre la fecha, neto del operador con IVA (en dólares)
+// y los otros proveedores de la misma actividad. Si no hay tarifa: "tarifa pendiente".
+// =====================================================
+const TARIFA_TIPOS = { tc: "TC", cash: "Cash", manual: "Manual", pendiente: "Tarifa pendiente" };
+const claveTarifa = (servicioId, f) => `${Number(servicioId)}|${f}`;
+const tarifaDe = (a) => (a?.servicio_id && a.fecha ? app.tarifas.get(claveTarifa(a.servicio_id, a.fecha)) : null);
+const tienePrecios = (t) => !!t?.precios?.some((p) => p.tc != null);
+const tieneCash = (t) => !!t?.precios?.some((p) => p.cash != null);
+const precioTarifa = (t, categoriaId, tipo) => {
+  const p = t?.precios?.find((x) => x.categoria_id === Number(categoriaId));
+  return p ? (tipo === "cash" ? p.cash : p.tc) ?? null : null;
+};
+const netoTarifa = (t, categoriaId) => t?.precios?.find((x) => x.categoria_id === Number(categoriaId))?.neto ?? null;
+
+async function cargarTarifas(lista) {
+  const faltan = new Map();
+  lista.forEach((x) => {
+    const k = x.servicio_id && x.fecha ? claveTarifa(x.servicio_id, x.fecha) : null;
+    if (k && !app.tarifas.has(k)) faltan.set(k, { servicio_id: Number(x.servicio_id), fecha: x.fecha });
+  });
+  if (!faltan.size) return;
+  const { data, error } = await db.rpc("tarifas_actividades", { p_items: [...faltan.values()] });
+  if (error) { console.error("Tarifas:", error); return; }   // sin tarifas se trabaja con precios manuales
+  (data || []).forEach((t) => app.tarifas.set(claveTarifa(t.servicio_id, t.fecha), t));
+}
+
+// Pone en la actividad los precios de la temporada según el tipo de tarifa (TC, Cash o Manual).
+// El neto siempre viene del tarifario. Sin tarifa para esa fecha queda como "tarifa pendiente".
+function aplicarTarifa(a, tipo = a.tarifa_tipo) {
+  const t = tarifaDe(a);
+  if (!tienePrecios(t)) {
+    if (tipo !== "manual") {
+      a.tarifa_tipo = "pendiente";
+      a.participantes.forEach((p) => { p.precio_unitario = 0; p.neto_unitario = 0; });
+    }
+    return a;
+  }
+  if (tipo === "pendiente") tipo = "tc";
+  if (tipo === "cash" && !tieneCash(t)) tipo = "tc";
+  a.tarifa_tipo = tipo;
+  a.participantes.forEach((p) => {
+    const neto = netoTarifa(t, p.categoria_id);
+    if (neto != null) p.neto_unitario = neto;
+    if (tipo !== "manual") {
+      const precio = precioTarifa(t, p.categoria_id, tipo);
+      p.precio_unitario = precio ?? 0;
+    }
+  });
+  return a;
+}
+
 function nombrePropiedad(c) {
   if (c.propiedad_id) return app.propiedades.find((p) => p.id === c.propiedad_id)?.nombre ?? "";
   return c.propiedad_otro || "";
@@ -310,6 +365,8 @@ async function cargarTablero() {
 
   if (error) return fallo(error, "No se pudo cargar el tablero.");
   app.cotizaciones = data;
+  const cods = await db.from("actividades").select("cotizacion_id, codigo_reserva").not("codigo_reserva", "is", null);
+  app.codigos = cods.error ? [] : cods.data;
   pintarTablero();
   $("ultimaActualizacion").textContent =
     `Actualizado a las ${new Date().toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -318,7 +375,9 @@ async function cargarTablero() {
 function pintarTablero() {
   const q = $("buscar").value.trim().toLowerCase();
   const lista = app.cotizaciones.filter((c) =>
-    !q || nombreCompleto(c).toLowerCase().includes(q) || c.numero.toLowerCase().includes(q));
+    !q || nombreCompleto(c).toLowerCase().includes(q) || c.numero.toLowerCase().includes(q)
+    || app.codigos.some((x) => x.cotizacion_id === c.id
+      && (x.codigo_reserva.toLowerCase().includes(q) || `${c.numero}-${x.codigo_reserva}`.toLowerCase().includes(q))));
 
   const columnas = COLUMNAS.filter((col) => col.id !== "cancelado" || app.verCanceladas);
   $("tablero").classList.toggle("con-canceladas", app.verCanceladas);
@@ -405,6 +464,11 @@ function normalizarActividad(a) {
     transporte_neto: Number(a.transporte_neto) || 0,
     operador_id: a.operador_id,
     notas: a.notas ?? "",
+    tarifa_tipo: a.tarifa_tipo || "manual",
+    operador_confirmado: !!a.operador_confirmado,
+    operador_confirmacion: a.operador_confirmacion ?? "",
+    operador_confirmado_en: a.operador_confirmado_en ?? null,
+    codigo_reserva: a.codigo_reserva ?? null,
     participantes: (a.actividad_participantes || [])
       .map((p) => ({
         categoria_id: p.categoria_id,
@@ -441,6 +505,9 @@ async function cargarDetalle(id) {
 async function abrirDetalle(id) {
   app.editandoCliente = false;
   if (!(await cargarDetalle(id))) return;
+  if (["cotizacion", "proceso", "reserva"].includes(app.actual.cot.estado)) {
+    await cargarTarifas([...app.actual.actividades, ...app.actual.solicitudes]);
+  }
   $("detalle").hidden = false;
   document.body.classList.add("detalle-abierto");
   pintarDetalle();
@@ -513,6 +580,7 @@ function pintarDetalle() {
   if (c.estado === "finalizado" || c.estado === "cancelado") h += htmlActividadesLectura();
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
+  if (c.estado === "reserva") h += htmlConfirmarReserva(c);
   if (c.estado === "reserva") h += htmlCompartirReserva(c);
   if (c.estado === "reserva" || c.estado === "finalizado" || (c.estado === "cancelado" && app.actual.pagos.length)) {
     h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
@@ -606,14 +674,18 @@ function htmlCliente(c) {
 function htmlSolicitud(solicitudes) {
   if (!solicitudes.length) return "";
   const porDia = {};
-  solicitudes.forEach((s) => (porDia[s.fecha] ||= []).push(servicioPorId(s.servicio_id)?.nombre ?? "Servicio"));
+  solicitudes.forEach((s) => {
+    const t = tarifaDe(s);
+    const pendiente = t && !tienePrecios(t);
+    (porDia[s.fecha] ||= []).push(escapar(servicioPorId(s.servicio_id)?.nombre ?? "Servicio") + (pendiente ? ` <span class="act-sin-tarifa">tarifa pendiente</span>` : ""));
+  });
   return `
     <section class="det-seccion">
       <h3>Lo que pidió el cliente</h3>
       ${Object.keys(porDia).sort().map((f) => `
         <div class="solicitud-dia">
           <span class="nota">${escapar(fecha(f, { weekday: "long", day: "numeric", month: "long" }))}</span>
-          <span>${porDia[f].map(escapar).join(", ")}</span>
+          <span>${porDia[f].join(", ")}</span>
         </div>`).join("")}
     </section>`;
 }
@@ -654,11 +726,15 @@ function htmlActividad(a, idx) {
     </tr>`).join("");
 
   const faltantes = app.categorias.filter((c) => !a.participantes.some((p) => p.categoria_id === c.id));
+  const cot = app.actual.cot;
 
   return `
     <article class="actividad${a._pendiente ? " pendiente" : ""}" data-idx="${idx}">
       <div class="act-cabeza">
-        <p class="act-titulo">${escapar(serv?.nombre ?? "Actividad nueva")}</p>
+        <p class="act-titulo">${escapar(serv?.nombre ?? "Actividad nueva")}
+          ${a.codigo_reserva ? `<span class="act-codigo" title="Código de reserva">${escapar(cot.numero)}-${escapar(a.codigo_reserva)}</span>` : ""}
+          ${a.operador_confirmado ? `<span class="act-confirmada">Confirmada con el operador</span>` : ""}
+          ${a.tarifa_tipo === "pendiente" ? `<span class="act-sin-tarifa">Tarifa pendiente</span>` : ""}</p>
         <span class="act-estado">${a._pendiente ? "Cambios sin guardar" : ""}</span>
         <button type="button" class="enlace peligro" data-accion="eliminar-act">Eliminar</button>
       </div>
@@ -681,6 +757,8 @@ function htmlActividad(a, idx) {
           </select>
         </label>
       </div>
+      ${htmlTarifa(a)}
+      ${cot.estado === "reserva" ? htmlConfirmacionOperador(a) : ""}
       ${htmlTransporte(a)}
       <div class="tabla-scroll">
         <table class="participantes">
@@ -703,6 +781,55 @@ function htmlActividad(a, idx) {
       </div>
       <label>Notas de la actividad <input data-campo="notas" type="text" value="${escapar(a.notas)}"></label>
     </article>`;
+}
+
+// Tarifa de la temporada: TC, Cash o Manual, y los otros proveedores de la misma actividad
+function htmlTarifa(a) {
+  if (!a.servicio_id) return "";
+  const t = tarifaDe(a);
+  const conPrecios = tienePrecios(t);
+  const cash = tieneCash(t);
+  const tipo = a.tarifa_tipo || "manual";
+  const opciones = [
+    ["tc", "TC (tarjeta)", !conPrecios],
+    ["cash", cash ? "Cash" : "Cash (no la ofrece)", !conPrecios || !cash],
+    ["manual", "Manual", false]
+  ].map(([v, txt, off]) => `<option value="${v}" ${v === tipo ? "selected" : ""} ${off && v !== tipo ? "disabled" : ""}>${txt}</option>`).join("")
+    + (tipo === "pendiente" ? `<option value="pendiente" selected>Tarifa pendiente</option>` : "");
+
+  let info;
+  if (!t) info = `<span class="nota">Consultando la tarifa…</span>`;
+  else if (!t.tarifario) info = `<span class="act-aviso">Este servicio no viene del Tarifario: no tiene tarifa. Escribe el precio y deja la tarifa en Manual.</span>`;
+  else if (!conPrecios) info = `<span class="act-aviso">No hay tarifa aprobada para el ${escapar(fecha(a.fecha, { day: "numeric", month: "long", year: "numeric" }))}: <strong>tarifa pendiente</strong>. Consulta el precio con el operador, escríbelo y elige Manual.</span>`;
+  else {
+    const temporadas = [...new Set(t.precios.map((p) => p.temporada).filter(Boolean))].join(", ");
+    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}: TC ${dinero(p.tc)}${p.cash != null ? ` · Cash ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">neto ${dinero(p.neto)}</span>` : ""}`).join("<br>");
+    info = `<span class="nota">Temporada ${escapar(temporadas)}${t.precios.some((p) => p.colones) ? " · tarifa en colones convertida a dólares" : ""}</span><br>${lista}`;
+  }
+  const alt = t?.alternativas || [];
+  return `
+    <div class="act-tarifa${tipo === "pendiente" ? " sin-tarifa" : ""}">
+      <label>Tarifa <select data-campo="tarifa_tipo">${opciones}</select></label>
+      <p class="act-tarifa-info">${info}</p>
+      ${alt.length ? `
+        <label>Cambiar de proveedor <span class="interno">interno</span>
+          <select data-accion="cambiar-proveedor">
+            <option value="">${escapar(nombreOperador(a.operador_id)) || "Proveedor actual"} (actual)</option>
+            ${alt.map((x) => `<option value="${x.servicio_id}">${escapar(x.operador)} · ${escapar(x.nombre)}${x.visible ? "" : " (oculto para clientes)"}</option>`).join("")}
+          </select>
+        </label>` : ""}
+    </div>`;
+}
+
+// Confirmación de la actividad con el operador (solo en Reserva; el número es de uso interno)
+function htmlConfirmacionOperador(a) {
+  return `
+    <div class="act-confirmacion">
+      <label class="check-linea"><input type="checkbox" data-campo="operador_confirmado" ${a.operador_confirmado ? "checked" : ""}> Confirmada con el operador</label>
+      <label>N.º de confirmación del operador <span class="interno">interno</span>
+        <input data-campo="operador_confirmacion" type="text" value="${escapar(a.operador_confirmacion)}" placeholder="Opcional">
+      </label>
+    </div>`;
 }
 
 function htmlTransporte(a) {
@@ -783,7 +910,7 @@ function tablaItinerario(acts) {
       <tr>
         <td>${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</td>
         <td>${hora(a.hora_inicio)}${a.hora_fin ? " a " + hora(a.hora_fin) : ""}</td>
-        <td><strong>${escapar(serv?.nombre ?? "")}</strong>${lugares ? `<br><small>${lugares}</small>` : ""}</td>
+        <td><strong>${escapar(serv?.nombre ?? "")}</strong>${a.codigo_reserva && app.actual ? `<br><small>Reserva ${escapar(app.actual.cot.numero)}-${escapar(a.codigo_reserva)}</small>` : ""}${lugares ? `<br><small>${lugares}</small>` : ""}</td>
         <td>${part}</td>
         <td class="num">${dinero(subtotal(a))}</td>
       </tr>`;
@@ -901,6 +1028,32 @@ function htmlPagos(c, editable) {
           <label>Referencia <input id="pagoReferencia" type="text" placeholder="Número de comprobante"></label>
           <button type="button" class="btn primario" data-accion="registrar-pago">Registrar pago</button>
         </div>` : ""}
+    </section>`;
+}
+
+// "Confirmar reserva": genera el código de reserva (R00001…) de cada servicio
+function htmlConfirmarReserva(c) {
+  const acts = [...app.actual.actividades].sort(ordenActividad);
+  if (c.reserva_confirmada_en) {
+    return `
+      <section class="det-seccion">
+        <h3>Reserva confirmada</h3>
+        <p class="nota">Confirmada el ${fechaHora(c.reserva_confirmada_en)}${c.reserva_confirmada_por ? ` por ${escapar(nombrePerfil(c.reserva_confirmada_por))}` : ""}. Si agregas otro servicio, recibe su código al guardarlo.</p>
+        <ul class="codigos-reserva">${acts.map((a) => `
+          <li><strong>${a.codigo_reserva ? `${escapar(c.numero)}-${escapar(a.codigo_reserva)}` : "Sin código (guarda los cambios)"}</strong>
+            <span>${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")} · ${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</span>
+            ${a.operador_confirmado ? `<span class="act-confirmada">Confirmada con el operador</span>` : `<span class="act-sin-tarifa">Sin confirmar con el operador</span>`}</li>`).join("")}</ul>
+      </section>`;
+  }
+  const sinConfirmar = acts.filter((a) => !a.operador_confirmado);
+  return `
+    <section class="det-seccion">
+      <h3>Confirmar reserva</h3>
+      <p>Cuando todo esté coordinado, confirma la reserva: cada servicio recibe su código de reserva (por ejemplo ${escapar(c.numero)}-R00001).</p>
+      ${sinConfirmar.length
+        ? `<p class="aviso">${sinConfirmar.length} de ${acts.length} servicio(s) todavía no están confirmados con el operador: ${sinConfirmar.map((a) => escapar(servicioPorId(a.servicio_id)?.nombre ?? "Actividad")).join(", ")}. Márcalos en cada actividad y guarda, o confirma de todos modos (quedará anotado en el historial).</p>`
+        : `<p class="nota">Todos los servicios están confirmados con su operador.</p>`}
+      <button type="button" class="btn primario" data-accion="confirmar-reserva">Confirmar reserva</button>
     </section>`;
 }
 
@@ -1036,6 +1189,10 @@ function leerTarjeta(card) {
     transporte_neto: Math.max(0, parseFloat(v("transporte_neto")) || 0),
     operador_id: v("operador_id") ? Number(v("operador_id")) : null,
     notas: v("notas"),
+    tarifa_tipo: v("tarifa_tipo") || previa.tarifa_tipo || "manual",
+    operador_confirmado: card.querySelector('[data-campo="operador_confirmado"]')
+      ? card.querySelector('[data-campo="operador_confirmado"]').checked : !!previa.operador_confirmado,
+    operador_confirmacion: v("operador_confirmacion"),
     participantes: [...card.querySelectorAll("tr[data-cat]")].map((tr) => ({
       categoria_id: Number(tr.dataset.cat),
       cantidad: Math.max(0, parseInt(tr.querySelector('[data-p="cantidad"]').value, 10) || 0),
@@ -1109,6 +1266,11 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     transporte_neto: 0,
     operador_id: serv?.operador_id ?? null,
     notas: "",
+    tarifa_tipo: "tc",
+    operador_confirmado: false,
+    operador_confirmacion: "",
+    operador_confirmado_en: null,
+    codigo_reserva: null,
     participantes,
     _pendiente: true
   };
@@ -1140,7 +1302,11 @@ async function guardarTodo(btn) {
           transporte_respuesta: a.transporte_respuesta === "si" ? true : a.transporte_respuesta === "no" ? false : null,
           transporte_neto: a.transporte_modo === "sin_transporte" ? 0 : a.transporte_neto,
           operador_id: a.operador_id || null,
-          notas: a.notas || null
+          notas: a.notas || null,
+          tarifa_tipo: a.tarifa_tipo || "manual",
+          operador_confirmado: !!a.operador_confirmado,
+          operador_confirmacion: a.operador_confirmacion?.trim() || null,
+          operador_confirmado_en: a.operador_confirmado ? (a.operador_confirmado_en || new Date().toISOString()) : null
         };
         if (a.id) {
           const { error } = await db.from("actividades").update(fila).eq("id", a.id);
@@ -1178,6 +1344,10 @@ $("detalleContenido").addEventListener("input", (e) => {
   const card = e.target.closest(".actividad");
   if (!card || e.target.dataset.accion === "agregar-cat") return;
 
+  if (e.target.dataset.p === "precio") {
+    const sel = card.querySelector('[data-campo="tarifa_tipo"]');
+    if (sel && sel.value !== "manual") { sel.value = "manual"; }
+  }
   if (e.target.dataset.campo === "hora_inicio") {
     const serv = servicioPorId(card.querySelector('[data-campo="servicio_id"]').value);
     if (serv?.duracion_min && e.target.value) {
@@ -1193,24 +1363,46 @@ $("detalleContenido").addEventListener("change", async (e) => {
   if (!card) return;
   const idx = Number(card.dataset.idx);
 
-  if (e.target.dataset.campo === "servicio_id") {
+  const proveedor = e.target.dataset.accion === "cambiar-proveedor" ? Number(e.target.value) : null;
+  if (e.target.dataset.campo === "servicio_id" || proveedor) {
     const a = leerTarjeta(card);
+    if (proveedor) a.servicio_id = proveedor;
     a._pendiente = true;
     const serv = servicioPorId(a.servicio_id);
     if (serv) {
       a.participantes.forEach((p) => {
-        const base = precioBase(serv.id, p.categoria_id);
-        if (base) p.precio_unitario = base;
+        p.precio_unitario = precioBase(serv.id, p.categoria_id);
         p.neto_unitario = netoBase(serv.id, p.categoria_id);
       });
       a.operador_id = serv.operador_id ?? null;
-      if (serv.horarios?.length) a.hora_inicio = hora(serv.horarios[0]);
-      if (a.hora_inicio && serv.duracion_min) a.hora_fin = sumarMinutos(a.hora_inicio, serv.duracion_min);
-      if (serv.transporte) a.transporte_modo = serv.transporte;
+      if (!proveedor) {
+        if (serv.horarios?.length) a.hora_inicio = hora(serv.horarios[0]);
+        if (a.hora_inicio && serv.duracion_min) a.hora_fin = sumarMinutos(a.hora_inicio, serv.duracion_min);
+        if (serv.transporte) a.transporte_modo = serv.transporte;
+      }
+      await cargarTarifas([a]);
+      aplicarTarifa(a, a.tarifa_tipo === "cash" ? "cash" : "tc");
     }
     app.actual.actividades[idx] = a;
     repintarTarjeta(idx);
     pintarTotales();
+    if (proveedor) avisar(`Proveedor cambiado a ${nombreOperador(a.operador_id) || "otro proveedor"}. Revisa los precios.`);
+    return;
+  }
+
+  // Otra fecha → la tarifa de la temporada de esa fecha. Otro tipo de tarifa → sus precios.
+  if (e.target.dataset.campo === "fecha" || e.target.dataset.campo === "tarifa_tipo") {
+    const a = leerTarjeta(card);
+    a._pendiente = true;
+    if (a.servicio_id && a.fecha) {
+      await cargarTarifas([a]);
+      aplicarTarifa(a, a.tarifa_tipo);
+    }
+    app.actual.actividades[idx] = a;
+    repintarTarjeta(idx);
+    pintarTotales();
+    if (e.target.dataset.campo === "fecha" && a.tarifa_tipo === "pendiente") avisar("No hay tarifa aprobada para esa fecha: quedó como tarifa pendiente.", "error");
+    return;
   }
 
   if (e.target.dataset.campo === "transporte_modo") {
@@ -1238,11 +1430,13 @@ $("detalleContenido").addEventListener("change", async (e) => {
       categoriaId = data.id;
     }
 
+    const t = tarifaDe(a);
     a.participantes.push({
       categoria_id: categoriaId,
       cantidad: 1,
-      precio_unitario: a.servicio_id ? precioBase(a.servicio_id, categoriaId) : 0,
-      neto_unitario: a.servicio_id ? netoBase(a.servicio_id, categoriaId) : 0
+      precio_unitario: ["tc", "cash"].includes(a.tarifa_tipo) ? precioTarifa(t, categoriaId, a.tarifa_tipo) ?? 0
+        : a.servicio_id && a.tarifa_tipo === "manual" ? precioBase(a.servicio_id, categoriaId) : 0,
+      neto_unitario: netoTarifa(t, categoriaId) ?? (a.servicio_id ? netoBase(a.servicio_id, categoriaId) : 0)
     });
     a._pendiente = true;
     app.actual.actividades[idx] = a;
@@ -1305,10 +1499,13 @@ $("detalleContenido").addEventListener("click", async (e) => {
       const nuevas = app.actual.solicitudes.filter((s) =>
         !acts.some((a) => a.servicio_id === s.servicio_id && a.fecha === s.fecha));
       if (!nuevas.length) return avisar("Todo lo que pidió el cliente ya está en el itinerario.");
-      nuevas.forEach((s) => acts.push(nuevaActividad(s.servicio_id, s.fecha)));
+      const creadas = nuevas.map((s) => nuevaActividad(s.servicio_id, s.fecha));
+      await cargarTarifas(creadas);
+      creadas.forEach((a) => { aplicarTarifa(a, "tc"); acts.push(a); });
       acts.sort(ordenActividad);
       pintarDetalle();
-      avisar(`Se agregaron ${nuevas.length} actividades. Revisa horarios y precios, y presiona Guardar cambios.`);
+      const sinTarifa = creadas.filter((a) => a.tarifa_tipo === "pendiente").length;
+      avisar(`Se agregaron ${nuevas.length} actividades con la tarifa TC de su temporada.${sinTarifa ? ` ${sinTarifa} quedaron con tarifa pendiente.` : ""} Revisa horarios y precios, y presiona Guardar cambios.`);
       break;
     }
 
@@ -1355,6 +1552,27 @@ $("detalleContenido").addEventListener("click", async (e) => {
         avisar("Lista. Comparte el enlace por WhatsApp o correo.");
       });
       break;
+
+    case "confirmar-reserva": {
+      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar la reserva.", "error");
+      const acts = app.actual.actividades;
+      if (!acts.length) return avisar("La reserva no tiene actividades.", "error");
+      const sinConfirmar = acts.filter((a) => !a.operador_confirmado);
+      const nombres = sinConfirmar.map((a) => servicioPorId(a.servicio_id)?.nombre ?? "Actividad");
+      const texto = sinConfirmar.length
+        ? `Atención: ${sinConfirmar.length} servicio(s) todavía no están confirmados con el operador:\n\n${nombres.map((n) => "· " + n).join("\n")}\n\n¿Confirmar la reserva de todos modos? Quedará anotado en el historial.`
+        : `¿Confirmar la reserva? Cada servicio recibirá su código de reserva.`;
+      if (!confirm(texto)) return;
+      const nota = sinConfirmar.length ? `Advertencia mostrada: ${sinConfirmar.length} servicio(s) sin confirmar con el operador (${nombres.join(", ")}); se confirmó de todos modos.` : null;
+      await conBoton(btn, async () => {
+        const { data, error } = await db.rpc("confirmar_reserva", { p_cotizacion: c.id, p_nota: nota });
+        if (error) return fallo(error, "No se pudo confirmar la reserva.");
+        await recargarDetalle(false);
+        cargarTablero();
+        avisar(`Reserva confirmada: ${data?.codigos ?? 0} código(s) de reserva generados.`);
+      });
+      break;
+    }
 
     case "copiar-enlace":
       try {

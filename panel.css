@@ -451,3 +451,26 @@ label.en-linea select { width: auto; }
   #vistaCalendario .cal-mas { display: none; }
   #vistaCalendario .cal-celda.elegido { box-shadow: none; }
 }
+
+/* ---------- Etapa 3: tarifa de la temporada, confirmación con el operador y códigos de reserva ---------- */
+.act-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.act-codigo, .act-confirmada, .act-sin-tarifa {
+  display: inline-block; font-size: .75rem; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+}
+.act-codigo { background: var(--pizarra); color: #fff; font-variant-numeric: tabular-nums; }
+.act-confirmada { background: var(--verde-suave); color: var(--verde-hondo); }
+.act-sin-tarifa { background: var(--amarillo-suave); color: #6B4E00; }
+.act-tarifa {
+  display: grid; grid-template-columns: minmax(150px, 200px) 1fr; gap: 6px 14px; align-items: start;
+  background: var(--fondo); border-radius: 8px; padding: 10px 12px; margin: 10px 0;
+}
+.act-tarifa.sin-tarifa { background: var(--amarillo-suave); }
+.act-tarifa > label:last-child:not(:first-child) { grid-column: 1 / -1; }
+.act-tarifa-info { margin: 0; font-size: .88rem; line-height: 1.45; }
+.act-aviso { color: #6B4E00; }
+.act-confirmacion { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 20px; margin: 6px 0 10px; }
+.act-confirmacion label:not(.check-linea) { flex: 1 1 220px; }
+.codigos-reserva { list-style: none; margin: 8px 0 0; padding: 0; }
+.codigos-reserva li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 7px 0; border-bottom: 1px solid var(--linea); }
+.codigos-reserva strong { font-variant-numeric: tabular-nums; min-width: 160px; }
+@media (max-width: 640px) { .act-tarifa { grid-template-columns: 1fr; } }
