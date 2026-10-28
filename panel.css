@@ -480,3 +480,34 @@ label.en-linea select { width: auto; }
 .tiquetes-lista .check-linea strong { min-width: 0; }
 .empresa-logo { display: grid; gap: 10px; justify-items: start; margin-bottom: 8px; }
 .empresa-logo img { max-width: 220px; max-height: 110px; object-fit: contain; background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 16px 16px; border: 1px solid var(--linea); border-radius: 8px; padding: 8px; }
+
+/* Etapa 5: ventas y cuentas por pagar */
+.fin-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0 0 16px; }
+.fin-cifra { background: var(--blanco); border: 1px solid var(--linea); border-radius: 10px; padding: 12px 14px; display: grid; gap: 4px; }
+.fin-cifra span { font-size: .82rem; color: var(--gris); }
+.fin-cifra strong { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.fin-cifra.alerta strong { color: var(--alerta); }
+.fin-cifra.ok strong { color: var(--verde-hondo); }
+.fin-cifra.favor strong { color: #2d5d9f; }
+.fin-tabla td, .fin-tabla th { white-space: nowrap; }
+.fin-tabla td:nth-child(4), .fin-tabla td:nth-child(5) { white-space: normal; }
+.fin-grupo-cab { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
+.fin-grupo-cab h3 { margin: 0; }
+.fin-grupo-cab p { margin: 0; color: var(--gris); font-variant-numeric: tabular-nums; }
+.fin-grupo-cab strong { color: var(--texto, inherit); }
+.fin-estado { font-size: .78rem; border-radius: 999px; padding: 1px 8px; background: var(--fondo); font-weight: 700; }
+.fin-estado.alerta { background: var(--alerta-fondo); color: var(--alerta); }
+.fin-estado.ok { background: var(--verde-suave); color: var(--verde-hondo); }
+.fin-estado.favor { background: #e6eefa; color: #2d5d9f; }
+.tabla tr.fin-favor td { background: #f6f9fe; }
+.fin-pago { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--linea); }
+.fin-pago h4 { margin: 0 0 4px; }
+.fin-historial { margin-top: 10px; }
+.fin-historial summary, .fin-proximos summary { cursor: pointer; }
+.fin-grupo + .fin-grupo { margin-top: 14px; }
+@media print {
+  body:not(.imprimiendo) #vistaFinanzas:not([hidden]) .no-imprimir,
+  body:not(.imprimiendo) #vistaFinanzas:not([hidden]) .vista-titulo { display: none; }
+  #vistaFinanzas .fin-grupo { break-inside: auto; }
+  #vistaFinanzas .enlace { color: inherit; text-decoration: none; }
+}

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="estilos.css?v=15">
-  <link rel="stylesheet" href="panel.css?v=16">
+  <link rel="stylesheet" href="panel.css?v=17">
   <link rel="stylesheet" href="tarifario.css?v=26">
 </head>
 <body class="panel">
@@ -48,6 +48,7 @@
         <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
         <button type="button" class="menu-btn" data-vista="servicios">Servicios</button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
+        <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
         <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
         <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
         <button type="button" class="menu-btn salir" id="btnSalir">Salir</button>
@@ -103,6 +104,18 @@
       </div>
     </section>
 
+    <!-- Ventas y cuentas por pagar (solo administrador) -->
+    <section id="vistaFinanzas" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Ventas y cuentas por pagar</h1>
+        <div class="pestanas no-imprimir" role="tablist" aria-label="Ventas">
+          <button type="button" role="tab" class="pestana" data-fin="ventas">Ventas</button>
+          <button type="button" role="tab" class="pestana" data-fin="cxp">Cuentas por pagar</button>
+        </div>
+        <div id="finContenido"></div>
+      </div>
+    </section>
+
     <!-- Tarifario (solo administradores) -->
     <section id="vistaTarifario" class="vista" hidden>
       <div class="catalogo">
@@ -138,6 +151,7 @@
   <script src="servicios.js?v=16"></script>
   <script src="mantenimiento.js?v=18"></script>
   <script src="calendario.js?v=14"></script>
+  <script src="finanzas.js?v=1"></script>
   <script src="tarifario.js?v=28"></script>
   <script src="tarifario-comparar.js?v=3"></script>
   <script src="tarifario-servicios.js?v=2"></script>
