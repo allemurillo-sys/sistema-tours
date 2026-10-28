@@ -38,6 +38,8 @@ async function tarLeerCatalogoExtra() {
     if (data.length < 1000) break;
   }
   tar.cobertura = todas.map((t) => ({ ...t, operador_id: Number(t.operador_id) }));
+  const tc = await db.from("tipos_cambio").select("*").order("creado_en", { ascending: false }).limit(10);
+  tar.tiposCambio = tc.error ? [] : tc.data;
   const m = await db.from("tar_categorias").select("*");
   tar.mapaError = m.error || null;
   tar.mapaCategorias = new Map((m.data || []).map((x) => [x.clave, x]));
@@ -305,6 +307,7 @@ function tarHtmlFichaCliente() {
       <th scope="row">${v}</th>
       <td><input data-tr="nombre" value="${escapar(tr[k]?.nombre ?? "")}" aria-label="Nombre en ${v.toLowerCase()}"></td>
       <td><textarea data-tr="descripcion" rows="2" aria-label="Descripción en ${v.toLowerCase()}">${escapar(tr[k]?.descripcion ?? "")}</textarea></td>
+      ${it.sinTarifario ? "" : `<td><textarea data-tr="incluye" rows="2" aria-label="Qué incluye en ${v.toLowerCase()}">${escapar(tr[k]?.incluye ?? "")}</textarea></td>`}
     </tr>`).join("");
   const rivales = it.rivales.filter((x) => x.srv);
   const op = it.sinTarifario ? null : tarOperador(it.operador_id);
@@ -338,10 +341,10 @@ function tarHtmlFichaCliente() {
         </label>`}
       <details class="traducciones" ${tarTraducidos(s) ? "" : "open"}>
         <summary>Nombre y descripción en otros idiomas <span class="nota">(${tarTraducidos(s)} de 4 idiomas con nombre)</span></summary>
-        <p class="nota">El cliente ve la actividad en el idioma que eligió. Si un idioma queda vacío, verá el nombre en español y ninguna descripción.</p>
+        <p class="nota">El cliente ve la actividad en el idioma que eligió. Si un idioma queda vacío, verá el nombre en español y no verá la descripción ni lo que incluye.</p>
         <div class="tabla-scroll">
           <table class="tabla traduccion">
-            <thead><tr><th>Idioma</th><th>Nombre</th><th>Descripción</th></tr></thead>
+            <thead><tr><th>Idioma</th><th>Nombre</th><th>Descripción</th>${it.sinTarifario ? "" : "<th>Qué incluye</th>"}</tr></thead>
             <tbody id="tcfTraducciones">${filasIdioma}</tbody>
           </table>
         </div>
@@ -363,7 +366,8 @@ function tarLeerTraduccionesFicha() {
   document.querySelectorAll("#tcfTraducciones tr").forEach((fila) => {
     const nombre = fila.querySelector('[data-tr="nombre"]').value.trim();
     const descripcion = fila.querySelector('[data-tr="descripcion"]').value.trim();
-    if (nombre || descripcion) tr[fila.dataset.idioma] = { ...(nombre && { nombre }), ...(descripcion && { descripcion }) };
+    const incluye = fila.querySelector('[data-tr="incluye"]')?.value.trim() || "";
+    if (nombre || descripcion || incluye) tr[fila.dataset.idioma] = { ...(nombre && { nombre }), ...(descripcion && { descripcion }), ...(incluye && { incluye }) };
   });
   return tr;
 }
@@ -660,6 +664,38 @@ async function tarEliminarTipo(id, cuantos) {
 }
 
 // =====================================================
+// AJUSTES › TIPO DE CAMBIO AUTOMÁTICO (BAC; si falla, Banco Central)
+// =====================================================
+function tarHtmlTipoCambio() {
+  const lista = tar.tiposCambio || [];
+  const ultimo = lista.find((x) => x.ok);
+  const falla = lista[0] && !lista[0].ok ? lista[0] : null;
+  const cuando = (x) => new Date(x.creado_en).toLocaleString("es-CR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const usaVenta = Number(tar.ajustes.tipo_cambio_usa_venta) === 1;
+  return `
+    <div class="tcat-tc">
+      ${ultimo ? `<p><strong>Último tipo de cambio:</strong> compra ₡${ultimo.compra} · venta ₡${ultimo.venta}
+        <span class="nota">(${escapar(ultimo.fuente)}, ${cuando(ultimo)}). Se usa el de ${usaVenta ? "venta" : "compra"}.</span></p>`
+        : `<p class="nota">Todavía no se ha consultado el tipo de cambio automático.</p>`}
+      ${falla ? `<p class="tar-alerta">La última consulta (${cuando(falla)}) no funcionó: ${escapar(falla.detalle || "sin respuesta")}. Se mantiene el valor anterior.</p>` : ""}
+      <p class="nota">Se actualiza solo todos los días a las 7:00 a. m. desde BAC Credomatic Costa Rica; si BAC no responde, se toma del Banco Central de Costa Rica.</p>
+      <button type="button" class="btn" data-tcat="actualizar-tc">Actualizar ahora</button>
+    </div>`;
+}
+
+async function tarActualizarTipoCambio(btn) {
+  await conBoton(btn, async () => {
+    const { data, error } = await db.functions.invoke("tipo-cambio", { body: {} });
+    if (error || !data?.ok) return fallo(error || { message: data?.detalle || "" }, "No se pudo consultar el tipo de cambio.");
+    const aj = await db.from("tar_ajustes").select("*");
+    if (!aj.error) aj.data.forEach((a) => (tar.ajustes[a.clave] = Number(a.valor)));
+    await tarLeerCatalogoExtra();
+    tarPintar();
+    avisar(`Tipo de cambio actualizado: ₡${tar.ajustes.tipo_cambio} (${data.fuente}).`);
+  });
+}
+
+// =====================================================
 // AJUSTES › CATEGORÍAS DEL TARIFARIO Y TIPOS DE CLIENTE
 // =====================================================
 const TAR_SUGERENCIAS_CAT = {
@@ -845,6 +881,7 @@ $("tarContenido").addEventListener("click", async (e) => {
       tar.pestana = "ajustes"; tar.editando = null; tarPintar();
       return $("tarCategorias")?.scrollIntoView({ behavior: "smooth" });
     case "aplicar-sug-cat": return tarAplicarSugerenciasCat(b);
+    case "actualizar-tc": return tarActualizarTipoCambio(b);
     case "nuevo-tipo-cliente": return tarNuevoTipoCliente(b);
   }
 });

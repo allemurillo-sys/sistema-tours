@@ -24,7 +24,7 @@ const tar = {
   anio: TAR_ANIO_DEFECTO,
   tarifas: [],
   operadores: [],
-  ajustes: { iva: 13, cash_ref: 20, tc_ref: 40, cash_min: 15, tc_min: 30, tipo_cambio: 0 },
+  ajustes: { iva: 13, cash_ref: 20, tc_ref: 40, cash_min: 15, tc_min: 30, tipo_cambio: 0, tipo_cambio_usa_venta: 0 },
   filtro: { operador: "", estado: "pendientes", texto: "" },
   final: { operador: "", tipo: "", fecha: "", texto: "", verNeto: true, politicas: false },
   editando: null,      // { tipo: "fila" | "grupo" | "nuevo" | "operador", ... }
@@ -1272,8 +1272,17 @@ function tarHtmlAjustes() {
       <div class="fila-form tar-ajustes">
         ${campo("cash_min", "Margen mínimo Cash (%)", "Por debajo se marca en rojo.")}
         ${campo("tc_min", "Margen mínimo TC (%)", "Por debajo se marca en rojo.")}
-        ${campo("tipo_cambio", "Tipo de cambio (₡ por cada $1)", "Convierte a dólares las tarifas en colones: para comparar y para el precio que ve el cliente. 0 = no convertir (esas tarifas no se muestran al cliente).")}
+        ${campo("tipo_cambio", "Tipo de cambio (₡ por cada $1)", "Convierte a dólares las tarifas en colones: para comparar y para el precio que ve el cliente. Se actualiza solo cada día; puedes corregirlo a mano.")}
       </div>
+      <div class="fila-form tar-ajustes">
+        <label>Valor de BAC que se usa
+          <select id="tarAj_tipo_cambio_usa_venta">
+            <option value="0" ${Number(a.tipo_cambio_usa_venta) === 1 ? "" : "selected"}>Compra (el más bajo)</option>
+            <option value="1" ${Number(a.tipo_cambio_usa_venta) === 1 ? "selected" : ""}>Venta (el más alto)</option>
+          </select>
+          <span class="nota">Con "compra" el precio en dólares de una tarifa en colones sale un poco más alto.</span></label>
+      </div>
+      ${typeof tarHtmlTipoCambio === "function" ? tarHtmlTipoCambio() : ""}
       <p class="nota">Ejemplo con neto de $80 y la casilla IVA marcada: neto con IVA ${dinero(tarCosto({ neto: 80 }))}; Cash sugerido ${dinero(tarSugCash({ neto: 80 }))}; TC sugerido ${dinero(tarSugTc({ neto: 80 }))}.</p>
       <div class="sec-botones"><button type="button" class="btn primario" data-tar="guardar-ajustes">Guardar</button></div>
     </div>
@@ -1281,7 +1290,7 @@ function tarHtmlAjustes() {
 }
 
 async function tarGuardarAjustes(btn) {
-  const filas = Object.keys(tar.ajustes).map((clave) => ({ clave, valor: Number($(`tarAj_${clave}`).value) }));
+  const filas = Object.keys(tar.ajustes).filter((clave) => $(`tarAj_${clave}`)).map((clave) => ({ clave, valor: Number($(`tarAj_${clave}`).value) }));
   if (filas.some((f) => isNaN(f.valor) || f.valor < 0)) return avisar("Revisa los porcentajes: deben ser números positivos.", "error");
   await conBoton(btn, async () => {
     const { error } = await db.from("tar_ajustes").upsert(filas);

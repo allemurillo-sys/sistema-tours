@@ -214,3 +214,6 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
 .tcat-precios { list-style: none; margin: 10px 0 0; padding: 0; max-width: 420px; }
 .tcat-precios li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--linea); }
 .tcat-precios strong { font-variant-numeric: tabular-nums; }
+
+.tcat-tc { background: var(--fondo); border-radius: 8px; padding: 10px 14px; margin: 4px 0 14px; }
+.tcat-tc p { margin: 0 0 6px; }

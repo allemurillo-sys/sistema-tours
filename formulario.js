@@ -87,7 +87,7 @@ async function cargarCatalogos() {
   if (CONFIG.supabaseUrl.includes("TU-PROYECTO")) return mostrarErrorCarga("e_config");
 
   const [s, k, p] = await Promise.all([
-    db.from("servicios").select("id, nombre, duracion_min, descripcion, tipo_id, traducciones").eq("activo", true).order("nombre"),
+    db.from("servicios").select("id, nombre, duracion_min, descripcion, tipo_id, traducciones, fotos, horarios, transporte").eq("activo", true).order("nombre"),
     db.from("tipos_servicio").select("id, nombre, icono, traducciones, orden").eq("activo", true).order("orden").order("nombre"),
     db.from("propiedades").select("id, nombre").eq("activa", true).order("nombre")
   ]);
@@ -207,15 +207,21 @@ function pintarSelector() {
   const tarjeta = (s) => {
     const marcado = elegidos.includes(s.id);
     const desc = tDescripcion(s);
+    const foto = fotosDe(s)[0];
     return `
-      <button type="button" class="sel-item" data-id="${s.id}" aria-pressed="${marcado}">
-        <span class="sel-item-texto">
-          <span class="sel-item-nombre">${escapar(tServicio(s))}</span>
-          ${s.duracion_min ? `<span class="sel-item-meta">${escapar(duracion(s.duracion_min))}</span>` : ""}
-          ${desc ? `<span class="sel-item-desc">${escapar(desc)}</span>` : ""}
-        </span>
-        <span class="sel-marca" aria-hidden="true"></span>
-      </button>`;
+      <div class="sel-item-caja">
+        <button type="button" class="sel-item${foto ? " con-foto" : ""}" data-id="${s.id}" aria-pressed="${marcado}">
+          ${foto ? `<img class="sel-item-foto" src="${escapar(foto.url)}" alt="" loading="lazy">` : ""}
+          <span class="sel-item-texto">
+            <span class="sel-item-nombre">${escapar(tServicio(s))}</span>
+            ${s.duracion_min ? `<span class="sel-item-meta">${escapar(duracion(s.duracion_min))}</span>` : ""}
+            ${desc ? `<span class="sel-item-desc">${escapar(desc)}</span>` : ""}
+          </span>
+          <span class="sel-marca" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="sel-detalle" data-detalle="${s.id}"
+          aria-label="${escapar(`${t("d_ver")}: ${tServicio(s)}`)}">${escapar(t("d_ver"))}</button>
+      </div>`;
   };
 
   let h;
@@ -255,6 +261,8 @@ $("selBuscar").addEventListener("input", () => {
 });
 
 $("selLista").addEventListener("click", (e) => {
+  const d = e.target.closest(".sel-detalle");
+  if (d) return abrirDetalle(Number(d.dataset.detalle));
   const b = e.target.closest(".sel-item");
   if (!b) return;
   const id = Number(b.dataset.id);
@@ -271,10 +279,154 @@ $("selCerrar").addEventListener("click", () => $("selector").close());
 // Tocar fuera de la ventana también la cierra
 $("selector").addEventListener("click", (e) => { if (e.target === $("selector")) $("selector").close(); });
 $("selector").addEventListener("close", () => {
+  if ($("detalle").open) $("detalle").close();
   const f = selector.fecha;
   selector.fecha = null;
   pintarDias();
   document.querySelector(`button.abrir-selector[data-fecha="${f}"]`)?.focus();
+});
+
+// ---------- Detalle de una actividad (fotos, información y precio según la fecha) ----------
+const fotosDe = (s) => (Array.isArray(s?.fotos) ? s.fotos.filter((f) => f?.url) : []);
+const detalle = { id: null, fecha: null, foto: 0, info: null, cargando: false, error: false, abiertoColones: null };
+const cacheDetalle = new Map();   // "id|fecha" → respuesta de detalle_servicio
+
+function dinero(n) {
+  return new Intl.NumberFormat(locale(), { style: "currency", currency: "USD", currencyDisplay: "narrowSymbol" }).format(Number(n) || 0);
+}
+function colones(n) {
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 }).format(Number(n) || 0);
+}
+function nombreCategoria(p) {
+  return (idioma !== "es" && p.traducciones?.[idioma]) || tCategoria(p.categoria);
+}
+function tIncluye(s, incluye) {
+  if (idioma === "es") return incluye || "";
+  return s?.traducciones?.[idioma]?.incluye || "";
+}
+
+async function abrirDetalle(id) {
+  detalle.id = id;
+  detalle.fecha = selector.fecha;
+  detalle.foto = 0;
+  detalle.abiertoColones = null;
+  const clave = `${id}|${detalle.fecha}`;
+  detalle.info = cacheDetalle.get(clave) || null;
+  detalle.error = false;
+  detalle.cargando = !detalle.info;
+  pintarDetalle();
+  $("detalle").showModal();
+  $("detalleCuerpo").scrollTop = 0;
+  if (detalle.info) return;
+  const { data, error } = await db.rpc("detalle_servicio", { p_servicio: id, p_fecha: detalle.fecha });
+  if (detalle.id !== id || detalle.fecha !== clave.split("|")[1]) return;   // ya se abrió otra
+  detalle.cargando = false;
+  if (error) { console.error(error); detalle.error = true; }
+  else { detalle.info = data || {}; cacheDetalle.set(clave, detalle.info); }
+  if ($("detalle").open) pintarDetalle();
+}
+
+function htmlGaleria(s) {
+  const fotos = fotosDe(s);
+  if (!fotos.length) return "";
+  const i = Math.min(detalle.foto, fotos.length - 1);
+  const flechas = fotos.length > 1 ? `
+    <button type="button" class="det-flecha izq" data-foto="${(i - 1 + fotos.length) % fotos.length}" aria-label="${escapar(t("d_foto_ant"))}">‹</button>
+    <button type="button" class="det-flecha der" data-foto="${(i + 1) % fotos.length}" aria-label="${escapar(t("d_foto_sig"))}">›</button>
+    <div class="det-puntos">${fotos.map((_, k) => `<button type="button" class="det-punto" data-foto="${k}" aria-current="${k === i}" aria-label="${escapar(t("d_foto_n", { n: k + 1, total: fotos.length }))}"></button>`).join("")}</div>` : "";
+  return `
+    <div class="det-galeria">
+      <img src="${escapar(fotos[i].url)}" alt="${escapar(t("d_foto_n", { n: i + 1, total: fotos.length }))} · ${escapar(tServicio(s))}">
+      ${flechas}
+    </div>`;
+}
+
+function htmlPrecios() {
+  if (detalle.cargando) return `<p class="det-nota">${escapar(t("d_cargando"))}</p>`;
+  if (detalle.error) return `<p class="det-pendiente">${escapar(t("d_error"))}</p>`;
+  const precios = detalle.info?.precios || [];
+  if (!precios.length) {
+    return `<p class="det-pendiente"><strong>${escapar(t("d_pendiente"))}</strong> ${escapar(t("d_puedes_elegir"))}</p>`;
+  }
+  const hayColones = precios.some((p) => p.colones);
+  return `
+    <ul class="det-precios">${precios.map((p) => `
+      <li>
+        <span>${escapar(nombreCategoria(p))} <span class="det-unidad">${escapar(t(p.por_grupo ? "d_por_grupo" : "d_por_persona"))}</span></span>
+        <span class="det-monto">${escapar(dinero(p.precio))}${p.colones ? `<button type="button" class="det-info" data-colones="${p.categoria_id}"
+          aria-expanded="${detalle.abiertoColones === p.categoria_id}" aria-label="${escapar(t("d_colones_icono"))}">i</button>` : ""}</span>
+        ${p.colones && detalle.abiertoColones === p.categoria_id ? `<span class="det-leyenda">${escapar(t("d_colones_leyenda", { monto: colones(p.precio_colones) }))}</span>` : ""}
+      </li>`).join("")}</ul>
+    ${hayColones ? `<p class="det-aviso">${escapar(t("d_aviso_colones"))}</p>` : ""}
+    <p class="det-nota">${escapar(t("d_nota_precio"))}</p>`;
+}
+
+function pintarDetalle() {
+  const s = servicioPorId(detalle.id);
+  if (!s) return;
+  const tipo = tipos.find((x) => x.id === s.tipo_id);
+  const desc = tDescripcion(s);
+  const incluye = tIncluye(s, detalle.info?.incluye).split(/[,;\n•]+/).map((x) => x.trim()).filter(Boolean);
+  const horarios = (s.horarios || []).map((h) => String(h).slice(0, 5));
+  const elegido = (seleccion[detalle.fecha] || []).includes(s.id);
+  const datos = [
+    s.duracion_min ? [t("d_duracion"), duracion(s.duracion_min)] : null,
+    horarios.length ? [t("d_horarios"), horarios.join(" · ")] : null,
+    s.transporte === "incluido" ? [t("d_transporte"), t("d_transporte_incluido")] : null
+  ].filter(Boolean);
+
+  $("detTipo").textContent = tipo ? `${tipo.icono ? tipo.icono + " " : ""}${tTipo(tipo)}` : "";
+  $("detTitulo").textContent = tServicio(s);
+  $("detalleCuerpo").innerHTML = `
+    ${htmlGaleria(s)}
+    ${datos.length ? `<dl class="det-datos">${datos.map(([k, v]) => `<div><dt>${escapar(k)}</dt><dd>${escapar(v)}</dd></div>`).join("")}</dl>` : ""}
+    ${desc ? `<p class="det-desc">${escapar(desc)}</p>` : ""}
+    ${incluye.length ? `<h3 class="det-sub">${escapar(t("d_incluye"))}</h3><ul class="det-incluye">${incluye.map((x) => `<li>${escapar(x)}</li>`).join("")}</ul>` : ""}
+    <h3 class="det-sub">${escapar(t("d_precio"))}</h3>
+    <p class="det-fecha">${escapar(t("d_precio_fecha", { dia: nombreDia(detalle.fecha) }))}</p>
+    ${htmlPrecios()}`;
+  $("detAgregar").textContent = t(elegido ? "d_quitar" : "d_agregar");
+  $("detAgregar").classList.toggle("primario", !elegido);
+}
+
+$("detalleCuerpo").addEventListener("click", (e) => {
+  const f = e.target.closest("[data-foto]");
+  if (f) { detalle.foto = Number(f.dataset.foto); pintarDetalle(); return $("detalleCuerpo").querySelector(`[data-foto="${f.dataset.foto}"].det-punto`)?.focus(); }
+  const c = e.target.closest("[data-colones]");
+  if (c) {
+    const id = Number(c.dataset.colones);
+    detalle.abiertoColones = detalle.abiertoColones === id ? null : id;
+    pintarDetalle();
+    $("detalleCuerpo").querySelector(`[data-colones="${id}"]`)?.focus();
+  }
+});
+// Deslizar el dedo sobre la foto para cambiarla (celular)
+let toqueX = null;
+$("detalleCuerpo").addEventListener("touchstart", (e) => { toqueX = e.target.closest(".det-galeria") ? e.touches[0].clientX : null; }, { passive: true });
+$("detalleCuerpo").addEventListener("touchend", (e) => {
+  if (toqueX == null) return;
+  const dx = e.changedTouches[0].clientX - toqueX;
+  const n = fotosDe(servicioPorId(detalle.id)).length;
+  toqueX = null;
+  if (Math.abs(dx) < 40 || n < 2) return;
+  detalle.foto = (detalle.foto + (dx < 0 ? 1 : -1) + n) % n;
+  pintarDetalle();
+});
+$("detAgregar").addEventListener("click", () => {
+  const lista = (seleccion[detalle.fecha] ||= []);
+  const i = lista.indexOf(detalle.id);
+  if (i >= 0) lista.splice(i, 1); else lista.push(detalle.id);
+  if (!lista.length) delete seleccion[detalle.fecha];
+  $("detalle").close();
+});
+$("detVolver").addEventListener("click", () => $("detalle").close());
+$("detCerrar").addEventListener("click", () => $("detalle").close());
+$("detalle").addEventListener("click", (e) => { if (e.target === $("detalle")) $("detalle").close(); });
+$("detalle").addEventListener("close", () => {
+  if ($("selector").open) {
+    pintarSelector();
+    document.querySelector(`.sel-detalle[data-detalle="${detalle.id}"]`)?.focus();
+  }
 });
 
 // ---------- Fechas ----------
@@ -422,6 +574,7 @@ document.addEventListener("idioma-cambiado", () => {
   if (!$("btnEnviar").disabled) $("btnEnviar").textContent = t("f_enviar");
   if (ultimoEnvio) mostrarGracias();
   if ($("selector").open) pintarSelector();
+  if ($("detalle").open) pintarDetalle();
 });
 
 // ---------- Inicio ----------

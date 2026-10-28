@@ -253,3 +253,59 @@ input:focus-visible, select:focus-visible, button:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) { .sel-item { transition: none; } }
 @media print { .selector, .abrir-selector { display: none !important; } }
+
+/* ---------- Tarjeta de actividad: foto y "Ver detalle" ---------- */
+.sel-item-caja { position: relative; display: grid; }
+.sel-item { padding-bottom: 44px; }
+.sel-item.con-foto { display: grid; grid-template-columns: 76px 1fr auto; align-items: start; }
+.sel-item-foto { width: 76px; height: 57px; border-radius: 8px; object-fit: cover; background: var(--fondo); }
+.sel-detalle {
+  position: absolute; left: 14px; bottom: 10px; font: inherit; font-size: .88rem; font-weight: 700;
+  color: var(--verde-hondo); background: transparent; border: 0; padding: 4px 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.sel-detalle:hover { color: var(--verde); }
+.sel-detalle:focus-visible { outline: 3px solid #5FAF84; outline-offset: 2px; border-radius: 4px; }
+
+/* ---------- Ventana de detalle ---------- */
+.detalle-act { width: min(640px, calc(100% - 32px)); }
+.det-cuerpo { flex: 1; overflow-y: auto; padding: 0 0 18px; background: var(--blanco); }
+.det-cuerpo > :not(.det-galeria) { margin-left: 22px; margin-right: 22px; }
+.det-galeria { position: relative; background: var(--pizarra); }
+.det-galeria img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.det-flecha {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 50%;
+  border: 0; background: rgba(255, 255, 255, .88); color: var(--pizarra); font-size: 1.8rem; line-height: 1;
+  cursor: pointer; display: grid; place-items: center; padding-bottom: 4px;
+}
+.det-flecha.izq { left: 12px; } .det-flecha.der { right: 12px; }
+.det-puntos { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; gap: 6px; }
+.det-punto { width: 10px; height: 10px; border-radius: 50%; border: 0; padding: 0; background: rgba(255, 255, 255, .55); cursor: pointer; }
+.det-punto[aria-current="true"] { background: #fff; }
+.det-flecha:focus-visible, .det-punto:focus-visible { outline: 3px solid #5FAF84; outline-offset: 2px; }
+.det-datos { display: flex; flex-wrap: wrap; gap: 8px 26px; margin-top: 18px; margin-bottom: 0; }
+.det-datos dt { font-size: .8rem; color: var(--gris); }
+.det-datos dd { margin: 0; font-weight: 700; }
+.det-desc { margin-top: 14px; margin-bottom: 0; }
+.det-sub { font-family: var(--titulos); font-size: 1.1rem; color: var(--verde-hondo); margin-top: 20px; margin-bottom: 6px; }
+.det-incluye { margin-top: 0; padding-left: 20px; columns: 2 220px; }
+.det-incluye li { margin-bottom: 2px; break-inside: avoid; }
+.det-fecha { margin-top: 0; margin-bottom: 8px; color: var(--gris); font-size: .92rem; }
+.det-precios { list-style: none; margin: 0; padding: 0; }
+.det-precios li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--linea); }
+.det-unidad { color: var(--gris); font-size: .85rem; }
+.det-monto { font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 6px; }
+.det-info {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--verde); background: var(--blanco);
+  color: var(--verde-hondo); font: 700 .8rem/1 Georgia, serif; font-style: italic; cursor: pointer; padding: 0;
+}
+.det-info[aria-expanded="true"] { background: var(--verde); color: #fff; }
+.det-leyenda { flex-basis: 100%; font-size: .85rem; color: var(--gris); background: var(--verde-suave); border-radius: 8px; padding: 8px 10px; }
+.det-aviso { font-size: .88rem; background: #FBF1D6; border-radius: 8px; padding: 10px 12px; margin-top: 12px; margin-bottom: 0; }
+.det-nota { font-size: .85rem; color: var(--gris); margin-top: 10px; margin-bottom: 0; }
+.det-pendiente { background: var(--fondo); border-left: 4px solid #D9A21B; border-radius: 8px; padding: 12px 14px; margin-top: 4px; margin-bottom: 0; }
+@media (max-width: 600px) {
+  .detalle-act { width: 100%; }
+  .det-cuerpo > :not(.det-galeria) { margin-left: 16px; margin-right: 16px; }
+}
+@media print { .detalle-act { display: none !important; } }
