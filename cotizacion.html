@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="estilos.css?v=13">
+  <link rel="stylesheet" href="estilos.css?v=15">
   <style>
     .dia-bloque { margin-top: 22px; }
     .dia-titulo { font-family: var(--titulos); font-weight: 700; font-size: 1.1rem; margin: 0 0 8px; }
@@ -35,6 +35,66 @@
     .pregunta-lugares { margin-top: 6px; }
     .check input:disabled + * { opacity: .5; }
     @media print { .caja, .acciones { display: none !important; } .act { border: 1px solid #ccc; } }
+
+    /* Mis vouchers */
+    .vouchers h2 { margin-bottom: 4px; }
+    .vch-botones { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+    .vch-lista { display: grid; gap: 14px; margin-top: 14px; }
+    .vch-dia { font-family: var(--titulos); font-weight: 700; margin: 8px 0 -4px; }
+    .vch { border: 1px solid var(--linea); border-radius: 12px; padding: 16px 18px; background: #fff; color: #1d2a24; break-inside: avoid; }
+    .vch-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; border-bottom: 2px solid var(--verde); padding-bottom: 10px; }
+    .vch-logo { max-height: 52px; max-width: 180px; object-fit: contain; }
+    .vch-marca { display: inline-flex; align-items: center; gap: 8px; font-family: var(--titulos); font-weight: 700; font-size: 1.05rem; color: var(--verde-hondo); }
+    .vch-marca svg { width: 30px; height: 30px; }
+    .vch-titulo { text-align: right; }
+    .vch-titulo p { margin: 0; font-size: .85rem; color: var(--gris); text-transform: uppercase; letter-spacing: .04em; }
+    .vch-titulo .vch-codigo { display: grid; text-transform: none; letter-spacing: 0; margin-top: 4px; }
+    .vch-codigo strong { font-family: var(--titulos); font-size: 1.3rem; color: #1d2a24; font-variant-numeric: tabular-nums; }
+    .vch-servicio { font-family: var(--titulos); font-size: 1.2rem; margin: 12px 0 8px; }
+    .vch-datos { display: grid; gap: 6px 18px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 0; }
+    .vch-fila { display: grid; gap: 1px; }
+    .vch-fila dt { font-size: .78rem; color: var(--gris); text-transform: uppercase; letter-spacing: .03em; }
+    .vch-fila dd { margin: 0; font-weight: 500; }
+    .vch-fila.ancha { grid-column: 1 / -1; }
+    .vch-es { text-transform: none; letter-spacing: 0; opacity: .75; }
+    .vch-pago { margin: 12px 0 0; font-size: .9rem; }
+    .vch-pagado { color: var(--verde-hondo); font-weight: 700; }
+    .vch-saldo { color: var(--gris); font-style: italic; }
+    .vch-pie { margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--linea); font-size: .75rem; color: var(--gris); }
+    @media (max-width: 520px) { .vch-titulo { text-align: left; } .vch { padding: 14px; } }
+
+    @page { size: letter; margin: 12mm; }
+    @media print {
+      body.imp-vouchers .barra, body.imp-compacto .barra,
+      body.imp-vouchers #contenido > :not(#vouchers), body.imp-compacto #contenido > :not(#vouchers),
+      body.imp-vouchers .vouchers > :not(.vch-lista), body.imp-compacto .vouchers > :not(.vch-lista) { display: none !important; }
+      body.imp-vouchers .vouchers, body.imp-compacto .vouchers { display: block !important; padding: 0; margin: 0; background: none; }
+      body.imp-vouchers .pagina, body.imp-compacto .pagina { padding: 0; margin: 0; max-width: none; }
+      body { background: #fff !important; }
+      .vch { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+      /* Un tiquete por hoja */
+      body.imp-vouchers .vch-dia { display: none; }
+      body.imp-vouchers .vch-lista { display: block; }
+      body.imp-vouchers .vch { break-after: page; page-break-after: always; border: 1px solid #bbb; padding: 22px 26px; font-size: 1.05rem; }
+      body.imp-vouchers .vch:last-child { break-after: auto; page-break-after: auto; }
+
+      /* Itinerario compacto: tantos como quepan, por día y hora, separados por líneas de puntos */
+      body.imp-compacto .vch-lista { display: block; }
+      body.imp-compacto .vch-dia { margin: 8px 0 2px; font-size: .9rem; }
+      body.imp-compacto .vch { border: 0; border-radius: 0; border-bottom: 2px dotted #777; padding: 7px 0 9px; font-size: .78rem; }
+      body.imp-compacto .vch-cab { border-bottom-width: 1px; padding-bottom: 4px; }
+      body.imp-compacto .vch-logo { max-height: 26px; }
+      body.imp-compacto .vch-marca { font-size: .85rem; }
+      body.imp-compacto .vch-marca svg { width: 18px; height: 18px; }
+      body.imp-compacto .vch-titulo p { font-size: .68rem; }
+      body.imp-compacto .vch-codigo strong { font-size: .95rem; }
+      body.imp-compacto .vch-servicio { font-size: .95rem; margin: 4px 0 3px; }
+      body.imp-compacto .vch-datos { grid-template-columns: repeat(4, 1fr); gap: 2px 10px; }
+      body.imp-compacto .vch-fila dt { font-size: .62rem; }
+      body.imp-compacto .vch-pago { margin-top: 3px; font-size: .72rem; }
+      body.imp-compacto .vch-pie { margin-top: 3px; padding-top: 2px; font-size: .62rem; border-top: 0; }
+    }
   </style>
 </head>
 <body data-titulo="titulo_cot">
@@ -61,7 +121,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=13"></script>
-  <script src="i18n.js?v=13"></script>
-  <script src="cotizacion.js?v=13"></script>
+  <script src="i18n.js?v=15"></script>
+  <script src="cotizacion.js?v=15"></script>
 </body>
 </html>

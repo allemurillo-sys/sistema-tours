@@ -3,7 +3,7 @@
 // (usa las utilidades y datos de panel.js)
 // =====================================================
 
-const mant = { pestana: "cuenta", usuarios: [], permisos: [], editando: null, reporte: null, mensaje: "" };
+const mant = { pestana: "cuenta", usuarios: [], permisos: [], editando: null, reporte: null, mensaje: "", empresa: null };
 
 const ROLES = ["colaborador", "jefatura", "gerente", "administrador"];
 const NOMBRE_ROL = { colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
@@ -19,7 +19,7 @@ const PERMISOS = [
 
 const esAdmin = () => app.yo?.rol === "administrador";
 const pestanaPermitida = (p) =>
-  p === "cuenta" || ((p === "usuarios" || p === "autorizaciones") && esAdmin()) || (p === "reportes" && puede("ver_reportes"));
+  p === "cuenta" || ((p === "usuarios" || p === "autorizaciones" || p === "empresa") && esAdmin()) || (p === "reportes" && puede("ver_reportes"));
 
 document.addEventListener("vista-abierta", (e) => { if (e.detail === "mantenimiento") abrirMantenimiento(); });
 document.addEventListener("datos-actualizados", () => { if (!$("vistaMantenimiento").hidden) abrirMantenimiento(); });
@@ -41,6 +41,7 @@ async function abrirMantenimiento() {
 
   if (mant.pestana === "usuarios") await cargarUsuarios();
   if (mant.pestana === "autorizaciones") await cargarPermisos();
+  if (mant.pestana === "empresa") await cargarEmpresa();
   pintarMantenimiento();
 }
 
@@ -50,6 +51,7 @@ function pintarMantenimiento() {
     cuenta: htmlCuenta,
     usuarios: () => (mant.editando ? htmlFormUsuario(mant.editando) : htmlUsuarios()),
     autorizaciones: htmlAutorizaciones,
+    empresa: htmlEmpresa,
     reportes: htmlReportes
   }[mant.pestana]();
   $("mantContenido").innerHTML = html;
@@ -98,6 +100,81 @@ function htmlCuenta() {
       <p class="nota">Mínimo 8 caracteres. Usa una clave que no uses en otros sitios.</p>
       <div class="sec-botones"><button type="button" class="btn primario" data-mant-accion="mi-clave">Guardar clave</button></div>
     </div>`;
+}
+
+// ---------------------------------------------------------
+// DATOS DE LA EMPRESA (aparecen en los tiquetes del cliente)
+// ---------------------------------------------------------
+const CAMPOS_EMPRESA = [
+  ["nombre_legal", "Nombre legal", "Ej.: The House of Tours S.A."],
+  ["cedula", "Cédula física o jurídica", "Ej.: 3-101-000000"],
+  ["direccion", "Dirección física", "Provincia, cantón, distrito y señas"],
+  ["movil", "Móvil de contacto", "Ej.: +506 8888 8888"],
+  ["correo", "Correo", "Ej.: reservas@ejemplo.com"]
+];
+
+async function cargarEmpresa() {
+  const { data, error } = await db.from("empresa").select("*").eq("id", 1).maybeSingle();
+  if (error) return fallo(error, "No se pudieron cargar los datos de la empresa.");
+  mant.empresa = data || { id: 1 };
+}
+
+function htmlEmpresa() {
+  const e = mant.empresa || {};
+  return `
+    <div class="det-seccion sin-margen">
+      <h3>Datos de la empresa</h3>
+      <p class="nota">Se muestran en el encabezado y el pie de cada tiquete ("Mis vouchers") que ve el cliente. Se configuran una sola vez.</p>
+      <div class="fila">
+        ${CAMPOS_EMPRESA.map(([k, nombre, ej]) => `
+          <label>${nombre} <input data-empresa="${k}" type="${k === "correo" ? "email" : "text"}" value="${escapar(e[k] ?? "")}" placeholder="${escapar(ej)}"></label>`).join("")}
+      </div>
+      <h4>Logo</h4>
+      <div class="empresa-logo">
+        ${e.logo ? `<img src="${escapar(e.logo)}" alt="Logo actual">` : `<p class="nota">Sin logo: los tiquetes muestran la brújula y el nombre "The House of Tours".</p>`}
+        <label>Subir logo (PNG o JPG, de preferencia con fondo transparente) <input id="empresaLogo" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        ${e.logo ? `<button type="button" class="enlace peligro" data-mant-accion="quitar-logo">Quitar logo</button>` : ""}
+      </div>
+      <div class="sec-botones"><button type="button" class="btn primario" data-mant-accion="guardar-empresa">Guardar datos</button></div>
+      ${e.actualizado ? `<p class="nota">Última actualización: ${fechaHora(e.actualizado)}</p>` : ""}
+    </div>`;
+}
+
+// El logo se reduce a 600 px como máximo y se guarda en PNG (conserva la transparencia)
+async function prepararLogo(archivo) {
+  const img = await createImageBitmap(archivo);
+  const escala = Math.min(1, 600 / Math.max(img.width, img.height));
+  const lienzo = document.createElement("canvas");
+  lienzo.width = Math.round(img.width * escala);
+  lienzo.height = Math.round(img.height * escala);
+  lienzo.getContext("2d").drawImage(img, 0, 0, lienzo.width, lienzo.height);
+  return new Promise((ok) => lienzo.toBlob(ok, "image/png"));
+}
+
+async function guardarEmpresa(btn, quitarLogo = false) {
+  const fila = { id: 1, actualizado: new Date().toISOString() };
+  document.querySelectorAll("[data-empresa]").forEach((el) => (fila[el.dataset.empresa] = el.value.trim() || null));
+  if (fila.correo && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fila.correo)) return avisar("Revisa el correo.", "error");
+  await conBoton(btn, async () => {
+    try {
+      if (quitarLogo) fila.logo = null;
+      const archivo = $("empresaLogo")?.files?.[0];
+      if (archivo && !quitarLogo) {
+        const blob = await prepararLogo(archivo);
+        const ruta = `empresa/logo-${Date.now()}.png`;
+        const { error } = await db.storage.from("servicios-fotos").upload(ruta, blob, { contentType: "image/png", upsert: true });
+        if (error) throw error;
+        fila.logo = db.storage.from("servicios-fotos").getPublicUrl(ruta).data.publicUrl;
+      }
+      const { error } = await db.from("empresa").upsert(fila);
+      if (error) throw error;
+      await cargarEmpresa();
+      pintarMantenimiento();
+      avisar("Datos de la empresa guardados.");
+    } catch (error) {
+      fallo(error, "No se pudieron guardar los datos de la empresa.");
+    }
+  });
 }
 
 // ---------------------------------------------------------
@@ -457,6 +534,13 @@ $("mantContenido").addEventListener("click", async (e) => {
       });
       break;
     }
+
+    case "guardar-empresa":
+      await guardarEmpresa(btn);
+      break;
+    case "quitar-logo":
+      if (confirm("¿Quitar el logo de los tiquetes?")) await guardarEmpresa(btn, true);
+      break;
 
     case "nuevo-usuario":
       mant.editando = { modo: "nuevo" };

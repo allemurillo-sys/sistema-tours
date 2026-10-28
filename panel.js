@@ -469,6 +469,8 @@ function normalizarActividad(a) {
     operador_confirmacion: a.operador_confirmacion ?? "",
     operador_confirmado_en: a.operador_confirmado_en ?? null,
     codigo_reserva: a.codigo_reserva ?? null,
+    voucher_habilitado: !!a.voucher_habilitado,
+    voucher_habilitado_en: a.voucher_habilitado_en ?? null,
     participantes: (a.actividad_participantes || [])
       .map((p) => ({
         categoria_id: p.categoria_id,
@@ -581,6 +583,7 @@ function pintarDetalle() {
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
   if (c.estado === "reserva") h += htmlConfirmarReserva(c);
+  if (c.estado === "reserva" && c.reserva_confirmada_en) h += htmlTiquetes(c);
   if (c.estado === "reserva") h += htmlCompartirReserva(c);
   if (c.estado === "reserva" || c.estado === "finalizado" || (c.estado === "cancelado" && app.actual.pagos.length)) {
     h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
@@ -779,7 +782,7 @@ function htmlActividad(a, idx) {
           </tfoot>
         </table>
       </div>
-      <label>Notas de la actividad <input data-campo="notas" type="text" value="${escapar(a.notas)}"></label>
+      <label>Notas para el cliente (aparecen en el tiquete) <input data-campo="notas" type="text" value="${escapar(a.notas)}" placeholder="Ej.: llevar ropa cómoda, bloqueador y repelente"></label>
     </article>`;
 }
 
@@ -1057,6 +1060,40 @@ function htmlConfirmarReserva(c) {
     </section>`;
 }
 
+// "Mis vouchers": el agente habilita el tiquete de cada servicio para que el cliente lo vea
+function saldoActual() {
+  const { actividades, pagos } = app.actual;
+  const total = actividades.reduce((s, a) => s + subtotal(a), 0);
+  const pagado = pagos.reduce((s, p) => s + Number(p.monto), 0);
+  return Math.round((total - pagado) * 100) / 100;
+}
+
+function htmlTiquetes(c) {
+  const acts = [...app.actual.actividades].sort(ordenActividad);
+  const saldo = saldoActual();
+  const habilitados = acts.filter((a) => a.voucher_habilitado).length;
+  return `
+    <section class="det-seccion" id="secTiquetes">
+      <h3>Tiquetes del cliente ("Mis vouchers")</h3>
+      <p>Marca los servicios cuyo tiquete puede ver el cliente en su página. La sección "Mis vouchers" no aparece hasta que habilites al menos uno. Los tiquetes muestran el nombre del operador y las "Notas para el cliente" de cada actividad; no muestran precios.</p>
+      ${saldo > 0 ? `<p class="aviso">Esta reserva tiene un saldo pendiente de ${dinero(saldo)}. Puedes habilitar los tiquetes, pero quedará anotado en el historial y el tiquete dirá "Saldo pendiente".</p>` : ""}
+      <ul class="codigos-reserva tiquetes-lista">${acts.map((a) => `
+        <li>
+          <label class="check-linea chico">
+            <input type="checkbox" data-voucher="${a.id ?? ""}" ${a.voucher_habilitado ? "checked" : ""} ${a.id && a.codigo_reserva ? "" : "disabled"}>
+            <strong>${a.codigo_reserva ? `${escapar(c.numero)}-${escapar(a.codigo_reserva)}` : "Sin código (guarda los cambios)"}</strong>
+          </label>
+          <span>${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")} · ${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</span>
+          ${a.voucher_habilitado ? `<span class="act-confirmada">Visible para el cliente</span>` : ""}
+        </li>`).join("")}</ul>
+      <div class="sec-botones">
+        <button type="button" class="btn primario" data-accion="guardar-tiquetes">Guardar tiquetes</button>
+        ${habilitados && c.enviada_en ? `<a class="btn" href="${escapar(enlaceCliente(c))}#vouchers" target="_blank" rel="noopener">Ver los tiquetes como el cliente</a>` : ""}
+      </div>
+      ${habilitados && !c.enviada_en ? `<p class="nota">Activa el enlace del cliente (abajo) para que pueda verlos.</p>` : ""}
+    </section>`;
+}
+
 function htmlCompartirReserva(c) {
   if (!c.enviada_en) {
     return `
@@ -1271,6 +1308,8 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     operador_confirmacion: "",
     operador_confirmado_en: null,
     codigo_reserva: null,
+    voucher_habilitado: false,
+    voucher_habilitado_en: null,
     participantes,
     _pendiente: true
   };
@@ -1328,6 +1367,9 @@ async function guardarTodo(btn) {
           if (r.error) throw r.error;
         }
         a._pendiente = false;
+        if (a.voucher_habilitado && a.codigo_reserva) {
+          await registrar(c.id, "tiquete actualizado", `${c.numero}-${a.codigo_reserva}: el cliente ve el tiquete con los cambios.`);
+        }
       }
       avisar("Cambios guardados.");
       await recargarDetalle(false);
@@ -1528,6 +1570,10 @@ $("detalleContenido").addEventListener("click", async (e) => {
       if (a.id) {
         const { error } = await db.from("actividades").delete().eq("id", a.id);
         if (error) return fallo(error, "No se pudo eliminar.");
+        if (a.codigo_reserva) {
+          await registrar(app.actual.cot.id, "servicio eliminado",
+            `${app.actual.cot.numero}-${a.codigo_reserva} (${servicioPorId(a.servicio_id)?.nombre ?? "actividad"})${a.voucher_habilitado ? "; su tiquete ya no aparece para el cliente" : ""}.`);
+        }
       }
       app.actual.actividades.splice(idx, 1);
       pintarDetalle();
@@ -1570,6 +1616,37 @@ $("detalleContenido").addEventListener("click", async (e) => {
         await recargarDetalle(false);
         cargarTablero();
         avisar(`Reserva confirmada: ${data?.codigos ?? 0} código(s) de reserva generados.`);
+      });
+      break;
+    }
+
+    case "guardar-tiquetes": {
+      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de habilitar tiquetes.", "error");
+      const cambios = [...document.querySelectorAll("#secTiquetes [data-voucher]")]
+        .filter((el) => el.dataset.voucher)
+        .map((el) => ({ a: app.actual.actividades.find((x) => String(x.id) === el.dataset.voucher), on: el.checked }))
+        .filter((x) => x.a && x.a.voucher_habilitado !== x.on);
+      if (!cambios.length) return avisar("No hay cambios en los tiquetes.");
+      const nuevos = cambios.filter((x) => x.on);
+      const saldo = saldoActual();
+      if (nuevos.length && saldo > 0 && !confirm(
+        `Atención: la reserva tiene un saldo pendiente de ${dinero(saldo)}.\n\nHabilitar tiquetes con saldo pendiente puede causar un inconveniente operativo (por ejemplo, que el cliente se presente sin haber pagado). Quedará anotado en el historial.\n\n¿Habilitar de todos modos?`)) return;
+      const codigo = (a) => `${c.numero}-${a.codigo_reserva}`;
+      await conBoton(btn, async () => {
+        const ahora = new Date().toISOString();
+        for (const { a, on } of cambios) {
+          const { error } = await db.from("actividades")
+            .update({ voucher_habilitado: on, voucher_habilitado_en: on ? ahora : null }).eq("id", a.id);
+          if (error) return fallo(error, "No se pudieron guardar los tiquetes.");
+        }
+        const quitados = cambios.filter((x) => !x.on);
+        if (nuevos.length) {
+          await registrar(c.id, "tiquetes habilitados", nuevos.map((x) => codigo(x.a)).join(", ") +
+            (saldo > 0 ? `. Advertencia mostrada: saldo pendiente de ${dinero(saldo)}; se habilitó de todos modos.` : "."));
+        }
+        if (quitados.length) await registrar(c.id, "tiquetes ocultados", quitados.map((x) => codigo(x.a)).join(", ") + ".");
+        await recargarDetalle(false);
+        avisar("Tiquetes guardados.");
       });
       break;
     }

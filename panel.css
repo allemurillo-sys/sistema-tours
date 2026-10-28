@@ -474,3 +474,9 @@ label.en-linea select { width: auto; }
 .codigos-reserva li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 7px 0; border-bottom: 1px solid var(--linea); }
 .codigos-reserva strong { font-variant-numeric: tabular-nums; min-width: 160px; }
 @media (max-width: 640px) { .act-tarifa { grid-template-columns: 1fr; } }
+
+/* Etapa 4: tiquetes y datos de la empresa */
+.tiquetes-lista li { gap: 4px 14px; }
+.tiquetes-lista .check-linea strong { min-width: 0; }
+.empresa-logo { display: grid; gap: 10px; justify-items: start; margin-bottom: 8px; }
+.empresa-logo img { max-width: 220px; max-height: 110px; object-fit: contain; background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 16px 16px; border: 1px solid var(--linea); border-radius: 8px; padding: 8px; }

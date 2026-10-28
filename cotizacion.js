@@ -171,7 +171,8 @@ function pintar() {
       </div>`;
   }
 
-  html += `<div class="acciones"><button type="button" class="btn" onclick="window.print()">${escapar(t("c_imprimir"))}</button></div>`;
+  html += htmlVouchers(d, total - pagado);
+  html += `<div class="acciones"><button type="button" class="btn" data-imprimir="pagina">${escapar(t("c_imprimir"))}</button></div>`;
 
   const scroll = window.scrollY;
   $("contenido").innerHTML = html;
@@ -184,7 +185,121 @@ function pintar() {
   });
   $("btnConfirmar")?.addEventListener("click", confirmar);
   $("btnComentario")?.addEventListener("click", comentar);
+  if (location.hash === "#vouchers" && !irAVouchers && $("vouchers")) {
+    irAVouchers = true;
+    $("vouchers").scrollIntoView();
+  }
 }
+
+// =====================================================
+// MIS VOUCHERS: un tiquete por servicio confirmado y habilitado por el agente
+// =====================================================
+let irAVouchers = false;
+
+// Etiqueta en el idioma del cliente, con el español al lado
+function etiqueta(clave) {
+  const propia = t(clave);
+  const es = TEXTOS.es[clave] ?? clave;
+  return idioma === "es" || propia === es
+    ? escapar(propia)
+    : `${escapar(propia)} <span class="vch-es">/ ${escapar(es)}</span>`;
+}
+
+const nombreCategoria = (p) => (idioma !== "es" && p.categoria_tr?.[idioma]) || tCategoria(p.categoria);
+
+function marcaEmpresa(e) {
+  if (e?.logo) return `<img class="vch-logo" src="${escapar(e.logo)}" alt="${escapar(e.nombre_legal || "The House of Tours")}">`;
+  return `
+    <span class="vch-marca">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 5 L25 20 L15 20 Z" fill="#5FAF84"/><path d="M20 35 L25 20 L15 20 Z" fill="currentColor"/></svg>
+      The House of Tours
+    </span>`;
+}
+
+function pieEmpresa(e) {
+  if (!e) return "";
+  const partes = [
+    e.nombre_legal,
+    e.cedula && `Céd. ${e.cedula}`,
+    e.direccion,
+    e.movil,
+    e.correo
+  ].filter(Boolean).map(escapar);
+  return partes.length ? `<p class="vch-pie">${partes.join(" · ")}</p>` : "";
+}
+
+function htmlVoucher(d, a, saldo) {
+  const fila = (clave, valor, ancha = false) => (valor ? `<div class="vch-fila${ancha ? " ancha" : ""}"><dt>${etiqueta(clave)}</dt><dd>${valor}</dd></div>` : "");
+  const horario = a.hora_inicio ? `${hora(a.hora_inicio)}${a.hora_fin ? " – " + hora(a.hora_fin) : ""}` : t("c_horario_pendiente");
+  const conTransporte = a.transporte_modo === "incluido" || (a.transporte_modo === "opcional" && a.transporte_respuesta === true);
+  const participantes = a.participantes.map((p) => `${p.cantidad} ${escapar(nombreCategoria(p))}`).join(", ");
+  return `
+    <article class="vch">
+      <header class="vch-cab">
+        ${marcaEmpresa(d.empresa)}
+        <div class="vch-titulo">
+          <p>${etiqueta("v_tiquete")}</p>
+          <p class="vch-codigo"><span>${etiqueta("v_codigo")}</span><strong>${escapar(a.codigo_reserva)}</strong></p>
+        </div>
+      </header>
+      <h3 class="vch-servicio">${escapar(tServicio({ nombre: a.servicio, traducciones: a.servicio_tr }))}</h3>
+      <dl class="vch-datos">
+        ${fila("v_titular", escapar(`${d.nombre ?? ""} ${d.apellido ?? ""}`.trim()))}
+        ${fila("v_fecha", escapar(fecha(a.fecha, { weekday: "long", day: "numeric", month: "long", year: "numeric" })))}
+        ${fila("v_hora", escapar(horario))}
+        ${conTransporte ? fila("v_recogida", escapar(hora(a.hora_recogida))) : ""}
+        ${conTransporte && a.recogida ? `<div class="vch-fila"><dt>Pick up</dt><dd>${escapar(a.recogida)}</dd></div>` : ""}
+        ${conTransporte && a.dejada ? `<div class="vch-fila"><dt>Drop off</dt><dd>${escapar(a.dejada)}</dd></div>` : ""}
+        ${fila("v_participantes", participantes)}
+        ${fila("v_operador", escapar(a.operador))}
+        ${fila("v_notas", escapar(a.notas), true)}
+      </dl>
+      <p class="vch-pago">${saldo > 0.005
+        ? `<span class="vch-saldo">${etiqueta("v_saldo")}</span>`
+        : `<span class="vch-pagado">✓ ${etiqueta("v_pagado")}</span>`}</p>
+      ${pieEmpresa(d.empresa)}
+    </article>`;
+}
+
+function htmlVouchers(d, saldo) {
+  const lista = d.actividades.filter((a) => a.voucher && a.codigo_reserva)
+    .sort((x, y) => `${x.fecha} ${x.hora_inicio ?? "99"}`.localeCompare(`${y.fecha} ${y.hora_inicio ?? "99"}`));
+  if (!lista.length) return "";
+  let diaPrevio = "";
+  const tiquetes = lista.map((a) => {
+    const dia = a.fecha !== diaPrevio
+      ? `<p class="vch-dia">${escapar(fecha(a.fecha, { weekday: "long", day: "numeric", month: "long" }))}</p>` : "";
+    diaPrevio = a.fecha;
+    return dia + htmlVoucher(d, a, saldo);
+  }).join("");
+  return `
+    <section id="vouchers" class="caja vouchers">
+      <h2>${escapar(t("v_titulo"))}</h2>
+      <p class="ayuda">${escapar(t("v_intro"))}</p>
+      <div class="vch-botones">
+        <button type="button" class="btn" data-imprimir="vouchers">${escapar(t("v_imprimir"))}</button>
+        <button type="button" class="btn" data-imprimir="compacto">${escapar(t("v_compacto"))}</button>
+        <button type="button" class="btn" data-imprimir="pdf">${escapar(t("v_pdf"))}</button>
+      </div>
+      <p id="ayudaPdf" class="ayuda" hidden>${escapar(t("v_pdf_ayuda"))}</p>
+      <div class="vch-lista">${tiquetes}</div>
+    </section>`;
+}
+
+// Modos de impresión: página completa, un tiquete por hoja o itinerario compacto
+function imprimir(modo) {
+  document.body.classList.remove("imp-vouchers", "imp-compacto");
+  const pdf = modo === "pdf";
+  if (pdf) { $("ayudaPdf").hidden = false; modo = "vouchers"; }
+  if (modo === "vouchers") document.body.classList.add("imp-vouchers");
+  if (modo === "compacto") document.body.classList.add("imp-compacto");
+  setTimeout(() => window.print(), pdf ? 900 : 50);
+}
+window.addEventListener("afterprint", () => document.body.classList.remove("imp-vouchers", "imp-compacto"));
+$("contenido").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-imprimir]");
+  if (b) imprimir(b.dataset.imprimir);
+});
 
 // Respuesta de transporte: se guarda apenas el cliente elige
 $("contenido").addEventListener("change", async (e) => {
