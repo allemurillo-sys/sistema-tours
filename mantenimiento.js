@@ -164,7 +164,7 @@ async function guardarEmpresa(btn, quitarLogo = false) {
       if (archivo && !quitarLogo) {
         const blob = await prepararLogo(archivo);
         const ruta = `empresa/logo-${Date.now()}.png`;
-        const { error } = await db.storage.from("servicios-fotos").upload(ruta, blob, { contentType: "image/png", upsert: true });
+        const { error } = await db.storage.from("servicios-fotos").upload(ruta, blob, { contentType: "image/png", cacheControl: "31536000", upsert: false });
         if (error) throw error;
         fila.logo = db.storage.from("servicios-fotos").getPublicUrl(ruta).data.publicUrl;
       }
