@@ -484,12 +484,13 @@ function normalizarActividad(a) {
 }
 
 async function cargarDetalle(id) {
-  const [c, s, a, p, b] = await Promise.all([
+  const [c, s, a, p, b, m] = await Promise.all([
     db.from("resumen_cotizaciones").select("*").eq("id", id).single(),
     db.from("solicitudes").select("*").eq("cotizacion_id", id).order("fecha"),
     db.from("actividades").select("*, actividad_participantes(*)").eq("cotizacion_id", id).order("fecha").order("hora_inicio"),
     db.from("pagos").select("*").eq("cotizacion_id", id).order("fecha"),
-    db.from("bitacora").select("*").eq("cotizacion_id", id).order("creado_en", { ascending: false })
+    db.from("bitacora").select("*").eq("cotizacion_id", id).order("creado_en", { ascending: false }),
+    db.from("mensajes").select("*").eq("cotizacion_id", id).order("id")
   ]);
   const error = c.error || s.error || a.error || p.error || b.error;
   if (error) { fallo(error, "No se pudo abrir la cotización."); return false; }
@@ -499,7 +500,8 @@ async function cargarDetalle(id) {
     solicitudes: s.data,
     actividades: a.data.map(normalizarActividad),
     pagos: p.data,
-    bitacora: b.data
+    bitacora: b.data,
+    mensajes: m.error ? [] : m.data   // correos y preguntas al cliente (etapa 6)
   };
   return true;
 }
@@ -514,6 +516,7 @@ async function abrirDetalle(id) {
   document.body.classList.add("detalle-abierto");
   pintarDetalle();
   $("detalleTitulo")?.focus();
+  document.dispatchEvent(new Event("detalle-abierto"));
 }
 
 async function recargarDetalle(mantenerCambios = true) {
@@ -585,6 +588,7 @@ function pintarDetalle() {
   if (c.estado === "reserva") h += htmlConfirmarReserva(c);
   if (c.estado === "reserva" && c.reserva_confirmada_en) h += htmlTiquetes(c);
   if (c.estado === "reserva") h += htmlCompartirReserva(c);
+  if (["proceso", "reserva", "finalizado"].includes(c.estado) && typeof htmlCorreo === "function") h += htmlCorreo(c);
   if (c.estado === "reserva" || c.estado === "finalizado" || (c.estado === "cancelado" && app.actual.pagos.length)) {
     h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
   }
@@ -599,11 +603,11 @@ function pintarDetalle() {
 
 function htmlCambiosCliente(c, bitacora) {
   if (!c.cambios_pendientes) return "";
-  const ultimo = bitacora.find((b) => b.accion === "comentario del cliente");
+  const ultimo = bitacora.find((b) => b.accion === "comentario del cliente" || b.accion === "respuesta del cliente");
   return `
     <section class="det-seccion cambios">
       <h3>El cliente pidió cambios</h3>
-      ${ultimo ? `<p class="cita">${escapar(ultimo.detalle)}</p><p class="nota">Recibido el ${fechaHora(ultimo.creado_en)}</p>` : ""}
+      ${ultimo ? `${ultimo.accion === "respuesta del cliente" ? `<p class="nota">Respondió una pregunta:</p>` : ""}<p class="cita">${escapar(ultimo.detalle)}</p><p class="nota">Recibido el ${fechaHora(ultimo.creado_en)}</p>` : ""}
       <button type="button" class="btn" data-accion="revisado">Marcar como revisado</button>
     </section>`;
 }

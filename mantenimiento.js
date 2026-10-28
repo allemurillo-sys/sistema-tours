@@ -19,7 +19,7 @@ const PERMISOS = [
 
 const esAdmin = () => app.yo?.rol === "administrador";
 const pestanaPermitida = (p) =>
-  p === "cuenta" || ((p === "usuarios" || p === "autorizaciones" || p === "empresa") && esAdmin()) || (p === "reportes" && puede("ver_reportes"));
+  p === "cuenta" || ((p === "usuarios" || p === "autorizaciones" || p === "empresa" || p === "correo") && esAdmin()) || (p === "reportes" && puede("ver_reportes"));
 
 document.addEventListener("vista-abierta", (e) => { if (e.detail === "mantenimiento") abrirMantenimiento(); });
 document.addEventListener("datos-actualizados", () => { if (!$("vistaMantenimiento").hidden) abrirMantenimiento(); });
@@ -42,6 +42,7 @@ async function abrirMantenimiento() {
   if (mant.pestana === "usuarios") await cargarUsuarios();
   if (mant.pestana === "autorizaciones") await cargarPermisos();
   if (mant.pestana === "empresa") await cargarEmpresa();
+  if (mant.pestana === "correo") mant.correo = await correoEstado(true);
   pintarMantenimiento();
 }
 
@@ -52,6 +53,7 @@ function pintarMantenimiento() {
     usuarios: () => (mant.editando ? htmlFormUsuario(mant.editando) : htmlUsuarios()),
     autorizaciones: htmlAutorizaciones,
     empresa: htmlEmpresa,
+    correo: htmlCorreoConfig,
     reportes: htmlReportes
   }[mant.pestana]();
   $("mantContenido").innerHTML = html;
@@ -175,6 +177,51 @@ async function guardarEmpresa(btn, quitarLogo = false) {
       fallo(error, "No se pudieron guardar los datos de la empresa.");
     }
   });
+}
+
+// ---------------------------------------------------------
+// CORREO (cuenta de Gmail con contraseña de aplicación)
+// ---------------------------------------------------------
+function htmlCorreoConfig() {
+  const e = mant.correo || {};
+  return `
+    <div class="det-seccion sin-margen">
+      <h3>Cuenta de Gmail</h3>
+      ${e.error ? `<p class="aviso">No se pudo consultar la función "correo" de Supabase.</p>` : e.configurado
+        ? `<p class="exito-caja" style="line-height:1.5">El correo está configurado: se envía desde <strong>${escapar(e.direccion)}</strong> como "${escapar(e.nombre)}". Hoy: ${e.enviados_hoy} de ${e.limite} correos.</p>`
+        : `<p class="aviso">El correo todavía no está configurado.</p>`}
+      <div class="fila">
+        <label>Dirección de Gmail <input id="corDireccion" type="email" value="${escapar(e.direccion ?? "")}" placeholder="reservas.houseoftours@gmail.com" autocomplete="off"></label>
+        <label>Nombre del remitente <input id="corNombre" type="text" value="${escapar(e.nombre ?? "The House of Tours")}"></label>
+        <label>Contraseña de aplicación <input id="corClave" type="password" autocomplete="new-password" placeholder="${e.configurado ? "Guardada (escribe una nueva solo para cambiarla)" : "16 letras"}"></label>
+      </div>
+      <p class="nota">La contraseña se guarda en el servidor y nadie puede leerla desde el panel. Para cambiar de cuenta, escribe la nueva dirección y su contraseña de aplicación.</p>
+      <div class="sec-botones">
+        <button type="button" class="btn primario" data-mant-accion="guardar-correo">Guardar</button>
+        ${e.configurado ? `<button type="button" class="btn" data-mant-accion="probar-correo">Enviarme un correo de prueba</button>` : ""}
+      </div>
+    </div>
+    <div class="det-seccion sin-margen">
+      <h3>Cómo obtener la contraseña de aplicación</h3>
+      <ol class="correo-pasos">
+        <li>Entra a la cuenta de Gmail que vas a usar y abre <strong>myaccount.google.com</strong> › <strong>Seguridad</strong>.</li>
+        <li>Activa la <strong>Verificación en dos pasos</strong> (si ya está activa, sigue al paso 3).</li>
+        <li>En el buscador de la cuenta escribe <strong>Contraseñas de aplicaciones</strong> y ábrelo.</li>
+        <li>Escribe un nombre, por ejemplo "THOT Sistema", y presiona <strong>Crear</strong>.</li>
+        <li>Google muestra 16 letras en un recuadro amarillo: cópialas aquí arriba y presiona Guardar. No se las envíes a nadie.</li>
+      </ol>
+      <p class="nota">Gmail permite unos 500 correos por día; el sistema se detiene en 450. Las respuestas que el cliente escriba directamente en su correo llegan a la bandeja de esa cuenta de Gmail.</p>
+    </div>`;
+}
+
+async function correoFuncion(cuerpo) {
+  const { data, error } = await db.functions.invoke("correo", { body: cuerpo });
+  if (error || data?.error) {
+    let mensaje = data?.error;
+    try { mensaje ||= (await error.context.json())?.error; } catch { /* sin detalle */ }
+    throw new Error(mensaje || "No se pudo completar la acción.");
+  }
+  return data;
 }
 
 // ---------------------------------------------------------
@@ -534,6 +581,27 @@ $("mantContenido").addEventListener("click", async (e) => {
       });
       break;
     }
+
+    case "guardar-correo":
+      await conBoton(btn, async () => {
+        try {
+          await correoFuncion({ accion: "configurar", direccion: $("corDireccion").value, nombre: $("corNombre").value, clave: $("corClave").value });
+          mant.correo = await correoEstado(true);
+          pintarMantenimiento();
+          avisar(mant.correo.configurado ? "Correo guardado. Envía un correo de prueba para confirmar." : "Datos guardados. Falta la contraseña de aplicación.");
+        } catch (error) { avisar(error.message, "error"); }
+      });
+      break;
+    case "probar-correo":
+      await conBoton(btn, async () => {
+        try {
+          const r = await correoFuncion({ accion: "probar" });
+          mant.correo = await correoEstado(true);
+          pintarMantenimiento();
+          avisar(`Correo de prueba enviado a ${r.para}. Revisa la bandeja (y la carpeta de spam).`);
+        } catch (error) { avisar(error.message, "error"); }
+      });
+      break;
 
     case "guardar-empresa":
       await guardarEmpresa(btn);

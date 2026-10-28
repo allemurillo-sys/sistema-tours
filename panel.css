@@ -511,3 +511,15 @@ label.en-linea select { width: auto; }
   #vistaFinanzas .fin-grupo { break-inside: auto; }
   #vistaFinanzas .enlace { color: inherit; text-decoration: none; }
 }
+
+/* Etapa 6: correo al cliente */
+.correo-form { display: grid; gap: 10px; }
+.correo-form textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 8px; }
+.correo-vista { white-space: pre-wrap; font: inherit; font-size: .92rem; background: var(--fondo); border-radius: 8px; padding: 10px 14px; margin: 0; }
+.correo-historial { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.correo-historial li { border-top: 1px solid var(--linea); padding-top: 10px; display: grid; gap: 4px; }
+.correo-historial li > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.correo-historial .cita { margin: 4px 0 0; }
+.correo-historial .cita.respuesta { background: var(--verde-suave); color: var(--verde-hondo); }
+.correo-historial .error-texto { color: var(--alerta); }
+.correo-pasos { margin: 6px 0 10px; padding-left: 20px; line-height: 1.6; }

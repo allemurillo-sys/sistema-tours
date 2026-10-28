@@ -14,6 +14,7 @@ let errorClave = "";
 let confirmarMarcado = false;
 let mensajeExito = false;
 let mensajeComentario = null;   // { clave, tipo }
+const mensajePregunta = {};      // id de la pregunta → { clave, tipo }
 
 function escapar(texto) {
   return String(texto ?? "").replace(/[&<>"']/g, (c) =>
@@ -159,6 +160,8 @@ function pintar() {
       </div>`;
   }
 
+  html += htmlPreguntas(d);
+
   if (d.estado === "proceso" || d.estado === "reserva") {
     const textoPrevio = $("txtComentario")?.value ?? "";
     html += `
@@ -185,10 +188,58 @@ function pintar() {
   });
   $("btnConfirmar")?.addEventListener("click", confirmar);
   $("btnComentario")?.addEventListener("click", comentar);
-  if (location.hash === "#vouchers" && !irAVouchers && $("vouchers")) {
+  const destino = location.hash.slice(1);
+  if ((destino === "vouchers" || destino === "preguntas") && !irAVouchers && $(destino)) {
     irAVouchers = true;
-    $("vouchers").scrollIntoView();
+    $(destino).scrollIntoView();
   }
+}
+
+// =====================================================
+// PREGUNTAS DEL AGENTE (llegan por correo; el cliente responde aquí)
+// =====================================================
+function htmlPreguntas(d) {
+  const lista = d.preguntas || [];
+  if (!lista.length || d.estado === "cancelado") return "";
+  const previo = (id) => document.querySelector(`[data-respuesta="${id}"]`)?.value ?? "";
+  return `
+    <section id="preguntas" class="caja preguntas">
+      <h2>${escapar(t("p_titulo"))}</h2>
+      <p class="ayuda">${escapar(t("p_intro"))}</p>
+      ${lista.map((p) => {
+        const sobre = p.servicio ? t("p_sobre", { servicio: tServicio({ nombre: p.servicio, traducciones: p.servicio_tr }), fecha: fecha(p.fecha, { day: "numeric", month: "long" }) }) : "";
+        const msg = mensajePregunta[p.id];
+        return `
+          <div class="pregunta-agente${p.respuesta ? " respondida" : " falta"}">
+            ${sobre ? `<p class="ayuda">${escapar(sobre)}</p>` : ""}
+            <p class="pregunta-texto">${escapar(p.pregunta)}</p>
+            ${p.respuesta
+              ? `<p class="respuesta-cliente"><strong>${escapar(t("p_tu_respuesta"))}:</strong> ${escapar(p.respuesta)}</p>`
+              : `<textarea data-respuesta="${p.id}" maxlength="2000" aria-label="${escapar(t("p_aria"))}">${escapar(previo(p.id))}</textarea>
+                 <button type="button" class="btn primario" data-responder="${p.id}">${escapar(t("p_enviar"))}</button>`}
+            ${msg ? `<p class="${msg.tipo}" style="margin-top:10px">${escapar(t(msg.clave))}</p>` : ""}
+          </div>`;
+      }).join("")}
+    </section>`;
+}
+
+async function responderPregunta(btn) {
+  const id = Number(btn.dataset.responder);
+  const texto = document.querySelector(`[data-respuesta="${id}"]`).value.trim();
+  if (!texto) { mensajePregunta[id] = { clave: "p_vacia", tipo: "aviso" }; return pintar(); }
+  btn.disabled = true;
+  btn.textContent = t("p_enviando");
+  const { data, error } = await db.functions.invoke("correo", {
+    body: { accion: "responder", numero, token, mensaje_id: id, texto }
+  });
+  if (error || !data?.ok) {
+    mensajePregunta[id] = { clave: "p_error", tipo: "aviso" };
+    return pintar();
+  }
+  mensajePregunta[id] = { clave: "p_ok", tipo: "exito" };
+  const p = datos.preguntas.find((x) => x.id === id);
+  if (p) { p.respuesta = texto; p.respondida_en = new Date().toISOString(); }
+  pintar();
 }
 
 // =====================================================
@@ -299,6 +350,8 @@ window.addEventListener("afterprint", () => document.body.classList.remove("imp-
 $("contenido").addEventListener("click", (e) => {
   const b = e.target.closest("[data-imprimir]");
   if (b) imprimir(b.dataset.imprimir);
+  const r = e.target.closest("[data-responder]");
+  if (r) responderPregunta(r);
 });
 
 // Respuesta de transporte: se guarda apenas el cliente elige

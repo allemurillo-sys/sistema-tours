@@ -36,6 +36,13 @@
     .check input:disabled + * { opacity: .5; }
     @media print { .caja, .acciones { display: none !important; } .act { border: 1px solid #ccc; } }
 
+    /* Preguntas del agente */
+    .pregunta-agente { background: var(--fondo); border-radius: 8px; padding: 12px 14px; margin-top: 12px; border: 2px solid transparent; }
+    .pregunta-agente.falta { border-color: var(--amarillo, #D9A21B); background: #FFFCF3; }
+    .pregunta-agente .ayuda { margin: 0 0 4px; }
+    .pregunta-agente textarea { min-height: 80px; margin: 6px 0 10px; background: #fff; }
+    .respuesta-cliente { margin: 6px 0 0; }
+
     /* Mis vouchers */
     .vouchers h2 { margin-bottom: 4px; }
     .vch-botones { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
@@ -121,7 +128,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=13"></script>
-  <script src="i18n.js?v=15"></script>
-  <script src="cotizacion.js?v=15"></script>
+  <script src="i18n.js?v=16"></script>
+  <script src="cotizacion.js?v=16"></script>
 </body>
 </html>
