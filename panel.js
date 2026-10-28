@@ -79,7 +79,7 @@ const MODOS_TRANSPORTE = {
 const app = {
   yo: null,
   cotizaciones: [],
-  servicios: [], tipos: [], propiedades: [], categorias: [], precios: [], perfiles: [], operadores: [],
+  servicios: [], tipos: [], propiedades: [], categorias: [], perfiles: [], operadores: [],
   permisos: new Set(),
   verCanceladas: false,
   actualizando: false,
@@ -151,14 +151,10 @@ function opcionesServicios(seleccionado) {
   return grupos.join("");
 }
 
-function precioBase(servicioId, categoriaId) {
-  const p = app.precios.find((x) => x.servicio_id === Number(servicioId) && x.categoria_id === Number(categoriaId));
-  return p ? Number(p.precio) : 0;
-}
-function netoBase(servicioId, categoriaId) {
-  const p = app.precios.find((x) => x.servicio_id === Number(servicioId) && x.categoria_id === Number(categoriaId));
-  return p ? Number(p.neto) || 0 : 0;
-}
+// Los precios salen solo del Tarifario (tarifa de la temporada). Sin tarifa, el precio empieza en 0
+// y el agente lo escribe (tarifa Manual).
+const precioBase = () => 0;
+const netoBase = () => 0;
 // =====================================================
 // TARIFAS DEL TARIFARIO SEGÚN LA FECHA DE LA ACTIVIDAD
 // Precio TC o Cash de la temporada que cubre la fecha, neto del operador con IVA (en dólares)
@@ -334,23 +330,21 @@ $("btnSalir").addEventListener("click", async () => {
 // CATÁLOGOS Y TABLERO
 // =====================================================
 async function cargarCatalogos() {
-  const [s, p, c, pr, pf, op, tp] = await Promise.all([
+  const [s, p, c, pf, op, tp] = await Promise.all([
     db.from("servicios").select("*").order("nombre"),
     db.from("propiedades").select("*").order("nombre"),
     db.from("categorias_cliente").select("*").order("orden"),
-    db.from("servicio_precios").select("*"),
     db.from("perfiles").select("id, nombre, rol"),
     db.from("operadores").select("*").order("nombre"),
     db.from("tipos_servicio").select("*").order("orden").order("nombre")
   ]);
-  const error = s.error || p.error || c.error || pr.error || pf.error || op.error || tp.error;
+  const error = s.error || p.error || c.error || pf.error || op.error || tp.error;
   if (error) return fallo(error, "No se pudieron cargar los catálogos.");
   app.operadores = op.data;
   app.tipos = tp.data;
   app.servicios = s.data;
   app.propiedades = p.data;
   app.categorias = c.data;
-  app.precios = pr.data;
   app.perfiles = pf.data;
 }
 

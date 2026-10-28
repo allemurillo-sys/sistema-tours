@@ -5,15 +5,14 @@
 //   · Servicios: cada servicio del tarifario crea o actualiza su servicio del catálogo,
 //     con el tipo de actividad que tiene en Clasificar. Los nuevos se crean OCULTOS (inactivos)
 //     para completar descripción, horarios y traducciones antes de mostrarlos al cliente.
-//   · Precios: rack = precio TC; neto = neto del operador con IVA (si aplica).
-//     Se usa la temporada vigente hoy; si hoy no hay ninguna, la próxima que empieza.
-//     Así el precio cambia solo cuando cambia la temporada.
+//   · Precios: ya NO se copian (etapa 7). El panel y el cliente leen el precio directamente del
+//     Tarifario según la fecha de cada actividad (tarifas_actividades / precios_cliente).
+//     Aquí solo se revisan las categorías para avisar de las que no tienen equivalencia.
 //   · Propiedades no se tocan.
 // La actualización es automática (al cambiar algo del tarifario y al entrar al panel)
 // y solo la hace un administrador. La pestaña "Servicios" del Tarifario muestra qué se envía.
 // Usa utilidades de panel.js, servicios.js y tarifario.js.
-// Mientras el panel siga tomando los precios de servicio_precios (hasta la etapa 3 del plan),
-// esta copia se mantiene. Las categorías usan la equivalencia de Tarifario › Ajustes (tar_categorias).
+// Las categorías usan la equivalencia de Tarifario › Ajustes (tar_categorias).
 // =====================================================
 
 const tarSync = {
@@ -172,8 +171,7 @@ function tarSyncPlan(d) {
         rack = r2(rack / tc); neto = r2(neto / tc);
       }
       temporadas.add(tarEtiquetaTemporada(t) + (cuando === "proxima" ? " (próxima)" : cuando === "pasada" ? " (ya terminó)" : ""));
-      const actual = srv ? app.precios.find((p) => p.servicio_id === srv.id && p.categoria_id === categoria.id) : null;
-      const cambia = !actual || Number(actual.precio) !== rack || Number(actual.neto) !== neto;
+      const actual = null, cambia = false; // los precios ya no se copian
       precios.push({ categoria, rack, neto, t, actual, cambia });
     });
 
@@ -237,14 +235,6 @@ async function tarSyncAplicar(plan) {
           if (error) throw error;
           res.actualizados++;
         }
-      }
-      const cambian = it.precios.filter((p) => p.cambia || !it.srv);
-      if (cambian.length) {
-        const { error } = await db.from("servicio_precios").upsert(cambian.map((p) => ({
-          servicio_id: srv.id, categoria_id: p.categoria.id, precio: p.rack, neto: p.neto, actualizado_en: ahora
-        })));
-        if (error) throw error;
-        res.precios += cambian.length;
       }
       if (!tarSync.faltaSql && (it.vinculoNuevo || !it.srv)) {
         const { error } = await db.from("tar_fichas").upsert({

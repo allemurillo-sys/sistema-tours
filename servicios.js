@@ -51,18 +51,14 @@ function htmlAvisoTarifario() {
 // ---------------------------------------------------------
 function htmlListaServicios() {
   const fila = (s) => {
-    const precios = app.categorias
-      .map((c) => ({ c, p: app.precios.find((x) => x.servicio_id === s.id && x.categoria_id === c.id) }))
-      .filter((x) => x.p)
-      .map(({ c, p }) => `<span class="precio-linea">${escapar(c.nombre)}: ${dinero(p.precio)}${puede("ver_utilidad") ? ` <span class="nota">neto ${dinero(p.neto)}</span>` : ""}</span>`)
-      .join("");
+    const precios = ""; // los precios dependen de la fecha: se consultan en el Tarifario
     const fotos = Array.isArray(s.fotos) ? s.fotos : [];
     return `
       <tr class="${s.activo ? "" : "inactivo"}">
         <td><strong>${escapar(s.nombre)}</strong>${typeof tarEtiquetaServicio === "function" ? tarEtiquetaServicio(s.id) : ""}${s.duracion_min ? `<br><span class="nota">${s.duracion_min} min</span>` : ""}${s.horarios?.length ? `<br><span class="nota">Salidas: ${s.horarios.map(hora).join(", ")}</span>` : ""}</td>
         <td>${escapar(nombreOperador(s.operador_id)) || `<span class="nota">Sin operador</span>`}</td>
         <td>${TRANSPORTE_TEXTO[s.transporte] ?? ""}</td>
-        <td>${precios || `<span class="nota">Sin precios</span>`}</td>
+        <td>${precios || `<span class="nota">Según la temporada, en el Tarifario</span>`}</td>
         <td>${s.activo ? "Visible para clientes" : "Oculto"}<br><span class="nota">${fotos.length} foto(s)</span></td>
       </tr>`;
   };
@@ -86,7 +82,7 @@ function htmlListaServicios() {
       ${app.servicios.length ? `
         <div class="tabla-scroll">
           <table class="tabla">
-            <thead><tr><th>Servicio</th><th>Operador</th><th>Transporte</th><th>Precios (rack y neto)</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Servicio</th><th>Operador</th><th>Transporte</th><th>Precios</th><th>Estado</th></tr></thead>
             <tbody>${filas}</tbody>
           </table>
         </div>` : `<p class="nota">Todavía no hay servicios.</p>`}
