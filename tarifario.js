@@ -1055,11 +1055,14 @@ function tarHtmlOperadores() {
       ${tar.operadores.length ? `
         <div class="tabla-scroll">
           <table class="tabla">
-            <thead><tr><th>Operador</th><th>Contacto</th><th>Políticas</th><th class="num">Tarifas ${tar.anio}</th><th></th></tr></thead>
+            <thead><tr><th>Operador</th><th>Contacto</th><th>Reservas</th><th>Políticas</th><th class="num">Tarifas ${tar.anio}</th><th></th></tr></thead>
             <tbody>${tar.operadores.map((o) => `
               <tr>
                 <td><strong>${escapar(o.nombre)}</strong></td>
                 <td>${escapar(o.contacto ?? "")}</td>
+                <td>${o.correo_reservas || o.whatsapp
+                  ? `${o.correo_reservas ? `<span class="precio-linea">✉ ${escapar(o.correo_reservas)}</span>` : ""}${o.whatsapp ? `<span class="precio-linea">WhatsApp ${escapar(o.whatsapp)}</span>` : ""}<span class="nota">Prefiere ${o.medio_preferido === "whatsapp" ? "WhatsApp" : "correo"}</span>`
+                  : `<span class="aviso-texto">Sin datos para reservas</span>`}</td>
                 <td>${o.politicas ? `<span class="tar-recorte">${escapar(o.politicas)}</span>` : `<span class="nota">Sin políticas</span>`}</td>
                 <td class="num">${cuenta(o.id)}</td>
                 <td class="acciones-fila">
@@ -1079,8 +1082,19 @@ function tarHtmlFormOperador() {
       <h3>${o.id ? "Editar operador" : "Nuevo operador"}</h3>
       <div class="fila-form">
         <label>Nombre <input id="tarOpNombre" value="${escapar(o.nombre ?? "")}" autofocus></label>
-        <label>Contacto <input id="tarOpContacto" value="${escapar(o.contacto ?? "")}" placeholder="Nombre, correo o teléfono"></label>
+        <label>Contacto <input id="tarOpContacto" value="${escapar(o.contacto ?? "")}" placeholder="Nombre de la persona de contacto"></label>
       </div>
+      <h4>Datos para enviar solicitudes de reserva (P)</h4>
+      <div class="fila-form">
+        <label>Correo para reservas <input id="tarOpCorreo" type="email" value="${escapar(o.correo_reservas ?? "")}" placeholder="reservas@proveedor.com"></label>
+        <label>WhatsApp para reservas <input id="tarOpWhatsapp" type="tel" value="${escapar(o.whatsapp ?? "")}" placeholder="+506 8888 8888"></label>
+        <label>Medio preferido
+          <select id="tarOpMedio">
+            <option value="correo" ${o.medio_preferido !== "whatsapp" ? "selected" : ""}>Correo</option>
+            <option value="whatsapp" ${o.medio_preferido === "whatsapp" ? "selected" : ""}>WhatsApp</option>
+          </select></label>
+      </div>
+      <p class="nota">El WhatsApp con código de país (Costa Rica: +506). El medio preferido es el que el sistema propone al enviar; el agente puede cambiarlo.</p>
       <label>Políticas <textarea id="tarOpPoliticas" rows="7" placeholder="Cancelación, forma de pago, edades de niños, qué incluye…">${escapar(o.politicas ?? "")}</textarea></label>
       <label>Notas internas <textarea id="tarOpNotas" rows="3">${escapar(o.notas ?? "")}</textarea></label>
       <div class="sec-botones">
@@ -1095,9 +1109,18 @@ async function tarGuardarOperador(btn) {
     nombre: $("tarOpNombre").value.trim(),
     contacto: $("tarOpContacto").value.trim() || null,
     politicas: $("tarOpPoliticas").value.trim() || null,
-    notas: $("tarOpNotas").value.trim() || null
+    notas: $("tarOpNotas").value.trim() || null,
+    correo_reservas: $("tarOpCorreo").value.trim().toLowerCase() || null,
+    whatsapp: $("tarOpWhatsapp").value.trim() || null,
+    medio_preferido: $("tarOpMedio").value
   };
   if (!datos.nombre) return avisar("Escribe el nombre del operador.", "error");
+  if (datos.correo_reservas && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(datos.correo_reservas)) return avisar("Revisa el correo para reservas.", "error");
+  if (datos.whatsapp) {
+    const digitos = datos.whatsapp.replace(/\D/g, "");
+    if (digitos.length < 8) return avisar("Revisa el número de WhatsApp.", "error");
+    datos.whatsapp = "+" + (digitos.length === 8 ? "506" + digitos : digitos);   // 8 dígitos = número de Costa Rica
+  }
   const id = tar.editando.id;
   if (tar.operadores.some((o) => o.id !== id && tarNorm(o.nombre) === tarNorm(datos.nombre))) {
     return avisar("Ya existe un operador con ese nombre.", "error");

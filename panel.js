@@ -86,6 +86,7 @@ const app = {
   actual: null,            // { cot, solicitudes, actividades, pagos, bitacora }
   tarifas: new Map(),      // "servicio|fecha" → tarifa de la temporada (TC, Cash y neto por tipo de cliente) y otros proveedores
   codigos: [],             // códigos de reserva (R00001…) para buscar en el tablero
+  codigosP: [],            // solicitudes al proveedor (P00001…) para buscar en el tablero
   editandoCliente: false,
   temporizador: null
 };
@@ -353,14 +354,18 @@ async function cargarTablero() {
   d.setDate(d.getDate() - 90);
 
   const { data, error } = await db.from("resumen_cotizaciones")
-    .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance, idioma")
+    .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance, idioma, alerta_proveedor")
     .or(`and(estado.neq.finalizado,estado.neq.cancelado),fecha_fin.gte.${aTexto(d)}`)
     .order("creado_en", { ascending: true });
 
   if (error) return fallo(error, "No se pudo cargar el tablero.");
   app.cotizaciones = data;
-  const cods = await db.from("actividades").select("cotizacion_id, codigo_reserva").not("codigo_reserva", "is", null);
+  const [cods, sols] = await Promise.all([
+    db.from("actividades").select("cotizacion_id, codigo_reserva").not("codigo_reserva", "is", null),
+    db.from("solicitudes_proveedor").select("cotizacion_id, codigo")
+  ]);
   app.codigos = cods.error ? [] : cods.data;
+  app.codigosP = sols.error ? [] : sols.data;   // solicitudes al proveedor (P00001…)
   pintarTablero();
   $("ultimaActualizacion").textContent =
     `Actualizado a las ${new Date().toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -371,7 +376,8 @@ function pintarTablero() {
   const lista = app.cotizaciones.filter((c) =>
     !q || nombreCompleto(c).toLowerCase().includes(q) || c.numero.toLowerCase().includes(q)
     || app.codigos.some((x) => x.cotizacion_id === c.id
-      && (x.codigo_reserva.toLowerCase().includes(q) || `${c.numero}-${x.codigo_reserva}`.toLowerCase().includes(q))));
+      && (x.codigo_reserva.toLowerCase().includes(q) || `${c.numero}-${x.codigo_reserva}`.toLowerCase().includes(q)))
+    || (app.codigosP || []).some((x) => x.cotizacion_id === c.id && x.codigo.toLowerCase().includes(q)));
 
   const columnas = COLUMNAS.filter((col) => col.id !== "cancelado" || app.verCanceladas);
   $("tablero").classList.toggle("con-canceladas", app.verCanceladas);
@@ -393,6 +399,8 @@ function htmlItem(c) {
   const extra = [];
   if (c.idioma && c.idioma !== "es") extra.push(`<span class="etiqueta idioma" title="Idioma del cliente: ${NOMBRE_IDIOMA[c.idioma]}">${c.idioma.toUpperCase()}</span>`);
   if (c.cambios_pendientes) extra.push(`<span class="etiqueta alerta">Pidió cambios</span>`);
+  if (c.alerta_proveedor === "urgente") extra.push(`<span class="etiqueta urgente">Proveedor: urgente</span>`);
+  else if (c.alerta_proveedor) extra.push(`<span class="etiqueta alerta">Respuesta del proveedor</span>`);
   if (c.estado === "proceso") extra.push(`<span class="etiqueta">${c.enviada_en ? "Enviada" : "Sin enviar"}</span>`);
   if (c.estado === "reserva" && Number(c.total) > 0) {
     extra.push(`<span class="etiqueta">${Number(c.balance) > 0 ? "Balance " + dinero(c.balance) : "Pagada"}</span>`);
@@ -465,6 +473,8 @@ function normalizarActividad(a) {
     codigo_reserva: a.codigo_reserva ?? null,
     voucher_habilitado: !!a.voucher_habilitado,
     voucher_habilitado_en: a.voucher_habilitado_en ?? null,
+    notas_proveedor: a.notas_proveedor ?? "",
+    estado_servicio: a.estado_servicio || "por_solicitar",
     participantes: (a.actividad_participantes || [])
       .map((p) => ({
         categoria_id: p.categoria_id,
@@ -478,13 +488,14 @@ function normalizarActividad(a) {
 }
 
 async function cargarDetalle(id) {
-  const [c, s, a, p, b, m] = await Promise.all([
+  const [c, s, a, p, b, m, sp] = await Promise.all([
     db.from("resumen_cotizaciones").select("*").eq("id", id).single(),
     db.from("solicitudes").select("*").eq("cotizacion_id", id).order("fecha"),
     db.from("actividades").select("*, actividad_participantes(*)").eq("cotizacion_id", id).order("fecha").order("hora_inicio"),
     db.from("pagos").select("*").eq("cotizacion_id", id).order("fecha"),
     db.from("bitacora").select("*").eq("cotizacion_id", id).order("creado_en", { ascending: false }),
-    db.from("mensajes").select("*").eq("cotizacion_id", id).order("id")
+    db.from("mensajes").select("*").eq("cotizacion_id", id).order("id"),
+    db.from("solicitudes_proveedor").select("*").eq("cotizacion_id", id).order("id")
   ]);
   const error = c.error || s.error || a.error || p.error || b.error;
   if (error) { fallo(error, "No se pudo abrir la cotización."); return false; }
@@ -495,8 +506,14 @@ async function cargarDetalle(id) {
     actividades: a.data.map(normalizarActividad),
     pagos: p.data,
     bitacora: b.data,
-    mensajes: m.error ? [] : m.data   // correos y preguntas al cliente (etapa 6)
+    mensajes: m.error ? [] : m.data,   // correos y preguntas al cliente (etapa 6)
+    solicitudesP: sp.error ? [] : sp.data, // solicitudes al proveedor P00001… (etapa 8)
+    eventosP: []
   };
+  if (app.actual.solicitudesP.length) {
+    const ev = await db.from("solicitud_eventos").select("*").in("solicitud_id", app.actual.solicitudesP.map((x) => x.id)).order("id");
+    app.actual.eventosP = ev.error ? [] : ev.data;
+  }
   return true;
 }
 
@@ -562,6 +579,7 @@ function pintarDetalle() {
     </div>`;
 
   h += htmlCambiosCliente(c, bitacora);
+  if (c.alerta_proveedor && typeof htmlAlertaProveedor === "function") h += htmlAlertaProveedor(c);
   if (c.estado === "cancelado") h += htmlCancelada(c);
   h += htmlCliente(c);
   h += htmlSolicitud(solicitudes);
@@ -579,6 +597,7 @@ function pintarDetalle() {
   if (c.estado === "finalizado" || c.estado === "cancelado") h += htmlActividadesLectura();
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
+  if (c.estado === "reserva" && typeof htmlSolicitudes === "function") h += htmlSolicitudes(c);
   if (c.estado === "reserva") h += htmlConfirmarReserva(c);
   if (c.estado === "reserva" && c.reserva_confirmada_en) h += htmlTiquetes(c);
   if (c.estado === "reserva") h += htmlCompartirReserva(c);
@@ -781,6 +800,7 @@ function htmlActividad(a, idx) {
         </table>
       </div>
       <label>Notas para el cliente (aparecen en el tiquete) <input data-campo="notas" type="text" value="${escapar(a.notas)}" placeholder="Ej.: llevar ropa cómoda, bloqueador y repelente"></label>
+      <label>Notas para el proveedor (aparecen en la solicitud P) <input data-campo="notas_proveedor" type="text" value="${escapar(a.notas_proveedor)}" placeholder="Ej.: cliente vegetariano, llegan en carro propio"></label>
     </article>`;
 }
 
@@ -823,13 +843,16 @@ function htmlTarifa(a) {
 }
 
 // Confirmación de la actividad con el operador (solo en Reserva; el número es de uso interno)
+// La confirmación del operador la registra la solicitud al proveedor (P): solo se muestra
 function htmlConfirmacionOperador(a) {
+  const sol = typeof solicitudDeActividad === "function" ? solicitudDeActividad(a.id) : null;
   return `
     <div class="act-confirmacion">
-      <label class="check-linea"><input type="checkbox" data-campo="operador_confirmado" ${a.operador_confirmado ? "checked" : ""}> Confirmada con el operador</label>
-      <label>N.º de confirmación del operador <span class="interno">interno</span>
-        <input data-campo="operador_confirmacion" type="text" value="${escapar(a.operador_confirmacion)}" placeholder="Opcional">
-      </label>
+      ${a.operador_confirmado
+        ? `<span class="act-confirmada">Confirmada con el operador${a.operador_confirmacion ? ` · N.º ${escapar(a.operador_confirmacion)}` : ""}</span>`
+        : `<span class="act-sin-tarifa">Sin confirmar con el operador</span>`}
+      ${sol ? `<span class="etiqueta">${escapar(sol.codigo)}</span>` : ""}
+      <span class="nota">Se registra en "Solicitudes a proveedores".</span>
     </div>`;
 }
 
@@ -1052,7 +1075,7 @@ function htmlConfirmarReserva(c) {
       <h3>Confirmar reserva</h3>
       <p>Cuando todo esté coordinado, confirma la reserva: cada servicio recibe su código de reserva (por ejemplo ${escapar(c.numero)}-R00001).</p>
       ${sinConfirmar.length
-        ? `<p class="aviso">${sinConfirmar.length} de ${acts.length} servicio(s) todavía no están confirmados con el operador: ${sinConfirmar.map((a) => escapar(servicioPorId(a.servicio_id)?.nombre ?? "Actividad")).join(", ")}. Márcalos en cada actividad y guarda, o confirma de todos modos (quedará anotado en el historial).</p>`
+        ? `<p class="aviso">${sinConfirmar.length} de ${acts.length} servicio(s) todavía no están confirmados con el operador: ${sinConfirmar.map((a) => escapar(servicioPorId(a.servicio_id)?.nombre ?? "Actividad")).join(", ")}. Envía la solicitud a cada proveedor en "Solicitudes a proveedores" y espera su confirmación, o confirma de todos modos (quedará anotado en el historial).</p>`
         : `<p class="nota">Todos los servicios están confirmados con su operador.</p>`}
       <button type="button" class="btn primario" data-accion="confirmar-reserva">Confirmar reserva</button>
     </section>`;
@@ -1224,6 +1247,7 @@ function leerTarjeta(card) {
     transporte_neto: Math.max(0, parseFloat(v("transporte_neto")) || 0),
     operador_id: v("operador_id") ? Number(v("operador_id")) : null,
     notas: v("notas"),
+    notas_proveedor: v("notas_proveedor"),
     tarifa_tipo: v("tarifa_tipo") || previa.tarifa_tipo || "manual",
     operador_confirmado: card.querySelector('[data-campo="operador_confirmado"]')
       ? card.querySelector('[data-campo="operador_confirmado"]').checked : !!previa.operador_confirmado,
@@ -1308,6 +1332,8 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     codigo_reserva: null,
     voucher_habilitado: false,
     voucher_habilitado_en: null,
+    notas_proveedor: "",
+    estado_servicio: "por_solicitar",
     participantes,
     _pendiente: true
   };
@@ -1340,10 +1366,9 @@ async function guardarTodo(btn) {
           transporte_neto: a.transporte_modo === "sin_transporte" ? 0 : a.transporte_neto,
           operador_id: a.operador_id || null,
           notas: a.notas || null,
-          tarifa_tipo: a.tarifa_tipo || "manual",
-          operador_confirmado: !!a.operador_confirmado,
-          operador_confirmacion: a.operador_confirmacion?.trim() || null,
-          operador_confirmado_en: a.operador_confirmado ? (a.operador_confirmado_en || new Date().toISOString()) : null
+          notas_proveedor: a.notas_proveedor?.trim() || null,
+          tarifa_tipo: a.tarifa_tipo || "manual"
+          // La confirmación del operador ya no se escribe aquí: la registra la solicitud al proveedor (etapa 8)
         };
         if (a.id) {
           const { error } = await db.from("actividades").update(fila).eq("id", a.id);

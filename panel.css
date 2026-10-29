@@ -523,3 +523,36 @@ label.en-linea select { width: auto; }
 .correo-historial .cita.respuesta { background: var(--verde-suave); color: var(--verde-hondo); }
 .correo-historial .error-texto { color: var(--alerta); }
 .correo-pasos { margin: 6px 0 10px; padding-left: 20px; line-height: 1.6; }
+
+/* Etapa 8: solicitudes al proveedor */
+.btn.chico { padding: 6px 12px; font-size: .9rem; }
+.aviso-texto { color: var(--alerta); font-size: .85rem; }
+.etiqueta.urgente { background: #b3261e; color: #fff; border-color: transparent; font-weight: 700; }
+.alerta-urgente { background: #fde7e5; color: #8c1d18; border: 2px solid #b3261e; }
+.chip-p { font-size: .78rem; border-radius: 999px; padding: 2px 9px; background: var(--fondo); font-weight: 700; white-space: nowrap; }
+.chip-p.ok { background: var(--verde-suave); color: var(--verde-hondo); }
+.chip-p.info { background: #e6eefa; color: #2d5d9f; }
+.chip-p.alerta { background: var(--alerta-fondo); color: var(--alerta); }
+.chip-p.aviso { background: #fff4d6; color: #7a5a00; }
+.sol-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px; }
+.sol-fila { border: 1px solid var(--linea); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; background: var(--blanco); }
+.sol-cabeza { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sol-cabeza input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--verde); }
+.sol-espacio { width: 20px; }
+.sol-titulo { display: grid; flex: 1; min-width: 200px; }
+.sol-detalle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.sol-detalle small, .sol-respuesta small { color: var(--gris); }
+.sol-respuesta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.sol-respuesta .cita { flex-basis: 100%; }
+.sol-panel { border-top: 1px dashed var(--linea); padding-top: 10px; display: grid; gap: 10px; }
+.sol-panel h4 { margin: 0; }
+.sol-datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px 16px; margin: 0; }
+.sol-datos dt { font-size: .78rem; color: var(--gris); }
+.sol-datos dd { margin: 0; font-weight: 600; }
+.sol-tabla { max-width: 560px; }
+.sol-historial summary { cursor: pointer; color: var(--gris); font-size: .9rem; }
+.sol-historial ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.sol-historial li { display: grid; gap: 2px; border-left: 3px solid var(--linea); padding-left: 10px; }
+.sol-historial li.ev-mensaje_proveedor, .sol-historial li.ev-respuesta { border-color: var(--verde); }
+.sol-historial li.ev-verificacion { border-color: #b3261e; }
+.sol-historial li small { color: var(--gris); }

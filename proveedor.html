@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Solicitud de servicio | The House of Tours</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilos.css?v=15">
+  <style>
+    .caja { background: var(--blanco); border-radius: 12px; padding: 20px; margin-top: 18px; }
+    .caja h2 { font-family: var(--titulos); font-size: 1.2rem; margin: 0 0 10px; }
+    .sol-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; border-bottom: 2px solid var(--verde); padding-bottom: 12px; }
+    .sol-logo { max-height: 52px; max-width: 180px; object-fit: contain; }
+    .sol-marca { font-family: var(--titulos); font-weight: 700; color: var(--verde-hondo); font-size: 1.1rem; }
+    .sol-num { text-align: right; }
+    .sol-num p { margin: 0; color: var(--gris); font-size: .85rem; }
+    .sol-num strong { font-family: var(--titulos); font-size: 1.6rem; display: block; color: var(--pizarra, #1d2a24); }
+    dl.datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 18px; margin: 16px 0; }
+    dl.datos dt { font-size: .8rem; color: var(--gris); text-transform: uppercase; letter-spacing: .03em; }
+    dl.datos dd { margin: 0; font-weight: 700; }
+    table.part { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    table.part th, table.part td { padding: 8px 6px; border-bottom: 1px solid var(--linea); text-align: left; }
+    table.part .num { text-align: right; }
+    table.part tfoot th { border-top: 2px solid #1d2a24; border-bottom: 0; font-size: 1.1rem; }
+    .banner { border-radius: 10px; padding: 14px 16px; margin-top: 16px; font-weight: 500; }
+    .banner.ok { background: var(--verde-suave); color: var(--verde-hondo); }
+    .banner.alerta { background: var(--alerta-fondo, #FCEBDD); color: var(--alerta, #8A3B12); }
+    .banner.info { background: #e6eefa; color: #24497d; }
+    .banner strong { display: block; font-family: var(--titulos); font-size: 1.1rem; margin-bottom: 4px; }
+    .opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0; }
+    .opcion { border: 2px solid var(--linea); border-radius: 10px; padding: 12px; background: #fff; cursor: pointer; text-align: left; font: inherit; }
+    .opcion strong { display: block; font-size: 1.05rem; }
+    .opcion span { color: var(--gris); font-size: .88rem; }
+    .opcion.activa { border-color: var(--verde); background: var(--verde-suave); }
+    .opcion.confirmar strong { color: var(--verde-hondo); }
+    .opcion.revisar strong { color: #7a5a00; }
+    .opcion.sin strong { color: #8c1d18; }
+    .campos { display: grid; gap: 10px; }
+    .campos label { display: grid; gap: 4px; font-weight: 700; }
+    .campos input, .campos textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 8px; width: 100%; }
+    .mensajes { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+    .mensajes li { border-radius: 10px; padding: 10px 12px; background: var(--fondo); }
+    .mensajes li.agente { background: #e6eefa; }
+    .mensajes small { color: var(--gris); display: block; margin-bottom: 2px; }
+    .pie { font-size: .78rem; color: var(--gris); text-align: center; margin-top: 18px; }
+    .error-texto { color: var(--alerta, #8A3B12); }
+  </style>
+</head>
+<body>
+  <main class="pagina">
+    <p id="cargando" class="ayuda">Cargando la solicitud…</p>
+    <p id="error" class="aviso" hidden></p>
+    <div id="contenido" hidden></div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=13"></script>
+  <script src="proveedor.js?v=1"></script>
+</body>
+</html>
