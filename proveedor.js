@@ -101,12 +101,18 @@ function pintar() {
   const e = d.empresa || {};
   $("cargando").hidden = true;
 
+  const cancelada = d.estado === "cancelada";
   const respondida = d.respuesta && d.respuesta_origen === "enlace";
-  const porChat = d.respuesta && d.respuesta_origen === "agente" && !d.verificada_en;
+  const porChat = !cancelada && d.respuesta && d.respuesta_origen === "agente" && !d.verificada_en;
 
   let banner = "";
-  if (d.estado === "cancelada") banner = `<div class="banner alerta"><strong>CANCELACIÓN</strong>Esta solicitud fue cancelada.</div>`;
-  else if (porChat) {
+  if (cancelada) {
+    banner = `<div class="banner alerta"><strong>CANCELACIÓN</strong>Esta solicitud fue cancelada. ${d.cancelacion_recibida_en
+      ? `Recibida por ${escapar(d.cancelacion_recibida_por)} el ${fechaHora(d.cancelacion_recibida_en)}.`
+      : "Por favor confirme que la recibió con el botón \"Recibido\"."}</div>`;
+  } else if (d.estado === "borrador") {
+    banner = `<div class="banner info"><strong>Hay cambios en esta solicitud</strong>En breve recibirá la nueva versión (versión ${d.version}) para confirmarla de nuevo.</div>`;
+  } else if (porChat) {
     banner = `
       <div class="banner info"><strong>Esta solicitud ya fue respondida por chat</strong>
         Respuesta: ${escapar(RESPUESTA[d.respuesta])} · ${escapar(d.respuesta_nombre)} · ${escapar(d.respuesta_medio || "")} · ${d.respuesta_en ? fechaHora(d.respuesta_en) : ""}<br>
@@ -118,10 +124,13 @@ function pintar() {
         ${d.respuesta_numero ? `<br>N.º de confirmación: ${escapar(d.respuesta_numero)}` : ""}
         ${d.respuesta_nota ? `<br>Nota: ${escapar(d.respuesta_nota)}` : ""}</div>`;
   } else if (d.version > 1 && d.estado === "enviada") {
-    banner = `<div class="banner alerta"><strong>Versión ${d.version} de la solicitud</strong>Hubo cambios: revise los datos y responda de nuevo.</div>`;
+    banner = `<div class="banner alerta"><strong>MODIFICACIÓN · versión ${d.version}</strong>Hubo cambios: revise los datos y confirme de nuevo.</div>`;
+  }
+  if (!cancelada && d.servicio_confirmado && d.codigo_cliente) {
+    banner += `<div class="banner ok"><strong>CONFIRMADA · código del cliente ${escapar(d.codigo_cliente)}</strong>El cliente presentará este código en su voucher.</div>`;
   }
 
-  const puedeResponder = d.estado === "enviada" || porChat;
+  const puedeResponder = !cancelada && (d.estado === "enviada" || porChat);
   const marca = e.logo
     ? `<img class="sol-logo" src="${escapar(e.logo)}" alt="${escapar(e.nombre_legal || "The House of Tours")}">`
     : `<span class="sol-marca">The House of Tours</span>`;
@@ -131,7 +140,7 @@ function pintar() {
   const nombreChat = $("chNombre")?.value ?? "";
   // Lo que el proveedor ya escribió en la respuesta se conserva al redibujar (por ejemplo, tras un aviso)
   const previos = {};
-  ["rNombre", "rNumero", "rNota", "rCorreccion"].forEach((id) => { if ($(id)) previos[id] = $(id).value; });
+  ["rNombre", "rNumero", "rNota", "rCorreccion", "rcNombre"].forEach((id) => { if ($(id)) previos[id] = $(id).value; });
 
   $("contenido").innerHTML = `
     <div class="caja">
@@ -148,6 +157,15 @@ function pintar() {
       ${d.agente?.nombre ? `<p class="ayuda" style="margin-top:14px">Agente: ${escapar(d.agente.nombre)}${d.agente.correo ? " · " + escapar(d.agente.correo) : ""}</p>` : ""}
     </div>
     ${puedeResponder ? htmlResponder(porChat) : ""}
+    ${cancelada && !d.cancelacion_recibida_en ? `
+      <div class="caja">
+        <h2>Confirmar que recibió la cancelación</h2>
+        <div class="campos">
+          <label>Su nombre (obligatorio) <input id="rcNombre" type="text" maxlength="120" autocomplete="name"></label>
+          <button type="button" id="btnRecibido" class="btn primario">Recibido</button>
+          ${mensaje ? `<p class="${mensaje.tipo}">${escapar(mensaje.texto)}</p>` : ""}
+        </div>
+      </div>` : ""}
     <div class="caja">
       <h2>Mensajes</h2>
       ${(d.mensajes || []).length ? `<ul class="mensajes">${d.mensajes.map((m) => `
@@ -196,6 +214,21 @@ $("contenido").addEventListener("click", async (ev) => {
     try {
       await llamar({ accion: "proveedor_responder", respuesta, nombre, numero, nota });
       eleccion = null;
+      mensaje = null;
+      await cargar();
+      window.scrollTo(0, 0);
+    } catch (e) {
+      mensaje = { texto: e.message, tipo: "error-texto" };
+      pintar();
+    }
+  }
+
+  if (ev.target.id === "btnRecibido") {
+    const nombre = $("rcNombre").value.trim();
+    if (!nombre) { mensaje = { texto: "Escriba su nombre.", tipo: "error-texto" }; return pintar(); }
+    ev.target.disabled = true;
+    try {
+      await llamar({ accion: "proveedor_recibido", nombre });
       mensaje = null;
       await cargar();
       window.scrollTo(0, 0);

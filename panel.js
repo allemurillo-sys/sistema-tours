@@ -360,12 +360,15 @@ async function cargarTablero() {
 
   if (error) return fallo(error, "No se pudo cargar el tablero.");
   app.cotizaciones = data;
-  const [cods, sols] = await Promise.all([
+  const limite = new Date(); limite.setDate(limite.getDate() + 3);
+  const [cods, sols, prox] = await Promise.all([
     db.from("actividades").select("cotizacion_id, codigo_reserva").not("codigo_reserva", "is", null),
-    db.from("solicitudes_proveedor").select("cotizacion_id, codigo")
+    db.from("solicitudes_proveedor").select("cotizacion_id, codigo, estado, aviso"),
+    db.from("actividades").select("cotizacion_id, fecha, estado_servicio").lte("fecha", aTexto(limite)).gte("fecha", aTexto(new Date()))
   ]);
   app.codigos = cods.error ? [] : cods.data;
   app.codigosP = sols.error ? [] : sols.data;   // solicitudes al proveedor (P00001…)
+  app.proximosSinConfirmar = prox.error ? [] : prox.data.filter((a) => !["confirmado", "cancelado"].includes(a.estado_servicio || "por_solicitar"));
   pintarTablero();
   $("ultimaActualizacion").textContent =
     `Actualizado a las ${new Date().toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -401,6 +404,11 @@ function htmlItem(c) {
   if (c.cambios_pendientes) extra.push(`<span class="etiqueta alerta">Pidió cambios</span>`);
   if (c.alerta_proveedor === "urgente") extra.push(`<span class="etiqueta urgente">Proveedor: urgente</span>`);
   else if (c.alerta_proveedor) extra.push(`<span class="etiqueta alerta">Respuesta del proveedor</span>`);
+  if (c.estado === "reserva") {
+    const avisos = (app.codigosP || []).filter((x) => x.cotizacion_id === c.id && (x.aviso || x.estado === "borrador")).length;
+    if (avisos) extra.push(`<span class="etiqueta alerta">${avisos} ${avisos === 1 ? "aviso pendiente" : "avisos pendientes"} a proveedores</span>`);
+    if ((app.proximosSinConfirmar || []).some((a) => a.cotizacion_id === c.id)) extra.push(`<span class="etiqueta urgente">Servicio próximo sin confirmar</span>`);
+  }
   if (c.estado === "proceso") extra.push(`<span class="etiqueta">${c.enviada_en ? "Enviada" : "Sin enviar"}</span>`);
   if (c.estado === "reserva" && Number(c.total) > 0) {
     extra.push(`<span class="etiqueta">${Number(c.balance) > 0 ? "Balance " + dinero(c.balance) : "Pagada"}</span>`);
@@ -598,7 +606,7 @@ function pintarDetalle() {
   if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
   if (c.estado === "proceso") h += htmlEnvio(c);
   if (c.estado === "reserva" && typeof htmlSolicitudes === "function") h += htmlSolicitudes(c);
-  if (c.estado === "reserva") h += htmlConfirmarReserva(c);
+  if (c.estado === "reserva") h += typeof htmlAvanceReserva === "function" ? htmlAvanceReserva(c) : htmlConfirmarReserva(c);
   if (c.estado === "reserva" && c.reserva_confirmada_en) h += htmlTiquetes(c);
   if (c.estado === "reserva") h += htmlCompartirReserva(c);
   if (["proceso", "reserva", "finalizado"].includes(c.estado) && typeof htmlCorreo === "function") h += htmlCorreo(c);
@@ -1101,8 +1109,8 @@ function htmlTiquetes(c) {
       <ul class="codigos-reserva tiquetes-lista">${acts.map((a) => `
         <li>
           <label class="check-linea chico">
-            <input type="checkbox" data-voucher="${a.id ?? ""}" ${a.voucher_habilitado ? "checked" : ""} ${a.id && a.codigo_reserva ? "" : "disabled"}>
-            <strong>${a.codigo_reserva ? `${escapar(c.numero)}-${escapar(a.codigo_reserva)}` : "Sin código (guarda los cambios)"}</strong>
+            <input type="checkbox" data-voucher="${a.id ?? ""}" ${a.voucher_habilitado ? "checked" : ""} ${a.id && a.codigo_reserva && a.estado_servicio === "confirmado" ? "" : "disabled"}>
+            <strong>${a.codigo_reserva && a.estado_servicio === "confirmado" ? `${escapar(c.numero)}-${escapar(a.codigo_reserva)}` : "Servicio sin confirmar"}</strong>
           </label>
           <span>${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")} · ${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</span>
           ${a.voucher_habilitado ? `<span class="act-confirmada">Visible para el cliente</span>` : ""}
@@ -1395,6 +1403,8 @@ async function guardarTodo(btn) {
         }
       }
       avisar("Cambios guardados.");
+      // Etapa 9: si cambió un servicio ya solicitado al proveedor, se prepara la MODIFICACIÓN (o la cancelación si cambió el proveedor)
+      if (c.estado === "reserva" && typeof revisarCambiosSolicitudes === "function") await revisarCambiosSolicitudes(c);
       await recargarDetalle(false);
       cargarTablero();
     } catch (error) {
@@ -1599,6 +1609,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
         }
       }
       app.actual.actividades.splice(idx, 1);
+      if (typeof recargarSoloSolicitudes === "function") await recargarSoloSolicitudes();
       pintarDetalle();
       cargarTablero();
       break;

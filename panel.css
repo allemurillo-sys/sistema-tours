@@ -556,3 +556,4 @@ label.en-linea select { width: auto; }
 .sol-historial li.ev-mensaje_proveedor, .sol-historial li.ev-respuesta { border-color: var(--verde); }
 .sol-historial li.ev-verificacion { border-color: #b3261e; }
 .sol-historial li small { color: var(--gris); }
+.sol-confirmado { margin: 0; background: var(--verde-suave); color: var(--verde-hondo); border-radius: 8px; padding: 6px 10px; }

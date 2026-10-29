@@ -24,6 +24,7 @@ const ESTADO_P = {
   cancelada: ["Cancelada", ""], cerrada: ["Cerrada", ""]
 };
 const RESPUESTA_P = { confirmar: "Confirmar", revisar: "Revisar", sin_disponibilidad: "Sin disponibilidad" };
+const AVISO_P = { modificacion: "MODIFICACIÓN por enviar", cancelacion: "CANCELACIÓN por avisar", confirmacion_final: "Confirmación final por enviar" };
 const chipP = ([texto, clase]) => `<span class="chip-p ${clase}">${escapar(texto)}</span>`;
 const usdP = (n) => dinero(n);
 
@@ -118,6 +119,42 @@ function htmlSolicitudes(c) {
       <p class="nota">Marca los servicios y presiona "Pasar a cotizando y solicitar": cada uno recibe su número P y se abre la vista previa para enviarlo por correo o WhatsApp. El proveedor responde en su enlace.</p>
       ${pendientes ? `<p class="aviso">Guarda los cambios del itinerario antes de solicitar a los proveedores.</p>` : ""}
       ${acts.length ? `<ul class="sol-lista">${acts.map((a) => htmlFilaSolicitud(a, c)).join("")}</ul>` : `<p class="nota">La reserva no tiene servicios.</p>`}
+      ${htmlCancelacionesSueltas()}
+    </section>`;
+}
+
+// Cancelaciones por avisar de servicios eliminados o de proveedores reemplazados (no son la última solicitud del servicio)
+function htmlCancelacionesSueltas() {
+  const sueltas = (app.actual.solicitudesP || []).filter((x) => x.estado === "cancelada" && (x.aviso === "cancelacion" || !x.cancelacion_recibida_en && x.aviso)
+    && (!x.actividad_id || solicitudDeActividad(x.actividad_id)?.id !== x.id));
+  if (!sueltas.length) return "";
+  return `
+    <h4>Cancelaciones por avisar a proveedores</h4>
+    <ul class="sol-lista">${sueltas.map((x) => `
+      <li class="sol-fila">
+        <div class="sol-detalle">
+          <span class="etiqueta">${escapar(x.codigo)}</span>
+          <strong>${escapar(x.contenido?.servicio ?? "")}</strong>
+          <small>${escapar(nombreOperador(x.operador_id))} · ${fecha(x.contenido?.fecha, { day: "numeric", month: "short" })}</small>
+          ${chipP([AVISO_P.cancelacion, "alerta"])}
+        </div>
+        <div class="sec-botones"><button type="button" class="btn primario chico" data-solp="aviso" data-id="${x.id}">Avisar cancelación</button></div>
+        ${solP.abierto?.id === x.id && solP.abierto.tipo === "aviso" ? htmlAviso(x) : ""}
+      </li>`).join("")}</ul>`;
+}
+
+// Avance de la reserva: reemplaza el antiguo "Confirmar reserva" (cada servicio se confirma por separado)
+function htmlAvanceReserva(c) {
+  const acts = app.actual.actividades.filter((a) => a.id && a.servicio_id && a.estado_servicio !== "cancelado");
+  const conf = acts.filter((a) => a.estado_servicio === "confirmado");
+  return `
+    <section class="det-seccion">
+      <h3>Servicios confirmados: ${conf.length} de ${acts.length}</h3>
+      ${conf.length ? `<ul class="codigos-reserva">${conf.slice().sort(ordenActividad).map((a) => `
+        <li><strong>${escapar(c.numero)}-${escapar(a.codigo_reserva ?? "")}</strong>
+          <span>${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")} · ${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</span>
+          ${solicitudDeActividad(a.id) ? `<span class="etiqueta">${escapar(solicitudDeActividad(a.id).codigo)}</span>` : ""}</li>`).join("")}</ul>`
+        : `<p class="nota">Cada servicio se confirma en "Solicitudes a proveedores" cuando su proveedor lo confirma: ahí nace su código R.</p>`}
     </section>`;
 }
 
@@ -139,7 +176,13 @@ function htmlFilaSolicitud(a, c) {
 
   let acciones = "";
   if (s) {
-    if (s.estado === "borrador") acciones += `<button type="button" class="btn primario chico" data-solp="vista" data-id="${s.id}">Vista previa y enviar</button>`;
+    if (s.estado === "confirmada" && a.estado_servicio !== "confirmado" && !cambioProveedor) {
+      acciones += `<button type="button" class="btn primario chico" data-solp="confirmar-servicio" data-id="${s.id}" data-act="${a.id}">Confirmar servicio</button>`;
+    }
+    if (s.aviso === "confirmacion_final" || s.aviso === "cancelacion") {
+      acciones += `<button type="button" class="btn primario chico" data-solp="aviso" data-id="${s.id}">${s.aviso === "cancelacion" ? "Avisar cancelación" : "Enviar confirmación final"}</button>`;
+    }
+    if (s.estado === "borrador") acciones += `<button type="button" class="btn primario chico" data-solp="vista" data-id="${s.id}">${s.aviso === "modificacion" ? "Vista previa y enviar MODIFICACIÓN" : "Vista previa y enviar"}</button>`;
     if (s.estado === "enviada") {
       acciones += `<button type="button" class="btn chico" data-solp="vista" data-id="${s.id}">Reenviar</button>`;
       acciones += `<button type="button" class="btn chico" data-solp="registro" data-id="${s.id}">Registrar respuesta recibida por chat</button>`;
@@ -147,7 +190,7 @@ function htmlFilaSolicitud(a, c) {
     if (["revisar", "confirmada", "sin_disponibilidad"].includes(s.estado) && !cambioProveedor) {
       acciones += `<button type="button" class="btn chico" data-solp="nueva-version" data-id="${s.id}">Nueva versión y reenviar</button>`;
     }
-    if (s.estado !== "borrador") {
+    if (s.estado !== "borrador" && s.estado !== "cancelada") {
       acciones += `<button type="button" class="btn chico" data-solp="mensaje" data-id="${s.id}">Mensaje al proveedor</button>`;
       acciones += `<button type="button" class="enlace" data-solp="copiar" data-id="${s.id}">Copiar enlace</button>`;
     }
@@ -175,18 +218,24 @@ function htmlFilaSolicitud(a, c) {
       </div>
       ${sinOperador ? `<p class="nota">Asigna el operador en la actividad para poder solicitarlo.</p>` : ""}
       ${sinDisp && !cambioProveedor ? `<p class="aviso">El proveedor no tiene disponibilidad. Si cambias la fecha u hora, guarda y usa "Nueva versión y reenviar". Si cambias de proveedor en la actividad, guarda y aparecerá la casilla para pedirle al nuevo proveedor (nuevo número P).</p>` : ""}
-      ${cambioProveedor && !sinDisp ? `<p class="aviso">El proveedor de la actividad ya no es el de la solicitud ${escapar(s.codigo)} (${escapar(nombreOperador(s.operador_id))}). Avísale al proveedor anterior con "Mensaje al proveedor".</p>` : ""}
+      ${cambioProveedor && !sinDisp ? `<p class="aviso">El proveedor de la actividad ya no es el de la solicitud ${escapar(s.codigo)} (${escapar(nombreOperador(s.operador_id))}). Guarda los cambios del itinerario: la solicitud anterior se cancela y queda el aviso de cancelación.</p>` : ""}
+      ${a.estado_servicio === "confirmado" && a.codigo_reserva ? `<p class="sol-confirmado">Servicio confirmado · <strong>${escapar(c.numero)}-${escapar(a.codigo_reserva)}</strong>${s && s.estado !== "confirmada" ? " · el proveedor debe confirmar la modificación (el código R se conserva)" : ""}</p>` : ""}
+      ${a.estado_servicio !== "confirmado" && a.codigo_reserva ? `<p class="nota">Conserva su código ${escapar(c.numero)}-${escapar(a.codigo_reserva)}: se volverá a usar al confirmar el servicio.</p>` : ""}
       ${s ? `
         <div class="sol-detalle">
           <span class="etiqueta">${escapar(s.codigo)}${s.version > 1 ? ` · v${s.version}` : ""}</span>
           ${chipP(ESTADO_P[s.estado] || [s.estado, ""])}
+          ${s.aviso ? chipP([AVISO_P[s.aviso], "alerta"]) : ""}
           ${s.enviada_en ? `<small>Enviada por ${s.medio === "whatsapp" ? "WhatsApp" : "correo"} el ${fechaHora(s.enviada_en)}${s.enviada_por ? ` · ${escapar(nombrePerfil(s.enviada_por))}` : ""}</small>` : ""}
+          ${s.confirmacion_final_en ? `<small>Confirmación final enviada el ${fechaHora(s.confirmacion_final_en)}</small>` : ""}
+          ${s.cancelacion_recibida_en ? `<small>Cancelación recibida por ${escapar(s.cancelacion_recibida_por ?? "")} el ${fechaHora(s.cancelacion_recibida_en)}</small>` : ""}
         </div>
         ${resp}
         ${acciones ? `<div class="sec-botones">${acciones}</div>` : ""}
         ${abierto === "vista" ? htmlVistaPrevia(s) : ""}
         ${abierto === "registro" ? htmlRegistro(s) : ""}
         ${abierto === "mensaje" ? htmlMensaje(s) : ""}
+        ${abierto === "aviso" ? htmlAviso(s) : ""}
         ${htmlConversacion(s)}` : ""}
     </li>`;
 }
@@ -198,6 +247,7 @@ function htmlVistaPrevia(s) {
   return `
     <div class="sol-panel">
       <h4>Vista previa · ${escapar(s.codigo)}${s.version > 1 ? ` (versión ${s.version})` : ""}</h4>
+      ${s.aviso === "modificacion" ? `<p class="aviso">Se enviará como <strong>MODIFICACIÓN</strong>: el proveedor deberá confirmar de nuevo.</p>` : ""}
       ${htmlContenidoSolicitud(s.contenido || {})}
       <div class="fila-form">
         <label>Enviar por
@@ -212,6 +262,41 @@ function htmlVistaPrevia(s) {
       </div>
       ${falta ? `<p class="aviso">Este proveedor no tiene ${medio === "correo" ? "correo para reservas" : "WhatsApp para reservas"}. ${app.yo?.rol === "administrador" ? "Agrégalo en Tarifario › Operadores" : "Pídele al administrador que lo agregue en Tarifario › Operadores"} o usa el otro medio.</p>` : ""}
       ${medio === "whatsapp" ? `<p class="nota">Se abre el chat del proveedor con el mensaje escrito (usa el WhatsApp de la empresa). Presiona Enviar en WhatsApp y luego confirma aquí que se envió.</p>` : ""}
+    </div>`;
+}
+
+// Texto de la confirmación final o la cancelación (lo mismo por correo y por WhatsApp)
+function textoAviso(s) {
+  const c = s.contenido || {};
+  const detalle = `${c.servicio} · ${fechaLarga(c.fecha)}${c.hora_inicio ? " · " + hora(c.hora_inicio) : ""}`;
+  if (s.aviso === "cancelacion") {
+    return `CANCELACIÓN · Solicitud ${s.codigo} · The House of Tours\n${detalle} · Titular: ${c.titular}\n\nPor favor confirme que la recibió con el botón "Recibido" del enlace:\n${enlaceProveedor(s)}`;
+  }
+  const chat = s.respuesta_origen === "agente" ? `\nRegistramos su confirmación por chat (${s.respuesta_nombre}, ${fecha(s.respuesta_en, { day: "numeric", month: "short" })}). Puede verla y verificarla en el enlace.` : "";
+  return `CONFIRMADA · Solicitud ${s.codigo} · The House of Tours\n${detalle} · Titular: ${c.titular}\nCódigo del cliente: ${c.codigo_reserva}\nEl cliente presentará este código en su voucher.${chat}\n\n${enlaceProveedor(s)}`;
+}
+
+function htmlAviso(s) {
+  const k = contactoDe(s.operador_id) || {};
+  const medio = solP.medio["a" + s.id] || s.medio || k.medio_preferido || "correo";
+  const falta = medio === "correo" ? !k.correo_reservas : !k.whatsapp;
+  return `
+    <div class="sol-panel">
+      <h4>${s.aviso === "cancelacion" ? "Avisar la cancelación" : "Confirmación final"} · ${escapar(s.codigo)}</h4>
+      <pre class="correo-vista">${escapar(textoAviso(s))}</pre>
+      <div class="fila-form">
+        <label>Enviar por
+          <select data-solp-medio="a${s.id}">
+            <option value="correo" ${medio === "correo" ? "selected" : ""}>Correo${k.correo_reservas ? ` (${escapar(k.correo_reservas)})` : " (sin correo registrado)"}</option>
+            <option value="whatsapp" ${medio === "whatsapp" ? "selected" : ""}>WhatsApp${k.whatsapp ? ` (${escapar(k.whatsapp)})` : " (sin número registrado)"}</option>
+          </select></label>
+        ${medio === "correo"
+          ? `<button type="button" class="btn primario" data-solp="aviso-correo" data-id="${s.id}" ${falta ? "disabled" : ""}>Enviar por correo</button>`
+          : `<button type="button" class="btn primario" data-solp="aviso-whatsapp" data-id="${s.id}" ${falta ? "disabled" : ""}>Abrir WhatsApp</button>`}
+        <button type="button" class="btn" data-solp="aviso-otro" data-id="${s.id}">Ya lo avisé por teléfono u otro medio</button>
+        <button type="button" class="btn" data-solp="cerrar">Cerrar</button>
+      </div>
+      ${falta ? `<p class="aviso">Falta el ${medio === "correo" ? "correo" : "WhatsApp"} para reservas de este proveedor.</p>` : ""}
     </div>`;
 }
 
@@ -277,6 +362,12 @@ function htmlConversacion(s) {
       case "registro_agente": return `Respuesta registrada por el agente: ${RESPUESTA_P[d.respuesta] ?? ""} · ${e.nombre ?? ""} por ${d.medio ?? ""} · motivo: ${d.motivo ?? ""}`;
       case "mensaje_agente": return `Mensaje del agente${d.medio ? ` (aviso por ${d.medio === "whatsapp" ? "WhatsApp" : "correo"})` : ""}`;
       case "mensaje_proveedor": return `Mensaje del proveedor · ${e.nombre ?? ""}`;
+      case "modificacion": return `MODIFICACIÓN: versión ${d.version} pendiente de enviar`;
+      case "cancelacion": return `Solicitud cancelada`;
+      case "cancelacion_recibida": return `El proveedor recibió la cancelación · ${e.nombre ?? ""}`;
+      case "servicio_confirmado": return `Servicio confirmado · código ${d.codigo ?? ""}`;
+      case "confirmacion_final": return `Confirmación final enviada por ${d.medio === "whatsapp" ? "WhatsApp" : d.medio === "correo" ? "correo" : "otro medio"}`;
+      case "aviso_marcado": return `Aviso de ${d.aviso === "cancelacion" ? "cancelación" : "confirmación"} enviado por ${d.medio === "whatsapp" ? "WhatsApp" : d.medio === "correo" ? "correo" : "otro medio"}`;
       default: return e.tipo;
     }
   };
@@ -316,7 +407,7 @@ $("detalleContenido").addEventListener("change", (e) => {
   }
   if (e.target.dataset.solpMedio) {
     solP.medio[e.target.dataset.solpMedio] = e.target.value;
-    if (!String(e.target.dataset.solpMedio).startsWith("m")) pintarDetalle();
+    if (!String(e.target.dataset.solpMedio).startsWith("m")) pintarDetalle();   // vista previa ("123") y avisos ("a123") cambian de botón
   }
 });
 
@@ -363,6 +454,69 @@ $("detalleContenido").addEventListener("click", async (e) => {
       pintarDetalle();
       break;
     }
+    case "confirmar-servicio": {
+      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar.", "error");
+      const act = app.actual.actividades.find((x) => x.id === Number(btn.dataset.act));
+      const saldo = typeof saldoActual === "function" ? saldoActual() : 0;
+      const nombre = servicioPorId(act?.servicio_id)?.nombre ?? "el servicio";
+      const texto = saldo > 0
+        ? `Atención: la reserva tiene un saldo pendiente de ${dinero(saldo)}.\n\n¿Confirmar ${nombre} de todos modos? Se generará su código R y quedará anotado en el historial.`
+        : `¿Confirmar ${nombre}? Se generará su código R.`;
+      if (!confirm(texto)) return;
+      await conBoton(btn, async () => {
+        const { data, error } = await db.rpc("confirmar_servicio", {
+          p_actividad: act.id, p_nota: saldo > 0 ? `Advertencia mostrada: saldo pendiente de ${dinero(saldo)}; se confirmó de todos modos.` : null
+        });
+        if (error) return fallo(error, "No se pudo confirmar el servicio.");
+        await recargarDetalle(false);
+        cargarTablero();
+        solP.abierto = { id: data.solicitud_id, tipo: "aviso" };
+        pintarDetalle();
+        avisar(`Servicio confirmado: ${data.codigo}. Envía la confirmación final al proveedor.`);
+      });
+      break;
+    }
+
+    case "aviso":
+      solP.abierto = { id: s.id, tipo: "aviso" };
+      pintarDetalle();
+      break;
+
+    case "aviso-correo":
+      await conBoton(btn, async () => {
+        btn.textContent = "Enviando…";
+        const { data, error } = await db.functions.invoke("correo", { body: { accion: "solicitud_aviso", solicitud_id: s.id, enlace_base: location.href } });
+        if (error || data?.error) return avisar(await errorFuncion(error, data), "error");
+        solP.abierto = null;
+        await recargarSolicitudes(`Aviso de ${s.codigo} enviado a ${data.para}.`);
+      });
+      break;
+
+    case "aviso-whatsapp": {
+      const k = contactoDe(s.operador_id);
+      window.open(enlaceWhatsApp(k?.whatsapp, textoAviso(s)), "_blank", "noopener");
+      if (!confirm(`¿Se envió el aviso de ${s.codigo} por WhatsApp?\n\nPresiona Aceptar solo después de presionar Enviar en WhatsApp.`)) return;
+      await conBoton(btn, async () => {
+        const { error } = await db.rpc("marcar_aviso_enviado", { p_id: s.id, p_medio: "whatsapp", p_nota: null });
+        if (error) return fallo(error, "No se pudo registrar el aviso.");
+        solP.abierto = null;
+        await recargarSolicitudes(`Aviso de ${s.codigo} registrado como enviado por WhatsApp.`);
+      });
+      break;
+    }
+
+    case "aviso-otro": {
+      const nota = prompt(`¿Cómo le avisaste al proveedor de ${s.codigo}? (por ejemplo: "Llamada a Bryan, 29 oct 9:00")`)?.trim();
+      if (!nota) return;
+      await conBoton(btn, async () => {
+        const { error } = await db.rpc("marcar_aviso_enviado", { p_id: s.id, p_medio: "otro", p_nota: nota });
+        if (error) return fallo(error, "No se pudo registrar el aviso.");
+        solP.abierto = null;
+        await recargarSolicitudes("Aviso registrado.");
+      });
+      break;
+    }
+
     case "registro":
     case "mensaje":
       solP.abierto = { id: s.id, tipo: btn.dataset.solp };
@@ -391,7 +545,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
 
     case "enviar-whatsapp": {
       const k = contactoDe(s.operador_id);
-      window.open(enlaceWhatsApp(k?.whatsapp, textoWhatsApp(s)), "_blank", "noopener");
+      window.open(enlaceWhatsApp(k?.whatsapp, textoWhatsApp(s, s.aviso === "modificacion" ? `MODIFICACIÓN (versión ${s.version}): hubo cambios, por favor confirme de nuevo.` : "")), "_blank", "noopener");
       if (!confirm(`¿Se envió el mensaje de la solicitud ${s.codigo} por WhatsApp?\n\nPresiona Aceptar solo después de presionar Enviar en WhatsApp.`)) return;
       await conBoton(btn, async () => {
         const { error } = await db.rpc("marcar_solicitud_enviada", { p_id: s.id, p_medio: "whatsapp" });
@@ -456,6 +610,29 @@ $("detalleContenido").addEventListener("click", async (e) => {
     }
   }
 });
+
+// Vuelve a leer solo las solicitudes P (por ejemplo, después de eliminar un servicio)
+async function recargarSoloSolicitudes() {
+  if (!app.actual) return;
+  const sp = await db.from("solicitudes_proveedor").select("*").eq("cotizacion_id", app.actual.cot.id).order("id");
+  if (sp.error) return;
+  app.actual.solicitudesP = sp.data;
+  const ev = sp.data.length ? await db.from("solicitud_eventos").select("*").in("solicitud_id", sp.data.map((x) => x.id)).order("id") : { data: [] };
+  app.actual.eventosP = ev.error ? [] : ev.data;
+}
+
+// Al guardar el itinerario de una reserva: prepara MODIFICACIONES y cancela solicitudes de proveedores reemplazados
+async function revisarCambiosSolicitudes(c) {
+  if (!(app.actual?.solicitudesP || []).length) return;
+  const { data, error } = await db.rpc("revisar_cambios_solicitudes", { p_cotizacion: c.id });
+  if (error) return console.error(error);
+  const mods = (data || []).filter((x) => x.cambio === "modificacion").map((x) => x.codigo);
+  const canc = (data || []).filter((x) => x.cambio === "cancelada").map((x) => x.codigo);
+  const partes = [];
+  if (mods.length) partes.push(`MODIFICACIÓN lista para enviar: ${mods.join(", ")}`);
+  if (canc.length) partes.push(`Solicitud cancelada por cambio de proveedor: ${canc.join(", ")} (avisa la cancelación)`);
+  if (partes.length) setTimeout(() => avisar(partes.join(". ") + "."), 400);
+}
 
 // Después de enviar una, abre la vista previa de la siguiente sin enviar
 function abrirSiguienteBorrador() {
