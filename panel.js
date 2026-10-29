@@ -335,7 +335,7 @@ async function cargarCatalogos() {
     db.from("servicios").select("*").order("nombre"),
     db.from("propiedades").select("*").order("nombre"),
     db.from("categorias_cliente").select("*").order("orden"),
-    db.from("perfiles").select("id, nombre, rol"),
+    db.from("perfiles").select("id, nombre, rol, activo"),
     db.from("operadores").select("*").order("nombre"),
     db.from("tipos_servicio").select("*").order("orden").order("nombre")
   ]);
@@ -354,7 +354,7 @@ async function cargarTablero() {
   d.setDate(d.getDate() - 90);
 
   const { data, error } = await db.from("resumen_cotizaciones")
-    .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance, idioma, alerta_proveedor")
+    .select("id, numero, estado, nombre, apellido, fecha_inicio, fecha_fin, creado_en, colaborador_id, cambios_pendientes, enviada_en, total, balance, idioma, alerta_proveedor, origen")
     .or(`and(estado.neq.finalizado,estado.neq.cancelado),fecha_fin.gte.${aTexto(d)}`)
     .order("creado_en", { ascending: true });
 
@@ -400,6 +400,9 @@ function pintarTablero() {
 
 function htmlItem(c) {
   const extra = [];
+  if (c.origen && c.origen !== "web" && typeof ORIGEN_CORTO !== "undefined") {
+    extra.push(`<span class="etiqueta manual" title="Reserva manual: ${escapar(ORIGENES[c.origen] || "")}">${ORIGEN_CORTO[c.origen] || "Manual"}</span>`);
+  }
   if (c.idioma && c.idioma !== "es") extra.push(`<span class="etiqueta idioma" title="Idioma del cliente: ${NOMBRE_IDIOMA[c.idioma]}">${c.idioma.toUpperCase()}</span>`);
   if (c.cambios_pendientes) extra.push(`<span class="etiqueta alerta">Pidió cambios</span>`);
   if (c.alerta_proveedor === "urgente") extra.push(`<span class="etiqueta urgente">Proveedor: urgente</span>`);
@@ -689,7 +692,7 @@ function htmlCliente(c) {
         ${bloqueado ? "" : `<button type="button" class="enlace" data-accion="editar-cliente">Editar datos</button>`}
       </div>
       <dl class="datos-cliente">
-        <div><dt>Correo</dt><dd><a href="mailto:${escapar(c.correo)}">${escapar(c.correo)}</a></dd></div>
+        <div><dt>Correo</dt><dd>${c.correo ? `<a href="mailto:${escapar(c.correo)}">${escapar(c.correo)}</a>` : `<span class="nota">Sin correo</span>`}</dd></div>
         <div><dt>Teléfono</dt><dd>${escapar(c.telefono)}</dd></div>
         <div><dt>Hospedaje</dt><dd>${escapar(nombrePropiedad(c)) || "Sin indicar"}${c.propiedad_id ? "" : " (otro lugar)"}</dd></div>
         <div><dt>Fechas del viaje</dt><dd>${fecha(c.fecha_inicio)} al ${fecha(c.fecha_fin, { day: "numeric", month: "short", year: "numeric" })}</dd></div>
@@ -699,7 +702,8 @@ function htmlCliente(c) {
           : `<select id="cliIdioma" class="select-chico" aria-label="Idioma del cliente">
               ${Object.entries(NOMBRE_IDIOMA).map(([k, v]) => `<option value="${k}" ${k === (c.idioma || "es") ? "selected" : ""}>${v}</option>`).join("")}
             </select>`}</dd></div>
-        <div><dt>Solicitud recibida</dt><dd>${fechaHora(c.creado_en)}</dd></div>
+        <div><dt>${c.origen && c.origen !== "web" ? "Creada" : "Solicitud recibida"}</dt><dd>${fechaHora(c.creado_en)}</dd></div>
+        <div><dt>Origen</dt><dd>${typeof ORIGENES !== "undefined" ? ORIGENES[c.origen || "web"] : "Formulario web"}</dd></div>
         <div><dt>Atiende</dt><dd>${escapar(nombrePerfil(c.colaborador_id)) || "Sin asignar"}</dd></div>
       </dl>
       ${bloqueado ? "" : `<p class="nota">El enlace del cliente y los mensajes de WhatsApp y correo salen en el idioma del cliente. Puedes cambiarlo si te conviene.</p>`}
@@ -1019,7 +1023,7 @@ function htmlEnvio(c) {
         <input type="text" readonly value="${escapar(link)}" aria-label="Enlace para el cliente">
         <button type="button" class="btn" data-accion="copiar-enlace">Copiar enlace</button>
         <a class="btn" href="${wa}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
-        <a class="btn" href="${mail}">Enviar por correo</a>
+        ${c.correo ? `<a class="btn" href="${mail}">Enviar por correo</a>` : ""}
       </div>
       <p class="nota">Los mensajes salen en ${NOMBRE_IDIOMA[c.idioma]?.toLowerCase() ?? "español"}.</p>`;
   }
@@ -1216,7 +1220,7 @@ function htmlCompartirReserva(c) {
         <button type="button" class="btn" data-accion="copiar-mensaje">Copiar mensaje completo</button>
       </div>
       <div class="sec-botones">
-        <a class="btn" href="${correo}">Enviar por correo</a>
+        ${c.correo ? `<a class="btn" href="${correo}">Enviar por correo</a>` : ""}
         <a class="btn" href="${whatsapp}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
       </div>
       <p class="nota">Los mensajes salen en ${NOMBRE_IDIOMA[c.idioma]?.toLowerCase() ?? "español"}. "Copiar mensaje completo" copia el saludo, el enlace y la despedida para pegarlos en Outlook u otro programa. "Enviar por correo" abre tu programa de correo predeterminado.</p>
@@ -1932,9 +1936,12 @@ $("detalleContenido").addEventListener("click", async (e) => {
         ninos: Math.max(0, parseInt($("cliNinos").value, 10) || 0),
         menores: Math.max(0, parseInt($("cliMenores").value, 10) || 0)
       };
-      if (!datos.nombre || !datos.apellido || !datos.correo || !datos.telefono) {
-        return avisar("Nombre, apellido, correo y teléfono son obligatorios.", "error");
+      if (!datos.nombre || !datos.apellido || !datos.telefono || (!datos.correo && (c.origen || "web") === "web")) {
+        return avisar((c.origen || "web") === "web"
+          ? "Nombre, apellido, correo y teléfono son obligatorios."
+          : "Nombre, apellido y teléfono son obligatorios.", "error");
       }
+      if (datos.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.correo)) return avisar("El correo no es válido.", "error");
       if (!datos.fecha_inicio || !datos.fecha_fin || datos.fecha_fin < datos.fecha_inicio) {
         return avisar("Revisa las fechas del viaje.", "error");
       }

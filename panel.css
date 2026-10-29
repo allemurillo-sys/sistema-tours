@@ -561,3 +561,15 @@ label.en-linea select { width: auto; }
 .act-pago { margin-top: 6px; align-items: end; }
 .aplicar-pago { border: 1px solid var(--linea); border-radius: 8px; padding: 8px 12px; margin: 0 0 10px; display: grid; gap: 4px; }
 .aplicar-pago legend { font-size: .85rem; color: var(--gris); padding: 0 4px; }
+
+/* ---------- Reserva manual (cliente directo) ---------- */
+.etiqueta.manual { background: #e6eefa; color: #2d5d9f; border-color: transparent; font-weight: 700; }
+#formManual textarea { width: 100%; }
+.man-telefono { display: grid; grid-template-columns: minmax(110px, 40%) 1fr; gap: 8px; }
+.man-errores { border: 2px solid var(--alerta); color: var(--alerta); }
+.man-errores ul { margin: 6px 0 0; padding-left: 20px; }
+.man-barra { margin: 0 28px 28px; padding: 12px 22px; border-radius: 12px; justify-content: flex-start; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .man-telefono { grid-template-columns: 1fr; }
+  .man-barra { margin: 0 16px 24px; }
+}

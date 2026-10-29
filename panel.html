@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="estilos.css?v=15">
-  <link rel="stylesheet" href="panel.css?v=21">
+  <link rel="stylesheet" href="panel.css?v=22">
   <link rel="stylesheet" href="tarifario.css?v=26">
 </head>
 <body class="panel">
@@ -61,6 +61,7 @@
       <div class="herramientas">
         <input id="buscar" type="search" placeholder="Buscar por nombre, número o código R" aria-label="Buscar por nombre, número o código de reserva">
         <label class="check-linea chico"><input id="verCanceladas" type="checkbox"> Ver canceladas</label>
+        <button id="btnNuevaManual" type="button" class="btn primario">+ Nueva reserva manual</button>
         <button id="btnImprimirTablero" type="button" class="btn">Imprimir listas</button>
         <span id="ultimaActualizacion" class="nota"></span>
       </div>
@@ -143,12 +144,19 @@
     </section>
   </div>
 
+  <!-- ================= NUEVA RESERVA MANUAL (cliente directo) ================= -->
+  <div id="manual" class="detalle-fondo" hidden>
+    <section class="detalle" role="dialog" aria-modal="true" aria-labelledby="manualTitulo">
+      <div id="manualContenido"></div>
+    </section>
+  </div>
+
   <div id="impresion" class="impresion"></div>
   <div id="aviso" class="toast" role="status" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=14"></script>
-  <script src="panel.js?v=21"></script>
+  <script src="panel.js?v=22"></script>
   <script src="servicios.js?v=17"></script>
   <script src="mantenimiento.js?v=20"></script>
   <script src="calendario.js?v=14"></script>
@@ -159,5 +167,6 @@
   <script src="tarifario-comparar.js?v=3"></script>
   <script src="tarifario-servicios.js?v=3"></script>
   <script src="tarifario-catalogo.js?v=2"></script>
+  <script src="reserva-manual.js?v=1"></script>
 </body>
 </html>
