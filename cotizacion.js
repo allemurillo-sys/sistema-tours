@@ -31,6 +31,26 @@ const subtotalPersonas = (a) => a.participantes.reduce((s, p) => s + p.cantidad 
 const transporteCobrado = (a) =>
   a.transporte_modo === "opcional" && a.transporte_respuesta === true ? Number(a.transporte_costo) || 0 : 0;
 const transportePendiente = (a) => a.transporte_modo === "opcional" && a.transporte_respuesta === null;
+// Saldo de cada servicio: total del servicio menos lo que se le aplicó de los pagos (etapa 10)
+const saldoServicio = (a) => Math.round((subtotalPersonas(a) + transporteCobrado(a) - (Number(a.pagado) || 0)) * 100) / 100;
+
+// Estado y pago de cada servicio en una reserva
+function htmlEstadoServicio(a) {
+  if (a.estado_servicio === "cancelado") return "";
+  const estado = a.estado_servicio === "confirmado" && a.codigo_reserva
+    ? `<span class="sv-chip ok">${escapar(t("sv_confirmado", { codigo: a.codigo_reserva }))}</span>`
+    : a.estado_servicio === "sin_disponibilidad"
+      ? `<span class="sv-chip alerta">${escapar(t("sv_alternativa"))}</span>`
+      : `<span class="sv-chip">${escapar(t("sv_confirmacion"))}</span>`;
+  const saldo = saldoServicio(a);
+  const forma = a.forma_pago === "oficina"
+    ? (a.pago_limite ? t("sv_oficina_fecha", { fecha: fecha(a.pago_limite, { day: "numeric", month: "long" }) }) : t("sv_oficina"))
+    : t("sv_prepago");
+  const pago = saldo <= 0.005
+    ? `<span class="sv-chip ok">✓ ${escapar(t("sv_pagado"))}</span>`
+    : `<span class="sv-chip aviso">${escapar(t("sv_saldo", { monto: dinero(saldo) }))}</span> <span class="sv-forma">${escapar(forma)}</span>`;
+  return `<p class="sv-estado">${estado} ${pago}</p>`;
+}
 
 function mostrarError(clave) {
   errorClave = clave;
@@ -127,6 +147,7 @@ function pintar() {
             <p class="act-hora">${escapar(horario)}</p>
             <p class="act-part">${a.participantes.map((p) => `${p.cantidad} ${escapar(tCategoria(p.categoria))} × ${dinero(p.precio)}`).join(", ")}</p>
             ${htmlTransporte(a, puedeResponder)}
+            ${reservada ? htmlEstadoServicio(a) : ""}
           </div>`;
       }).join("")}
     </section>`).join("");
@@ -303,6 +324,7 @@ function htmlVoucher(d, a, saldo) {
         ${conTransporte && a.dejada ? `<div class="vch-fila"><dt>Drop off</dt><dd>${escapar(a.dejada)}</dd></div>` : ""}
         ${fila("v_participantes", participantes)}
         ${fila("v_operador", escapar(a.operador))}
+        ${fila("v_ref_proveedor", escapar(a.ref_proveedor))}
         ${fila("v_notas", escapar(a.notas), true)}
       </dl>
       <p class="vch-pago">${saldo > 0.005
@@ -321,7 +343,7 @@ function htmlVouchers(d, saldo) {
     const dia = a.fecha !== diaPrevio
       ? `<p class="vch-dia">${escapar(fecha(a.fecha, { weekday: "long", day: "numeric", month: "long" }))}</p>` : "";
     diaPrevio = a.fecha;
-    return dia + htmlVoucher(d, a, saldo);
+    return dia + htmlVoucher(d, a, a.pagado !== undefined ? saldoServicio(a) : saldo);
   }).join("");
   return `
     <section id="vouchers" class="caja vouchers">

@@ -557,3 +557,7 @@ label.en-linea select { width: auto; }
 .sol-historial li.ev-verificacion { border-color: #b3261e; }
 .sol-historial li small { color: var(--gris); }
 .sol-confirmado { margin: 0; background: var(--verde-suave); color: var(--verde-hondo); border-radius: 8px; padding: 6px 10px; }
+/* Etapa 10: pagos por servicio */
+.act-pago { margin-top: 6px; align-items: end; }
+.aplicar-pago { border: 1px solid var(--linea); border-radius: 8px; padding: 8px 12px; margin: 0 0 10px; display: grid; gap: 4px; }
+.aplicar-pago legend { font-size: .85rem; color: var(--gris); padding: 0 4px; }

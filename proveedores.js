@@ -457,15 +457,16 @@ $("detalleContenido").addEventListener("click", async (e) => {
     case "confirmar-servicio": {
       if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar.", "error");
       const act = app.actual.actividades.find((x) => x.id === Number(btn.dataset.act));
-      const saldo = typeof saldoActual === "function" ? saldoActual() : 0;
+      const saldo = typeof saldoServicio === "function" ? saldoServicio(act) : 0;
       const nombre = servicioPorId(act?.servicio_id)?.nombre ?? "el servicio";
-      const texto = saldo > 0
-        ? `Atención: la reserva tiene un saldo pendiente de ${dinero(saldo)}.\n\n¿Confirmar ${nombre} de todos modos? Se generará su código R y quedará anotado en el historial.`
+      const forma = typeof textoFormaPago === "function" ? textoFormaPago(act) : "";
+      const texto = saldo > 0.005
+        ? `Atención: ${nombre} ${pagadoServicio(act) > 0 ? `tiene un saldo pendiente de ${dinero(saldo)}` : `no tiene pago (${dinero(saldo)})`}. Forma de pago acordada: ${forma}.\n\n¿Confirmar el servicio de todos modos? Se generará su código R y quedará anotado en el historial.`
         : `¿Confirmar ${nombre}? Se generará su código R.`;
       if (!confirm(texto)) return;
       await conBoton(btn, async () => {
         const { data, error } = await db.rpc("confirmar_servicio", {
-          p_actividad: act.id, p_nota: saldo > 0 ? `Advertencia mostrada: saldo pendiente de ${dinero(saldo)}; se confirmó de todos modos.` : null
+          p_actividad: act.id, p_nota: saldo > 0.005 ? `Advertencia mostrada: saldo pendiente del servicio ${dinero(saldo)} (${forma}); se confirmó de todos modos.` : null
         });
         if (error) return fallo(error, "No se pudo confirmar el servicio.");
         await recargarDetalle(false);

@@ -483,6 +483,8 @@ function normalizarActividad(a) {
     voucher_habilitado_en: a.voucher_habilitado_en ?? null,
     notas_proveedor: a.notas_proveedor ?? "",
     estado_servicio: a.estado_servicio || "por_solicitar",
+    forma_pago: a.forma_pago || "prepago",
+    pago_limite: a.pago_limite ?? "",
     participantes: (a.actividad_participantes || [])
       .map((p) => ({
         categoria_id: p.categoria_id,
@@ -518,6 +520,11 @@ async function cargarDetalle(id) {
     solicitudesP: sp.error ? [] : sp.data, // solicitudes al proveedor P00001… (etapa 8)
     eventosP: []
   };
+  app.actual.aplicaciones = [];
+  if (p.data.length) {
+    const ap = await db.from("pago_aplicaciones").select("*").in("pago_id", p.data.map((x) => x.id));
+    app.actual.aplicaciones = ap.error ? [] : ap.data;
+  }
   if (app.actual.solicitudesP.length) {
     const ev = await db.from("solicitud_eventos").select("*").in("solicitud_id", app.actual.solicitudesP.map((x) => x.id)).order("id");
     app.actual.eventosP = ev.error ? [] : ev.data;
@@ -809,6 +816,15 @@ function htmlActividad(a, idx) {
       </div>
       <label>Notas para el cliente (aparecen en el tiquete) <input data-campo="notas" type="text" value="${escapar(a.notas)}" placeholder="Ej.: llevar ropa cómoda, bloqueador y repelente"></label>
       <label>Notas para el proveedor (aparecen en la solicitud P) <input data-campo="notas_proveedor" type="text" value="${escapar(a.notas_proveedor)}" placeholder="Ej.: cliente vegetariano, llegan en carro propio"></label>
+      <div class="fila-form act-pago">
+        <label>Forma de pago acordada
+          <select data-campo="forma_pago">
+            <option value="prepago" ${a.forma_pago !== "oficina" ? "selected" : ""}>Prepago</option>
+            <option value="oficina" ${a.forma_pago === "oficina" ? "selected" : ""}>Pago en oficina antes del tour</option>
+          </select></label>
+        <label>Fecha límite de pago (opcional) <input data-campo="pago_limite" type="date" value="${escapar(a.pago_limite || "")}"></label>
+        ${a.id && (cot.estado === "reserva" || cot.estado === "finalizado") ? `<span class="nota">Pagado ${dinero(pagadoServicio(a))} · saldo ${dinero(Math.max(0, saldoServicio(a)))}</span>` : ""}
+      </div>
     </article>`;
 }
 
@@ -1049,8 +1065,10 @@ function htmlPagos(c, editable) {
             <tbody>${filas}</tbody>
           </table>
         </div>` : `<p class="nota">Todavía no hay pagos registrados.</p>`}
+      ${htmlPagosPorServicio()}
       ${editable ? `
         <h4>Registrar un pago</h4>
+        ${htmlAplicarPago()}
         <div class="fila-form">
           <label>Monto <input id="pagoMonto" type="number" min="0" step="0.01"></label>
           <label>Fecha <input id="pagoFecha" type="date" value="${aTexto(new Date())}"></label>
@@ -1061,6 +1079,46 @@ function htmlPagos(c, editable) {
           <button type="button" class="btn primario" data-accion="registrar-pago">Registrar pago</button>
         </div>` : ""}
     </section>`;
+}
+
+// Total, pagado y saldo de cada servicio
+function htmlPagosPorServicio() {
+  const acts = app.actual.actividades.filter((a) => a.id && a.servicio_id && a.estado_servicio !== "cancelado").slice().sort(ordenActividad);
+  if (!acts.length) return "";
+  const aplicado = (app.actual.aplicaciones || []).reduce((s, x) => s + Number(x.monto), 0);
+  const pagado = app.actual.pagos.reduce((s, p) => s + Number(p.monto), 0);
+  const sinAsignar = Math.round((pagado - aplicado) * 100) / 100;
+  return `
+    <h4>Pagos por servicio</h4>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead><tr><th>Servicio</th><th>Forma de pago</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th></tr></thead>
+        <tbody>${acts.map((a) => {
+          const saldo = saldoServicio(a);
+          return `
+          <tr>
+            <td><strong>${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")}</strong><br><small>${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}${a.codigo_reserva && a.estado_servicio === "confirmado" ? ` · ${escapar(app.actual.cot.numero)}-${escapar(a.codigo_reserva)}` : ""}</small></td>
+            <td>${escapar(textoFormaPago(a))}</td>
+            <td class="num">${dinero(subtotal(a))}</td>
+            <td class="num">${dinero(pagadoServicio(a))}</td>
+            <td class="num">${saldo > 0.005 ? `<strong>${dinero(saldo)}</strong>` : `<span class="act-confirmada">Pagado</span>`}</td>
+          </tr>`; }).join("")}</tbody>
+      </table>
+    </div>
+    ${sinAsignar > 0.005 ? `<p class="nota">Pago sin asignar a un servicio: ${dinero(sinAsignar)} (el pago supera lo que se debía en los servicios elegidos).</p>` : ""}`;
+}
+
+// Casillas para elegir a qué servicios se aplica el pago (sin marcar = automático)
+function htmlAplicarPago() {
+  const acts = app.actual.actividades.filter((a) => a.id && a.servicio_id && a.estado_servicio !== "cancelado" && saldoServicio(a) > 0.005).slice().sort(ordenActividad);
+  if (!acts.length) return "";
+  return `
+    <fieldset class="aplicar-pago">
+      <legend>Aplicar a los servicios (si no marcas ninguno, se aplica del más próximo al más lejano)</legend>
+      ${acts.map((a) => `
+        <label class="check-linea chico"><input type="checkbox" data-aplicar="${a.id}">
+          ${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")} · ${fecha(a.fecha, { day: "numeric", month: "short" })} · saldo ${dinero(saldoServicio(a))}</label>`).join("")}
+    </fieldset>`;
 }
 
 // "Confirmar reserva": genera el código de reserva (R00001…) de cada servicio
@@ -1097,6 +1155,14 @@ function saldoActual() {
   return Math.round((total - pagado) * 100) / 100;
 }
 
+// Pagos por servicio (etapa 10): cada pago se reparte entre servicios (tabla pago_aplicaciones)
+const pagadoServicio = (a) => (app.actual?.aplicaciones || []).filter((x) => x.actividad_id === a.id).reduce((s, x) => s + Number(x.monto), 0);
+const saldoServicio = (a) => Math.round((subtotal(a) - pagadoServicio(a)) * 100) / 100;
+function textoFormaPago(a) {
+  if (a.forma_pago === "oficina") return a.pago_limite ? `pagar en oficina antes del ${fecha(a.pago_limite, { day: "numeric", month: "short" })}` : "pagar en oficina antes del tour";
+  return "prepago";
+}
+
 function htmlTiquetes(c) {
   const acts = [...app.actual.actividades].sort(ordenActividad);
   const saldo = saldoActual();
@@ -1105,7 +1171,7 @@ function htmlTiquetes(c) {
     <section class="det-seccion" id="secTiquetes">
       <h3>Tiquetes del cliente ("Mis vouchers")</h3>
       <p>Marca los servicios cuyo tiquete puede ver el cliente en su página. La sección "Mis vouchers" no aparece hasta que habilites al menos uno. Los tiquetes muestran el nombre del operador y las "Notas para el cliente" de cada actividad; no muestran precios.</p>
-      ${saldo > 0 ? `<p class="aviso">Esta reserva tiene un saldo pendiente de ${dinero(saldo)}. Puedes habilitar los tiquetes, pero quedará anotado en el historial y el tiquete dirá "Saldo pendiente".</p>` : ""}
+      ${saldo > 0 ? `<p class="aviso">Esta reserva tiene un saldo pendiente de ${dinero(saldo)}. Puedes habilitar los tiquetes; si el servicio tiene saldo, quedará anotado en el historial y su tiquete dirá "Saldo pendiente".</p>` : ""}
       <ul class="codigos-reserva tiquetes-lista">${acts.map((a) => `
         <li>
           <label class="check-linea chico">
@@ -1113,6 +1179,7 @@ function htmlTiquetes(c) {
             <strong>${a.codigo_reserva && a.estado_servicio === "confirmado" ? `${escapar(c.numero)}-${escapar(a.codigo_reserva)}` : "Servicio sin confirmar"}</strong>
           </label>
           <span>${escapar(servicioPorId(a.servicio_id)?.nombre ?? "")} · ${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" })}</span>
+          ${a.id && a.estado_servicio === "confirmado" ? (saldoServicio(a) > 0.005 ? `<span class="act-sin-tarifa">Saldo ${dinero(saldoServicio(a))}</span>` : `<span class="act-confirmada">Pagado</span>`) : ""}
           ${a.voucher_habilitado ? `<span class="act-confirmada">Visible para el cliente</span>` : ""}
         </li>`).join("")}</ul>
       <div class="sec-botones">
@@ -1256,6 +1323,8 @@ function leerTarjeta(card) {
     operador_id: v("operador_id") ? Number(v("operador_id")) : null,
     notas: v("notas"),
     notas_proveedor: v("notas_proveedor"),
+    forma_pago: v("forma_pago") || "prepago",
+    pago_limite: v("pago_limite"),
     tarifa_tipo: v("tarifa_tipo") || previa.tarifa_tipo || "manual",
     operador_confirmado: card.querySelector('[data-campo="operador_confirmado"]')
       ? card.querySelector('[data-campo="operador_confirmado"]').checked : !!previa.operador_confirmado,
@@ -1342,6 +1411,8 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     voucher_habilitado_en: null,
     notas_proveedor: "",
     estado_servicio: "por_solicitar",
+    forma_pago: "prepago",
+    pago_limite: "",
     participantes,
     _pendiente: true
   };
@@ -1375,6 +1446,8 @@ async function guardarTodo(btn) {
           operador_id: a.operador_id || null,
           notas: a.notas || null,
           notas_proveedor: a.notas_proveedor?.trim() || null,
+          forma_pago: a.forma_pago || "prepago",
+          pago_limite: a.forma_pago === "oficina" && a.pago_limite ? a.pago_limite : null,
           tarifa_tipo: a.tarifa_tipo || "manual"
           // La confirmación del operador ya no se escribe aquí: la registra la solicitud al proveedor (etapa 8)
         };
@@ -1662,9 +1735,11 @@ $("detalleContenido").addEventListener("click", async (e) => {
         .filter((x) => x.a && x.a.voucher_habilitado !== x.on);
       if (!cambios.length) return avisar("No hay cambios en los tiquetes.");
       const nuevos = cambios.filter((x) => x.on);
-      const saldo = saldoActual();
-      if (nuevos.length && saldo > 0 && !confirm(
-        `Atención: la reserva tiene un saldo pendiente de ${dinero(saldo)}.\n\nHabilitar tiquetes con saldo pendiente puede causar un inconveniente operativo (por ejemplo, que el cliente se presente sin haber pagado). Quedará anotado en el historial.\n\n¿Habilitar de todos modos?`)) return;
+      const conSaldo = nuevos.filter((x) => saldoServicio(x.a) > 0.005);
+      const saldo = Math.round(conSaldo.reduce((s, x) => s + saldoServicio(x.a), 0) * 100) / 100;
+      const detalleSaldo = conSaldo.map((x) => `${servicioPorId(x.a.servicio_id)?.nombre ?? ""}: ${dinero(saldoServicio(x.a))} (${textoFormaPago(x.a)})`);
+      if (conSaldo.length && !confirm(
+        `Atención: ${conSaldo.length === 1 ? "este servicio tiene" : "estos servicios tienen"} saldo pendiente:\n\n${detalleSaldo.map((t) => "· " + t).join("\n")}\n\nHabilitar tiquetes con saldo pendiente puede causar un inconveniente operativo (por ejemplo, que el cliente se presente sin haber pagado). Quedará anotado en el historial.\n\n¿Habilitar de todos modos?`)) return;
       const codigo = (a) => `${c.numero}-${a.codigo_reserva}`;
       await conBoton(btn, async () => {
         const ahora = new Date().toISOString();
@@ -1676,7 +1751,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
         const quitados = cambios.filter((x) => !x.on);
         if (nuevos.length) {
           await registrar(c.id, "tiquetes habilitados", nuevos.map((x) => codigo(x.a)).join(", ") +
-            (saldo > 0 ? `. Advertencia mostrada: saldo pendiente de ${dinero(saldo)}; se habilitó de todos modos.` : "."));
+            (saldo > 0 ? `. Advertencia mostrada: saldo pendiente de ${dinero(saldo)} (${detalleSaldo.join("; ")}); se habilitó de todos modos.` : "."));
         }
         if (quitados.length) await registrar(c.id, "tiquetes ocultados", quitados.map((x) => codigo(x.a)).join(", ") + ".");
         await recargarDetalle(false);
@@ -1736,18 +1811,23 @@ $("detalleContenido").addEventListener("click", async (e) => {
       const monto = parseFloat($("pagoMonto").value);
       if (!(monto > 0)) return avisar("Escribe un monto mayor que cero.", "error");
       await conBoton(btn, async () => {
-        const { error } = await db.from("pagos").insert({
+        const marcados = [...document.querySelectorAll("[data-aplicar]:checked")].map((x) => Number(x.dataset.aplicar));
+        const { data: pago, error } = await db.from("pagos").insert({
           cotizacion_id: c.id,
           monto,
           fecha: $("pagoFecha").value || aTexto(new Date()),
           metodo: $("pagoMetodo").value,
           referencia: $("pagoReferencia").value.trim() || null
-        });
+        }).select("id").single();
         if (error) return fallo(error);
-        await registrar(c.id, "pago registrado", `${dinero(monto)} (${$("pagoMetodo").value})`);
+        const { data: rep, error: e2 } = await db.rpc("aplicar_pago", { p_pago: pago.id, p_actividades: marcados.length ? marcados : null });
+        if (e2) fallo(e2, "El pago se registró, pero no se pudo repartir entre los servicios.");
+        const nombres = marcados.map((id) => servicioPorId(app.actual.actividades.find((a) => a.id === id)?.servicio_id)?.nombre).filter(Boolean);
+        await registrar(c.id, "pago registrado", `${dinero(monto)} (${$("pagoMetodo").value})${nombres.length ? " · aplicado a: " + nombres.join(", ") : " · aplicado del servicio más próximo al más lejano"}`);
         await recargarDetalle();
         cargarTablero();
-        avisar("Pago registrado.");
+        const sinAsignar = Number(rep?.sin_asignar) || 0;
+        avisar(sinAsignar > 0.005 ? `Pago registrado. ${dinero(sinAsignar)} quedó sin asignar (supera lo que se debía).` : "Pago registrado.");
       });
       break;
     }

@@ -51,7 +51,7 @@ async function finAbrir(recargar = false) {
     try {
       const [c, a, p, pp] = await Promise.all([
         finTodo(() => db.from("cotizaciones").select("id, numero, nombre, apellido, estado, colaborador_id, confirmada_en, reserva_confirmada_en, creado_en").in("estado", ["reserva", "finalizado", "cancelado"]).order("id")),
-        finTodo(() => db.from("actividades").select("id, cotizacion_id, fecha, hora_inicio, servicio_id, operador_id, codigo_reserva, transporte_modo, transporte_costo, transporte_neto, transporte_respuesta, actividad_participantes(cantidad, precio_unitario, neto_unitario)").order("id")),
+        finTodo(() => db.from("actividades").select("id, cotizacion_id, fecha, hora_inicio, servicio_id, operador_id, codigo_reserva, estado_servicio, transporte_modo, transporte_costo, transporte_neto, transporte_respuesta, actividad_participantes(cantidad, precio_unitario, neto_unitario)").order("id")),
         finTodo(() => db.from("pagos").select("id, cotizacion_id, monto, fecha").order("id")),
         finTodo(() => db.from("pagos_proveedores").select("*").order("fecha").order("id"))
       ]);
@@ -88,14 +88,16 @@ function finCuentas() {
   for (const a of fin.actividades) {
     const c = finCot(a.cotizacion_id);
     if (!c) continue;
-    const cancelada = c.estado === "cancelado";
+    const cancelada = c.estado === "cancelado" || a.estado_servicio === "cancelado";
+    // Etapa 10: solo los servicios CONFIRMADOS son deuda con el proveedor
+    const sinConfirmar = !cancelada && a.estado_servicio !== "confirmado";
     const pagado = redondear(pagadoPor.get(a.id) || 0);
-    if (cancelada && !pagado) continue;
+    if ((cancelada || sinConfirmar) && !pagado) continue;
     const m = finMontos(a);
-    const monto = cancelada ? 0 : redondear(m.neto);
+    const monto = cancelada || sinConfirmar ? 0 : redondear(m.neto);
     const saldo = redondear(monto - pagado);
     const estado = saldo < 0 ? "favor" : saldo === 0 ? (monto ? "pagado" : "sin-costo") : pagado > 0 ? "parcial" : "pendiente";
-    items.push({ a, c, cancelada, personas: m.personas, monto, pagado, saldo, estado, operador_id: a.operador_id || 0 });
+    items.push({ a, c, cancelada, sinConfirmar, personas: m.personas, monto, pagado, saldo, estado, operador_id: a.operador_id || 0 });
   }
   // Pagos de servicios que se eliminaron: quedan a favor
   fin.pagosProv.filter((p) => !p.actividad_id).forEach((p) => items.push({
@@ -233,7 +235,7 @@ function finHtmlCxp() {
           </select></label>
         <button type="button" class="btn" data-fin-accion="imprimir">Imprimir</button>
       </div>
-      <p class="nota">Cada servicio se vuelve deuda el día en que se brinda. Monto = neto × participantes + neto del transporte. Si una reserva se cancela, su deuda desaparece; lo que ya se había pagado queda como saldo a favor.</p>
+      <p class="nota">Solo los servicios CONFIRMADOS son deuda, y cada uno se vuelve deuda el día en que se brinda. Monto = neto × participantes + neto del transporte. Si una reserva se cancela, su deuda desaparece; lo que ya se había pagado queda como saldo a favor.</p>
     </div>
     <div class="fin-cifras">
       ${tarjeta("Por pagar hoy", dinero(totalDeuda), totalDeuda ? "alerta" : "")}
@@ -260,7 +262,7 @@ function finFilaServicio(i, conCheck) {
     <tr class="${i.cancelada ? "fin-favor" : ""}">
       <td>${conCheck && i.saldo > 0 ? `<input type="checkbox" data-fin-sel="${i.a.id}" ${marcado ? "checked" : ""} aria-label="Pagar este servicio">` : ""}</td>
       <td>${fecha(i.a.fecha, { day: "numeric", month: "short", year: "numeric" })}</td>
-      <td><button type="button" class="enlace" data-fin-accion="abrir" data-id="${i.c.id}">${escapar(codigoDe(i.a, i.c))}</button>${i.cancelada ? ` <small>reserva cancelada</small>` : ""}</td>
+      <td><button type="button" class="enlace" data-fin-accion="abrir" data-id="${i.c.id}">${escapar(codigoDe(i.a, i.c))}</button>${i.cancelada ? ` <small>reserva cancelada</small>` : i.sinConfirmar ? ` <small>servicio sin confirmar</small>` : ""}</td>
       <td>${escapar(`${i.c.nombre} ${i.c.apellido}`)}</td>
       <td>${escapar(servicioPorId(i.a.servicio_id)?.nombre ?? "")}</td>
       <td class="num">${i.personas}</td>
