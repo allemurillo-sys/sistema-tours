@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="estilos.css?v=15">
   <link rel="stylesheet" href="panel.css?v=22">
   <link rel="stylesheet" href="tarifario.css?v=26">
+  <link rel="stylesheet" href="chat.css?v=1">
 </head>
 <body class="panel">
 
@@ -46,6 +47,7 @@
       <nav class="menu" aria-label="Secciones del panel">
         <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
         <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
+        <button type="button" class="menu-btn" data-vista="chat">Chat <span id="chatMenuCuenta" class="menu-cuenta" hidden></span></button>
         <button type="button" class="menu-btn" data-vista="servicios">Servicios</button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
         <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
@@ -53,7 +55,14 @@
         <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
         <button type="button" class="menu-btn salir" id="btnSalir">Salir</button>
       </nav>
-      <span id="usuarioNombre" class="usuario"></span>
+      <div class="barra-usuario">
+        <button type="button" id="chatAvatarBtn" class="avatar-btn" aria-label="Mi perfil y mensajes" aria-haspopup="true">
+          <span id="chatAvatar"></span>
+          <span id="chatBurbuja" class="burbuja" hidden></span>
+        </button>
+        <span id="usuarioNombre" class="usuario"></span>
+        <div id="chatMenuPerfil" class="menu-flotante menu-perfil" hidden></div>
+      </div>
     </header>
 
     <!-- Reservas -->
@@ -75,6 +84,9 @@
         <div id="calendarioContenido"></div>
       </div>
     </section>
+
+    <!-- Chat interno (solo colaboradores) -->
+    <section id="vistaChat" class="vista" hidden></section>
 
     <!-- Servicios -->
     <section id="vistaServicios" class="vista" hidden>
@@ -151,12 +163,15 @@
     </section>
   </div>
 
+  <!-- Ventanas del chat (nuevo chat, grupos, Mi perfil, compartir) -->
+  <div id="chatModal" class="chat-modal-fondo" hidden></div>
+
   <div id="impresion" class="impresion"></div>
   <div id="aviso" class="toast" role="status" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=14"></script>
-  <script src="panel.js?v=22"></script>
+  <script src="panel.js?v=23"></script>
   <script src="servicios.js?v=17"></script>
   <script src="mantenimiento.js?v=20"></script>
   <script src="calendario.js?v=14"></script>
@@ -168,5 +183,6 @@
   <script src="tarifario-servicios.js?v=3"></script>
   <script src="tarifario-catalogo.js?v=2"></script>
   <script src="reserva-manual.js?v=1"></script>
+  <script src="chat.js?v=1"></script>
 </body>
 </html>

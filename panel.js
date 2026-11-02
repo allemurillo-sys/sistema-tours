@@ -591,6 +591,7 @@ function pintarDetalle() {
         <h2 id="detalleTitulo" tabindex="-1">${escapar(nombreCompleto(c))}</h2>
       </div>
       <div class="det-acciones">
+        ${typeof chatBotonCompartir === "function" ? chatBotonCompartir() : ""}
         <button type="button" class="btn" data-accion="imprimir">Imprimir</button>
         <button type="button" class="btn" data-accion="cerrar">Cerrar</button>
       </div>
