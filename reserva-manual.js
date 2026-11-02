@@ -237,3 +237,99 @@ $("manualContenido").addEventListener("submit", (e) => {
   e.preventDefault();
   crearManual();
 });
+
+// =====================================================
+// ACTIVIDADES DE LAS RESERVAS MANUALES: SOLO DEL TARIFARIO FINAL
+// La lista sale de las tarifas aprobadas (actividad + proveedor), aunque la
+// actividad no sea visible para clientes. Las actividades nuevas se crean
+// únicamente en el Tarifario (administrador).
+// Avisa si la actividad no tiene tarifa vigente o le falta algo necesario.
+// =====================================================
+const esReservaManual = (c) => !!c && !!c.origen && c.origen !== "web";
+const normTar = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const opcionTarifario = (servicioId) => (app.opcionesTarifario || []).find((o) => o.servicio_id === Number(servicioId));
+const tarHoy = () => aTexto(new Date());
+
+function htmlOpcionesTarifario(seleccionado, filtro = "") {
+  const q = normTar(filtro).trim();
+  const lista = (app.opcionesTarifario || []).filter((o) => !q || normTar(`${o.nombre} ${o.operador}`).includes(q));
+  const etiqueta = (o) => `${o.nombre} · ${o.operador}`;
+  const opcion = (o) => o.servicio_id
+    ? `<option value="${o.servicio_id}" ${o.servicio_id === seleccionado ? "selected" : ""}>${escapar(etiqueta(o))}${o.sin_equivalencia?.length ? " ⚠" : ""}</option>`
+    : `<option disabled>${escapar(etiqueta(o))} (falta enlazarla en el Catálogo)</option>`;
+  const vigentes = lista.filter((o) => o.hasta >= tarHoy());
+  const vencidas = lista.filter((o) => !(o.hasta >= tarHoy()));
+  let h = "";
+  // si la actividad ya guardada no está en el Tarifario final, se muestra igual para no perderla
+  const actual = seleccionado && !opcionTarifario(seleccionado) ? servicioPorId(seleccionado) : null;
+  if (actual) h += `<option value="${actual.id}" selected>${escapar(actual.nombre)} (no está en el Tarifario final)</option>`;
+  h += vigentes.map(opcion).join("");
+  if (vencidas.length) h += `<optgroup label="Sin tarifa vigente">${vencidas.map(opcion).join("")}</optgroup>`;
+  if (!lista.length && !actual) h += `<option disabled>Ninguna actividad coincide con “${escapar(filtro)}”</option>`;
+  return h;
+}
+
+function htmlSelectorTarifario(a) {
+  const total = (app.opcionesTarifario || []).length;
+  return `
+    <label class="ancho">Actividad del Tarifario final
+      <input type="search" class="tar-buscar" data-buscar-tarifario placeholder="Buscar actividad o proveedor (${total} disponibles)…" aria-label="Buscar actividad o proveedor">
+      <select data-campo="servicio_id"><option value="">Elige una actividad</option>${htmlOpcionesTarifario(a.servicio_id)}</select>
+    </label>`;
+}
+
+// Avisos de la actividad elegida: tarifa vigente, tarifa para la fecha y datos que faltan
+function htmlAlertasTarifario(a) {
+  if (!a.servicio_id) return "";
+  const admin = app.yo?.rol === "administrador";
+  const donde = (lugar) => admin ? ` Corrígelo en <strong>Tarifario › ${lugar}</strong>.` : " Avísale al administrador para que lo corrija en el Tarifario.";
+  const o = opcionTarifario(a.servicio_id);
+  const avisos = [], notas = [];
+  if (!o) {
+    avisos.push(`Esta actividad no está en el Tarifario final (no tiene tarifas aprobadas).${donde("Procesar")}`);
+  } else {
+    if (!(o.hasta >= tarHoy())) avisos.push(`La tarifa venció el ${fecha(o.hasta, { day: "numeric", month: "short", year: "numeric" })}; falta cargar la nueva.${donde("Importar / Procesar")}`);
+    if (a.fecha && !(o.temporadas || []).some((t) => a.fecha >= t.inicio && a.fecha <= t.fin)) {
+      const temps = (o.temporadas || []).map((t) => `${fecha(t.inicio)} – ${fecha(t.fin, { day: "numeric", month: "short", year: "numeric" })}`).join(" · ");
+      avisos.push(`No hay tarifa para el ${fecha(a.fecha, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}: queda como <strong>tarifa pendiente</strong>.${temps ? ` Temporadas cargadas: ${temps}.` : ""}`);
+    }
+    if (o.sin_equivalencia?.length) avisos.push(`Categorías del proveedor sin equivalencia con un tipo de cliente (${o.sin_equivalencia.map(escapar).join(", ")}): sus precios no se aplican.${donde("Ajustes")}`);
+    if (o.sin_precio > 0) avisos.push(`Hay tarifas vigentes sin precio TC.${donde("Tarifario final")}`);
+    if (!o.contacto) notas.push(`El proveedor no tiene correo ni WhatsApp de reservas: no se le podrá enviar la solicitud desde el sistema.${donde("Operadores")}`);
+  }
+  // tipos de cliente con personas pero sin precio en la tarifa de esa fecha
+  const t = typeof tarifaDe === "function" ? tarifaDe(a) : null;
+  if (t?.precios?.length) {
+    const sinPrecio = a.participantes.filter((p) => p.cantidad > 0 && !t.precios.some((x) => x.categoria_id === p.categoria_id && x.tc != null));
+    if (sinPrecio.length) avisos.push(`La tarifa no tiene precio para: ${sinPrecio.map((p) => escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")).join(", ")}. Escribe el precio a mano (Manual).`);
+  }
+  if (!avisos.length && !notas.length) return "";
+  return `<div class="tar-alertas">
+    ${avisos.map((x) => `<p class="tar-alerta">⚠ ${x}</p>`).join("")}
+    ${notas.map((x) => `<p class="tar-nota">ⓘ ${x}</p>`).join("")}
+  </div>`;
+}
+
+// Buscador: filtra la lista sin marcar la actividad como modificada
+$("detalleContenido").addEventListener("input", (e) => {
+  if (!e.target.matches("[data-buscar-tarifario]")) return;
+  e.stopImmediatePropagation();
+  const sel = e.target.closest("label").querySelector('[data-campo="servicio_id"]');
+  const actual = Number(sel.value) || null;
+  sel.innerHTML = `<option value="">${e.target.value.trim() ? "Elige entre las que coinciden" : "Elige una actividad"}</option>${htmlOpcionesTarifario(actual, e.target.value)}`;
+  if (actual) sel.value = String(actual);
+}, true);
+$("detalleContenido").addEventListener("change", (e) => {
+  if (e.target.matches("[data-buscar-tarifario]")) e.stopImmediatePropagation();
+}, true);
+$("detalleContenido").addEventListener("keydown", (e) => {
+  // Enter en el buscador: si queda una sola coincidencia, la elige
+  if (!e.target.matches("[data-buscar-tarifario]") || e.key !== "Enter") return;
+  e.preventDefault();
+  const sel = e.target.closest("label").querySelector('[data-campo="servicio_id"]');
+  const opciones = [...sel.options].filter((op) => op.value && !op.disabled);
+  if (opciones.length === 1 && sel.value !== opciones[0].value) {
+    sel.value = opciones[0].value;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  } else sel.focus();
+});

@@ -573,3 +573,10 @@ label.en-linea select { width: auto; }
   .man-telefono { grid-template-columns: 1fr; }
   .man-barra { margin: 0 16px 24px; }
 }
+
+/* ---------- Reservas manuales: actividades del Tarifario final ---------- */
+.tar-buscar { padding: 7px 10px; font-size: .92rem; margin-bottom: 4px; }
+.tar-alertas { display: grid; gap: 6px; margin: -2px 0 12px; }
+.tar-alertas p { margin: 0; font-size: .9rem; border-radius: 8px; padding: 7px 12px; }
+.tar-alerta { background: var(--alerta-fondo); color: var(--alerta); }
+.tar-nota { background: var(--fondo); color: var(--gris); }

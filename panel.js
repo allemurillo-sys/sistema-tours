@@ -339,6 +339,10 @@ async function cargarCatalogos() {
     db.from("operadores").select("*").order("nombre"),
     db.from("tipos_servicio").select("*").order("orden").order("nombre")
   ]);
+  // Actividades del Tarifario final (para las reservas manuales); si falla, se sigue sin ellas
+  const opc = await db.rpc("tarifario_opciones");
+  if (!opc.error) app.opcionesTarifario = opc.data || [];
+  else console.error("Tarifario final:", opc.error);
   const error = s.error || p.error || c.error || pf.error || op.error || tp.error;
   if (error) return fallo(error, "No se pudieron cargar los catálogos.");
   app.operadores = op.data;
@@ -752,7 +756,8 @@ function htmlEditorActividades() {
 function htmlActividad(a, idx) {
   const verNeto = puede("ver_utilidad");
   const serv = servicioPorId(a.servicio_id);
-  const servicios = opcionesServicios(a.servicio_id);
+  const manual = typeof esReservaManual === "function" && esReservaManual(app.actual.cot);
+  const servicios = manual ? "" : opcionesServicios(a.servicio_id);
   const horarios = (serv?.horarios || []).map(hora);
 
   const filas = a.participantes.map((p) => `
@@ -779,9 +784,9 @@ function htmlActividad(a, idx) {
         <button type="button" class="enlace peligro" data-accion="eliminar-act">Eliminar</button>
       </div>
       <div class="act-campos">
-        <label>Servicio
+        ${manual ? htmlSelectorTarifario(a) : `<label>Servicio
           <select data-campo="servicio_id"><option value="">Elige un servicio</option>${servicios}</select>
-        </label>
+        </label>`}
         <label>Fecha <input data-campo="fecha" type="date" value="${a.fecha}"></label>
         <label>Hora de inicio
           <input data-campo="hora_inicio" type="time" value="${a.hora_inicio}" list="horarios-${idx}">
@@ -797,6 +802,7 @@ function htmlActividad(a, idx) {
           </select>
         </label>
       </div>
+      ${manual ? htmlAlertasTarifario(a) : ""}
       ${htmlTarifa(a)}
       ${cot.estado === "reserva" ? htmlConfirmacionOperador(a) : ""}
       ${htmlTransporte(a)}
