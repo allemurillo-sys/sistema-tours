@@ -25,6 +25,32 @@ tar.mapaError = null;
 tar.catalogo = { tipo: "", ver: "todos", texto: "" };
 tar.catItems = [];                  // filas pintadas en Catálogo
 tar.previa = { fecha: "", resultado: null, cargando: false };
+tar.catSel = new Set();             // claves marcadas para las acciones en bloque
+
+// ---------- Lo que ve el cliente (etapa 13) ----------
+// Requisitos para publicar (marcar visible). La base de datos exige lo mismo
+// (t_servicios_publicar); las que ya eran visibles antes no se ocultan solas.
+function tarFaltantesPublicar(it) {
+  const s = it?.srv;
+  if (!s) return ["ficha para clientes"];
+  const f = [];
+  const fotos = tarFotos(s).length;
+  if (fotos < TAR_FOTOS_MIN) f.push(`${TAR_FOTOS_MIN} fotos (tiene ${fotos})`);
+  if (!String(s.descripcion ?? "").trim()) f.push("descripción");
+  if (!s.tipo_id) f.push("tipo de actividad");
+  if (it.sinTarifario || !it.aprobadas) f.push("tarifa aprobada en el Tarifario");
+  return f;
+}
+// Orden en que el cliente ve las actividades dentro de cada tipo:
+// primero las recomendadas, luego el orden elegido y al final por nombre
+const tarTemporadas = (srv) => (Array.isArray(srv?.temporadas_visible) ? srv.temporadas_visible : []);
+function tarCompararCliente(x, y) {
+  const a = x.srv || {}, b = y.srv || {};
+  return (!!b.recomendada - !!a.recomendada)
+    || ((a.orden ?? 1e9) - (b.orden ?? 1e9))
+    || tarNombreCliente(x).localeCompare(tarNombreCliente(y), "es");
+}
+const tarTextoTemporadas = (lista) => lista.map((r) => `${tarFechaCorta(r.desde)} – ${tarFechaCorta(r.hasta)}`).join(" · ");
 
 // ---------- Datos ----------
 async function tarLeerCatalogoExtra() {
@@ -95,6 +121,11 @@ function tarItemsCatalogo() {
     it.porVencer = it.hasta && it.hasta >= hoy && it.hasta <= limite;
     it.vencida = it.hasta && it.hasta < hoy;
     it.grupo = tarNorm(it.ficha?.comparar || it.servicio);
+    it.recomendada = !!it.srv?.recomendada;
+    it.temporadas = tarTemporadas(it.srv);
+    it.temporadaPasada = it.temporadas.length > 0 && it.temporadas.every((r) => r.hasta < hoy);
+    it.faltan = tarFaltantesPublicar(it);
+    it.sinVigente = it.visible && !it.vigenteHoy;
   });
 
   // Grupos: misma actividad ("Comparar como" o mismo nombre)
@@ -127,12 +158,14 @@ function tarAlertasItem(i) {
     return a;
   }
   if (!i.visible) return a;
-  const fotos = tarFotos(i.srv).length;
-  if (fotos < TAR_FOTOS_MIN) a.push({ nivel: "aviso", texto: `Tiene ${fotos} de ${TAR_FOTOS_MIN} fotos.` });
-  if (!i.srv?.descripcion) a.push({ nivel: "aviso", texto: "Sin descripción para el cliente." });
-  if (!i.aprobadas) a.push({ nivel: "alerta", texto: "Sin tarifas aprobadas: el cliente verá \"tarifa pendiente\"." });
-  else if (i.vencida) a.push({ nivel: "alerta", texto: `Su última tarifa terminó el ${tarFechaCorta(i.hasta)}.` });
+  const faltanSinTipo = i.faltan.filter((x) => x !== "tipo de actividad" && x !== "tarifa aprobada en el Tarifario");
+  if (faltanSinTipo.length) a.push({ nivel: "aviso", texto: `Visible, pero no cumple los requisitos para publicar: le falta ${faltanSinTipo.join(", ")}. Si la ocultas, no se podrá volver a mostrar hasta completarla.` });
+  const nota = " El cliente la ve con la nota \"tu agente te ayudará con el precio\".";
+  if (!i.aprobadas) a.push({ nivel: "alerta", texto: `Visible sin tarifas aprobadas.${nota}` });
+  else if (i.vencida) a.push({ nivel: "alerta", texto: `Visible sin tarifa vigente: su última tarifa terminó el ${tarFechaCorta(i.hasta)}.${nota}` });
+  else if (!i.vigenteHoy) a.push({ nivel: "alerta", texto: `Visible sin tarifa vigente hoy (hay un hueco entre temporadas).${nota}` });
   else if (i.porVencer) a.push({ nivel: "aviso", texto: `Su última tarifa termina el ${tarFechaCorta(i.hasta)}: carga la siguiente temporada.` });
+  if (i.temporadaPasada) a.push({ nivel: "aviso", texto: `Solo se muestra en ciertas fechas y ya pasaron todas (${tarTextoTemporadas(i.temporadas)}): el cliente no la ve.` });
   return a;
 }
 
@@ -149,35 +182,71 @@ function tarCategoriasSinAsignar() {
 function tarHtmlCatalogo() {
   const todos = tarItemsCatalogo();
   const c = tar.catalogo, txt = tarNorm(c.texto);
+  const pasa = (i) => ({
+    todos: true, alertas: i.alertas.length > 0, visibles: i.visible, ocultos: !i.visible,
+    varios: i.otrosProveedores.length > 0, sinvigente: i.sinVigente, recomendadas: i.visible && i.recomendada,
+    temporada: i.temporadas.length > 0
+  })[c.ver] ?? true;
   const lista = todos.filter((i) =>
     (!c.tipo || (c.tipo === "sin" ? !i.tipo_id : i.tipo_id === Number(c.tipo)))
-    && (c.ver === "todos" || (c.ver === "alertas" && i.alertas.length) || (c.ver === "visibles" && i.visible)
-      || (c.ver === "ocultos" && !i.visible) || (c.ver === "varios" && i.otrosProveedores.length))
+    && pasa(i)
     && (!txt || tarNorm(`${i.servicio} ${i.srv?.nombre ?? ""} ${tarNombreOp(i.operador_id)} ${i.ficha?.comparar ?? ""}`).includes(txt)));
   tar.catItems = lista;
+  // la selección solo guarda servicios que todavía existen y tienen ficha
+  const claves = new Set(todos.filter((i) => i.srv).map((i) => i.clave));
+  [...tar.catSel].forEach((k) => { if (!claves.has(k)) tar.catSel.delete(k); });
 
   const visibles = todos.filter((i) => i.visible).length;
   const conAlertas = todos.filter((i) => i.alertas.some((a) => a.nivel === "alerta")).length;
   const dups = todos.filter((i) => i.dupPendiente).length;
+  const sinVigente = todos.filter((i) => i.sinVigente).length;
+  const recomendadas = todos.filter((i) => i.visible && i.recomendada).length;
   const sinAsignar = tarCategoriasSinAsignar().length;
 
-  // Un bloque por tipo de actividad, en el orden que ve el cliente
+  // Un bloque por tipo de actividad, en el orden que ve el cliente.
+  // Dentro de cada bloque: primero las visibles en el orden del cliente, luego las ocultas.
   const bloques = [...tarTipos().map((tp) => ({ titulo: nombreTipo(tp), oculto: !tp.activo, id: tp.id })), { titulo: "Sin tipo de actividad", id: null }]
     .map((b) => ({ ...b, filas: lista.filter((i) => (b.id ? i.tipo_id === b.id : !tarTipoPorId(i.tipo_id))) }))
     .filter((b) => b.filas.length);
+  const porNombre = (x, y) => tarNombreCliente(x).localeCompare(tarNombreCliente(y), "es") || tarNombreOp(x.operador_id).localeCompare(tarNombreOp(y.operador_id), "es");
 
-  const cuerpo = bloques.map((b) => `
-    <tr class="fila-grupo"><th colspan="7">${escapar(b.titulo)}
-      <span class="nota">${b.filas.length} ${b.filas.length === 1 ? "servicio" : "servicios"}${b.oculto ? " · tipo oculto: el cliente no ve estas actividades" : ""}</span></th></tr>
-    ${b.filas.sort((x, y) => tarNombreCliente(x).localeCompare(tarNombreCliente(y), "es") || tarNombreOp(x.operador_id).localeCompare(tarNombreOp(y.operador_id), "es"))
-      .map(tarHtmlFilaCatalogo).join("")}`).join("");
+  const cuerpo = bloques.map((b) => {
+    const vis = b.filas.filter((i) => i.visible).sort(tarCompararCliente);
+    const ocu = b.filas.filter((i) => !i.visible).sort(porNombre);
+    // para las flechas: vecinas visibles del mismo tipo con el mismo estado de "recomendada"
+    // (se calcula con todas las visibles del tipo, aunque haya un filtro o búsqueda)
+    const visTodas = todos.filter((i) => i.visible && i.srv && (i.tipo_id ?? null) === (vis[0]?.tipo_id ?? null)).sort(tarCompararCliente);
+    vis.forEach((i) => {
+      const pares = visTodas.filter((x) => x.recomendada === i.recomendada);
+      const k = pares.indexOf(i);
+      i.puedeSubir = k > 0; i.puedeBajar = k < pares.length - 1;
+    });
+    return `
+    <tr class="fila-grupo"><th colspan="8">${escapar(b.titulo)}
+      <span class="nota">${b.filas.length} ${b.filas.length === 1 ? "servicio" : "servicios"}${vis.length ? ` · ${vis.length} visible(s), en el orden que las ve el cliente` : ""}${b.oculto ? " · tipo oculto: el cliente no ve estas actividades" : ""}</span></th></tr>
+    ${[...vis, ...ocu].map(tarHtmlFilaCatalogo).join("")}`;
+  }).join("");
+
+  const conFicha = lista.filter((i) => i.srv);
+  const todasMarcadas = conFicha.length > 0 && conFicha.every((i) => tar.catSel.has(i.clave));
+  const n = tar.catSel.size;
+  const barra = n ? `
+    <div class="tcat-bloque" role="region" aria-label="Acciones en bloque">
+      <strong>${n} ${n === 1 ? "seleccionada" : "seleccionadas"}</strong>
+      <button type="button" class="btn primario" data-tcat="bloque" data-accion="visible">Hacer visibles</button>
+      <button type="button" class="btn" data-tcat="bloque" data-accion="ocultar">Ocultar</button>
+      <button type="button" class="btn" data-tcat="bloque" data-accion="recomendar">⭐ Marcar recomendadas</button>
+      <button type="button" class="btn" data-tcat="bloque" data-accion="no-recomendar">Quitar recomendada</button>
+      <button type="button" class="enlace" data-tcat="bloque-limpiar">Limpiar selección</button>
+    </div>` : "";
 
   return `
     <div class="tar-filtros">
       <label>Tipo de actividad <select data-tcat-filtro="tipo">${tarOpcionesTipos(c.tipo)}</select></label>
       <label>Mostrar
         <select data-tcat-filtro="ver">
-          ${[["todos", "Todos los servicios"], ["alertas", "Con alertas o avisos"], ["visibles", "Visibles para clientes"], ["ocultos", "Ocultos"], ["varios", "Con varios proveedores"]]
+          ${[["todos", "Todos los servicios"], ["alertas", "Con alertas o avisos"], ["visibles", "Visibles para clientes"], ["ocultos", "Ocultos"],
+             ["sinvigente", "Visibles sin tarifa vigente"], ["recomendadas", "Recomendadas"], ["temporada", "Solo en ciertas fechas"], ["varios", "Con varios proveedores"]]
             .map(([v, t]) => `<option value="${v}" ${c.ver === v ? "selected" : ""}>${t}</option>`).join("")}
         </select>
       </label>
@@ -186,19 +255,27 @@ function tarHtmlCatalogo() {
     <p class="tar-resumen">
       <span><strong>${todos.length}</strong> servicios</span>
       <span><strong>${visibles}</strong> visibles para clientes</span>
+      <span><strong>${recomendadas}</strong> recomendadas</span>
+      <span class="${sinVigente ? "tar-alerta" : ""}"><strong>${sinVigente}</strong> visibles sin tarifa vigente${sinVigente ? ` · <button type="button" class="enlace" data-tcat="ver-sinvigente">Verlas</button>` : ""}</span>
       <span class="${conAlertas ? "tar-alerta" : ""}"><strong>${conAlertas}</strong> con alertas</span>
       <span class="${dups ? "tar-alerta" : ""}"><strong>${dups}</strong> posibles duplicados</span>
       ${sinAsignar ? `<span class="tar-alerta"><strong>${sinAsignar}</strong> categorías sin equivalencia · <button type="button" class="enlace" data-tcat="ir-categorias">Asignarlas en Ajustes</button></span>` : ""}
     </p>
     <div class="tar-ayuda">
-      <p>Aquí se prepara <strong>lo que ve el cliente</strong> de cada servicio: nombre, tipo de actividad, descripción, horarios, fotos (mínimo ${TAR_FOTOS_MIN}) e idiomas. Marca <strong>Visible</strong> para que aparezca en el formulario. El cliente nunca ve el proveedor.</p>
+      <p>Aquí decides <strong>qué actividades ve el cliente</strong> en el formulario y cómo las ve: nombre, tipo de actividad, descripción, horarios, fotos e idiomas. Marca <strong>Visible</strong> para que aparezca. El cliente nunca ve el proveedor.
+        Para publicar una actividad necesita: <strong>${TAR_FOTOS_MIN} fotos, descripción, tipo de actividad y una tarifa aprobada</strong>.</p>
+      <p>Marca varias con la casilla de la izquierda para hacerlas visibles, ocultarlas o recomendarlas de una vez. Las <strong>⭐ recomendadas</strong> salen primero en su tipo; usa ▲ ▼ para el orden de las demás.
+        Si una visible se queda sin tarifa vigente, el cliente la sigue viendo y al elegirla se le avisa que su agente le ayudará con el precio.</p>
       <p>Cuando la misma actividad la ofrecen <strong>varios proveedores</strong> (mismo nombre o mismo "Comparar como"), solo una puede ser visible: al marcar una, el sistema oculta las demás.
         Si el <strong>mismo proveedor</strong> tiene dos servicios en el mismo grupo, aparece como posible duplicado para que revises si fue un error de ingreso.</p>
     </div>
+    ${barra}
     ${lista.length ? `
       <div class="tabla-scroll">
         <table class="tabla tcat-tabla">
-          <thead><tr><th>Servicio</th><th>Proveedor</th><th class="centro">Visible</th><th>Fotos e información</th><th>Tarifas</th><th>Alertas</th><th></th></tr></thead>
+          <thead><tr>
+            <th class="centro"><input type="checkbox" class="tar-check" data-tcat="sel-todas" ${todasMarcadas ? "checked" : ""} ${conFicha.length ? "" : "disabled"} aria-label="Seleccionar todas las de la lista"></th>
+            <th>Servicio</th><th>Proveedor</th><th class="centro">Visible</th><th>Fotos e información</th><th>Tarifas</th><th>Alertas</th><th></th></tr></thead>
           <tbody>${cuerpo}</tbody>
         </table>
       </div>` : `<div class="tar-vacio"><p><strong>No hay servicios que coincidan con los filtros.</strong></p></div>`}`;
@@ -222,11 +299,18 @@ function tarHtmlFilaCatalogo(it) {
   const alertas = it.alertas.map((a) => `<li class="tcat-${a.nivel}">${escapar(a.texto)}${a.dup ? ` <button type="button" class="enlace" data-tcat="dup-ok" data-i="${i}">Están bien</button>` : ""}</li>`).join("");
 
   return `
-    <tr class="${it.visible ? "" : "inactivo"} ${it.alertas.some((a) => a.nivel === "alerta") ? "tcat-con-alerta" : ""}">
-      <td><strong>${escapar(tarNombreCliente(it))}</strong>${varios}${nombreTar}${it.ficha?.comparar ? `<br><span class="nota">Grupo: ${escapar(it.ficha.comparar)}</span>` : ""}</td>
+    <tr class="${it.visible ? "" : "inactivo"} ${it.alertas.some((a) => a.nivel === "alerta") ? "tcat-con-alerta" : ""} ${tar.catSel.has(it.clave) ? "tcat-marcada" : ""}">
+      <td class="centro">${srv ? `<input type="checkbox" class="tar-check" data-tcat="sel" data-i="${i}" ${tar.catSel.has(it.clave) ? "checked" : ""} aria-label="Seleccionar ${escapar(tarNombreCliente(it))}">` : ""}</td>
+      <td>${it.recomendada ? `<span class="tcat-rec" title="Recomendada: sale primero en su tipo">⭐</span> ` : ""}<strong>${escapar(tarNombreCliente(it))}</strong>${varios}${nombreTar}${it.ficha?.comparar ? `<br><span class="nota">Grupo: ${escapar(it.ficha.comparar)}</span>` : ""}
+        ${it.temporadas.length ? `<br><span class="tcat-temporada" title="Fuera de estas fechas el cliente no la ve">📅 Solo ${escapar(tarTextoTemporadas(it.temporadas))}</span>` : ""}</td>
       <td>${it.sinTarifario ? `<span class="nota">Sin tarifario</span>` : escapar(tarNombreOp(it.operador_id))}</td>
       <td class="centro">${srv
-        ? `<input type="checkbox" class="tar-check" data-tcat="visible" data-i="${i}" ${it.visible ? "checked" : ""} aria-label="Visible para clientes: ${escapar(tarNombreCliente(it))}">`
+        ? `<input type="checkbox" class="tar-check" data-tcat="visible" data-i="${i}" ${it.visible ? "checked" : ""} aria-label="Visible para clientes: ${escapar(tarNombreCliente(it))}"
+            ${!it.visible && it.faltan.length ? `title="Para publicar le falta: ${escapar(it.faltan.join(", "))}"` : ""}>
+          ${it.visible ? `<span class="tcat-orden">
+            <button type="button" class="btn-icono" data-tcat="orden" data-paso="-1" data-i="${i}" ${it.puedeSubir ? "" : "disabled"} aria-label="Subir ${escapar(tarNombreCliente(it))}" title="Subir">▲</button>
+            <button type="button" class="btn-icono" data-tcat="orden" data-paso="1" data-i="${i}" ${it.puedeBajar ? "" : "disabled"} aria-label="Bajar ${escapar(tarNombreCliente(it))}" title="Bajar">▼</button>
+          </span>` : it.faltan.length ? `<span class="tcat-falta-pub">Falta: ${escapar(it.faltan.join(", "))}</span>` : ""}`
         : `<span class="nota">—</span>`}</td>
       <td>${srv ? `
         <div class="tcat-mini">
@@ -246,6 +330,12 @@ async function tarCambiarVisible(it, visible, el) {
   if (!it?.srv) return;
   let ocultar = [];
   if (visible) {
+    const faltan = tarFaltantesPublicar(it);
+    if (faltan.length) {
+      if (el) el.checked = false;
+      avisar(`Para publicar "${tarNombreCliente(it)}" le falta: ${faltan.join(", ")}.`, "error");
+      return false;
+    }
     ocultar = it.rivales.filter((x) => x.visible && x.srv);
     if (ocultar.length && !confirm(`"${tarNombreCliente(it)}" también la ofrece ${ocultar.map((x) => tarNombreOp(x.operador_id)).join(", ")}, y el cliente solo debe ver una versión.\n\n¿Mostrar la de ${tarNombreOp(it.operador_id) || "este servicio"} y ocultar las demás?`)) {
       if (el) el.checked = false;
@@ -264,6 +354,83 @@ async function tarCambiarVisible(it, visible, el) {
     ? `"${tarNombreCliente(it)}" ya es visible para los clientes.${ocultar.length ? ` Se ocultaron ${ocultar.length} versión(es) de otros proveedores.` : ""}`
     : `"${tarNombreCliente(it)}" quedó oculto para los clientes.`);
   return true;
+}
+
+// ---------- Acciones en bloque ----------
+async function tarAccionBloque(accion, btn) {
+  const todos = tarItemsCatalogo();
+  const marcadas = todos.filter((i) => i.srv && tar.catSel.has(i.clave));
+  if (!marcadas.length) return;
+  const nombre = (i) => `${tarNombreCliente(i)}${i.operador_id ? ` (${tarNombreOp(i.operador_id)})` : ""}`;
+  const lineas = (lista) => lista.slice(0, 12).map((x) => `· ${x}`).join("\n") + (lista.length > 12 ? `\n· … y ${lista.length - 12} más` : "");
+  let actualizar = [], cambios = {}, ocultarOtras = [], mensaje = "";
+
+  if (accion === "visible") {
+    const candidatas = marcadas.filter((i) => !i.visible);
+    const incompletas = candidatas.filter((i) => i.faltan.length);
+    let listas = candidatas.filter((i) => !i.faltan.length);
+    // dos versiones de la misma actividad marcadas a la vez: el cliente solo debe ver una
+    const choques = listas.filter((i) => i.rivales.some((r) => listas.includes(r)));
+    listas = listas.filter((i) => !choques.includes(i));
+    ocultarOtras = [...new Set(listas.flatMap((i) => i.rivales.filter((r) => r.visible && r.srv)))];
+    const partes = [];
+    if (listas.length) partes.push(`Se harán visibles ${listas.length}:\n${lineas(listas.map(nombre))}`);
+    if (ocultarOtras.length) partes.push(`Se ocultarán ${ocultarOtras.length} versión(es) de otros proveedores:\n${lineas(ocultarOtras.map(nombre))}`);
+    if (incompletas.length) partes.push(`No se pueden publicar ${incompletas.length} (no cumplen los requisitos):\n${lineas(incompletas.map((i) => `${nombre(i)}: falta ${i.faltan.join(", ")}`))}`);
+    if (choques.length) partes.push(`No se tocan ${choques.length} porque son versiones de la misma actividad (elige solo una):\n${lineas(choques.map(nombre))}`);
+    if (candidatas.length < marcadas.length) partes.push(`${marcadas.length - candidatas.length} ya eran visibles.`);
+    if (!listas.length) return alert(partes.join("\n\n") || "No hay nada que cambiar.");
+    if (!confirm(partes.join("\n\n") + "\n\n¿Continuar?")) return;
+    actualizar = listas; cambios = { activo: true };
+    mensaje = `${listas.length} actividad(es) ya son visibles para los clientes.${ocultarOtras.length ? ` Se ocultaron ${ocultarOtras.length} versión(es) de otros proveedores.` : ""}`;
+  } else if (accion === "ocultar") {
+    actualizar = marcadas.filter((i) => i.visible);
+    if (!actualizar.length) return avisar("Ninguna de las seleccionadas está visible.");
+    const sinVolver = actualizar.filter((i) => i.faltan.length);
+    if (!confirm(`¿Ocultar ${actualizar.length} actividad(es) para los clientes?${sinVolver.length ? `\n\nOjo: ${sinVolver.length} no cumplen los requisitos y no se podrán volver a mostrar hasta completarlas.` : ""}`)) return;
+    cambios = { activo: false };
+    mensaje = `${actualizar.length} actividad(es) quedaron ocultas para los clientes.`;
+  } else {
+    const valor = accion === "recomendar";
+    actualizar = marcadas.filter((i) => i.recomendada !== valor);
+    if (!actualizar.length) return avisar(valor ? "Ya están marcadas como recomendadas." : "Ninguna estaba recomendada.");
+    cambios = { recomendada: valor };
+    const ocultas = actualizar.filter((i) => !i.visible).length;
+    mensaje = `${actualizar.length} actividad(es) ${valor ? "marcadas como recomendadas" : "dejaron de ser recomendadas"}.${valor && ocultas ? ` ${ocultas} están ocultas: se verán recomendadas cuando las hagas visibles.` : ""}`;
+  }
+
+  await conBoton(btn, async () => {
+    const { error } = await db.from("servicios").update(cambios).in("id", actualizar.map((i) => i.srv.id));
+    if (error) { await cargarCatalogos(); tarPintar(); return fallo(error, "No se pudo aplicar el cambio."); }
+    if (ocultarOtras.length) {
+      const r = await db.from("servicios").update({ activo: false }).in("id", ocultarOtras.map((i) => i.srv.id));
+      if (r.error) fallo(r.error, "No se pudieron ocultar las otras versiones.");
+    }
+    tar.catSel.clear();
+    await cargarCatalogos();
+    tarPintar();
+    avisar(mensaje);
+  });
+}
+
+// ---------- Orden dentro del tipo (▲ ▼) ----------
+async function tarMoverOrden(it, paso) {
+  // las visibles del mismo tipo, en el orden que las ve el cliente
+  const lista = tarItemsCatalogo().filter((x) => x.visible && x.srv && (x.tipo_id ?? null) === (it.tipo_id ?? null)).sort(tarCompararCliente);
+  const pares = lista.filter((x) => x.recomendada === it.recomendada);
+  const k = pares.findIndex((x) => x.clave === it.clave), j = k + paso;
+  if (k < 0 || j < 0 || j >= pares.length) return;
+  const a = lista.indexOf(pares[k]), b = lista.indexOf(pares[j]);
+  [lista[a], lista[b]] = [lista[b], lista[a]];
+  const nuevos = lista.map((x, n) => ({ id: x.srv.id, orden: n + 1 })).filter((x, n) => lista[n].srv.orden !== x.orden);
+  for (const c of nuevos) {
+    const { error } = await db.from("servicios").update({ orden: c.orden }).eq("id", c.id);
+    if (error) { await cargarCatalogos(); tarPintar(); return fallo(error, "No se pudo cambiar el orden."); }
+  }
+  await cargarCatalogos();
+  tarPintar();
+  const i = tar.catItems.findIndex((x) => x.clave === it.clave);
+  document.querySelector(`[data-tcat="orden"][data-paso="${paso}"][data-i="${i}"]:not(:disabled)`)?.focus();
 }
 
 // Crea la ficha para clientes (fila en servicios) de un servicio del tarifario que aún no la tiene
@@ -349,8 +516,21 @@ function tarHtmlFichaCliente() {
           </table>
         </div>
       </details>
-      <label class="check-linea"><input id="tcfVisible" type="checkbox" ${s.activo ? "checked" : ""}> Visible para clientes (aparece en el formulario)</label>
-      ${rivales.length ? `<p class="nota">Si la marcas visible, se ocultan las otras versiones de esta actividad (${rivales.map((x) => escapar(tarNombreOp(x.operador_id) || x.servicio)).join(", ")}).</p>` : ""}
+      <fieldset class="tcat-publicar">
+        <legend>Lo que ve el cliente</legend>
+        <label class="check-linea"><input id="tcfVisible" type="checkbox" ${s.activo ? "checked" : ""}> Visible para clientes (aparece en el formulario)</label>
+        ${it.faltan.length
+          ? `<p class="${s.activo ? "aviso suave" : "tar-alerta"}">${s.activo ? "Está visible, pero no cumple los requisitos. Si la ocultas, para volver a mostrarla le falta" : "Para publicarla le falta"}: <strong>${escapar(it.faltan.join(", "))}</strong>. Las fotos se suben abajo y se guardan al instante.</p>`
+          : `<p class="nota">Cumple los requisitos para publicar (${TAR_FOTOS_MIN} fotos, descripción, tipo de actividad y tarifa aprobada).</p>`}
+        ${rivales.length ? `<p class="nota">Si la marcas visible, se ocultan las otras versiones de esta actividad (${rivales.map((x) => escapar(tarNombreOp(x.operador_id) || x.servicio)).join(", ")}).</p>` : ""}
+        <label class="check-linea"><input id="tcfRecomendada" type="checkbox" ${s.recomendada ? "checked" : ""}> ⭐ Recomendada (sale primero en su tipo, con una insignia)</label>
+        <label class="check-linea"><input id="tcfConTemporada" type="checkbox" ${tarTemporadas(s).length ? "checked" : ""}> Mostrar solo en ciertas fechas</label>
+        <div id="tcfTemporadas" ${tarTemporadas(s).length ? "" : "hidden"}>
+          <p class="nota">Fuera de estas fechas el cliente <strong>no ve</strong> la actividad. Se revisa con la fecha de cada día del viaje. Si lo desactivas, se muestra todo el año.</p>
+          <ul class="tcat-rangos" id="tcfRangos">${(tarTemporadas(s).length ? tarTemporadas(s) : [{ desde: "", hasta: "" }]).map(tarHtmlRango).join("")}</ul>
+          <button type="button" class="btn" data-tcat="rango-agregar">Agregar otro rango de fechas</button>
+        </div>
+      </fieldset>
       <div class="sec-botones">
         <button type="button" class="btn primario" data-tcat="guardar-ficha">Guardar ficha</button>
         <button type="button" class="btn" data-tcat="cerrar">Cancelar</button>
@@ -359,6 +539,30 @@ function tarHtmlFichaCliente() {
 
     <div class="det-seccion sin-margen" id="tcfFotos">${tarHtmlFotos(s)}</div>
     <div class="det-seccion sin-margen" id="tcfPrecios">${tarHtmlPrevia(s)}</div>`;
+}
+
+function tarHtmlRango(r) {
+  return `
+    <li class="tcat-rango">
+      <label>Desde <input type="date" data-rango="desde" value="${escapar(r.desde || "")}"></label>
+      <label>Hasta <input type="date" data-rango="hasta" value="${escapar(r.hasta || "")}"></label>
+      <button type="button" class="enlace peligro" data-tcat="rango-quitar">Quitar</button>
+    </li>`;
+}
+
+// Rangos de fechas en que se muestra al cliente; null si hay un error (ya avisado)
+function tarLeerTemporadasFicha() {
+  if (!$("tcfConTemporada").checked) return [];
+  const rangos = [];
+  for (const li of document.querySelectorAll("#tcfRangos .tcat-rango")) {
+    const desde = li.querySelector('[data-rango="desde"]').value, hasta = li.querySelector('[data-rango="hasta"]').value;
+    if (!desde && !hasta) continue;
+    if (!desde || !hasta) { avisar("Cada rango de fechas necesita \"Desde\" y \"Hasta\".", "error"); return null; }
+    if (hasta < desde) { avisar(`El rango ${tarFechaCorta(desde)} – ${tarFechaCorta(hasta)} termina antes de empezar.`, "error"); return null; }
+    rangos.push({ desde, hasta });
+  }
+  if (!rangos.length) { avisar("Escribe al menos un rango de fechas, o desmarca \"Mostrar solo en ciertas fechas\".", "error"); return null; }
+  return rangos.sort((a, b) => a.desde.localeCompare(b.desde));
 }
 
 function tarLeerTraduccionesFicha() {
@@ -385,7 +589,10 @@ async function tarGuardarFichaCliente(btn) {
   }
   const tipo_id = $("tcfTipo").value ? Number($("tcfTipo").value) : null;
   const visible = $("tcfVisible").checked;
+  const temporadas_visible = tarLeerTemporadasFicha();
+  if (!temporadas_visible) return;
   const fila = {
+    recomendada: $("tcfRecomendada").checked, temporadas_visible,
     nombre, tipo_id, horarios,
     duracion_min: parseInt($("tcfDuracion").value, 10) || null,
     transporte: $("tcfTransporte").value,
@@ -405,9 +612,12 @@ async function tarGuardarFichaCliente(btn) {
     await cargarCatalogos();
     if (visible !== it.visible) {
       const item = tarItemEditando();
-      if (!(await tarCambiarVisible(item, visible, $("tcfVisible")))) return;
+      if (!(await tarCambiarVisible(item, visible, $("tcfVisible")))) {
+        // los demás datos sí quedaron guardados; la ficha sigue abierta para completarla
+        tarPintar();
+        return;
+      }
     } else avisar("Ficha guardada.");
-    if (visible && tarFotos(it.srv).length < TAR_FOTOS_MIN) avisar(`Guardada. Recuerda subir al menos ${TAR_FOTOS_MIN} fotos.`);
     tar.editando = null;
     tarPintar();
   });
@@ -880,6 +1090,20 @@ $("tarContenido").addEventListener("click", async (e) => {
     case "ir-categorias":
       tar.pestana = "ajustes"; tar.editando = null; tarPintar();
       return $("tarCategorias")?.scrollIntoView({ behavior: "smooth" });
+    case "bloque": return tarAccionBloque(b.dataset.accion, b);
+    case "bloque-limpiar": tar.catSel.clear(); return tarPintar();
+    case "orden": return conBoton(b, () => tarMoverOrden(it(), Number(b.dataset.paso)));
+    case "ver-sinvigente": tar.catalogo.ver = "sinvigente"; tar.catalogo.tipo = ""; return tarPintar();
+    case "rango-agregar": {
+      $("tcfRangos").insertAdjacentHTML("beforeend", tarHtmlRango({}));
+      return $("tcfRangos").lastElementChild.querySelector("input")?.focus();
+    }
+    case "rango-quitar": {
+      const li = b.closest(".tcat-rango");
+      if ($("tcfRangos").children.length > 1) li.remove();
+      else li.querySelectorAll("input").forEach((x) => (x.value = ""));
+      return;
+    }
     case "aplicar-sug-cat": return tarAplicarSugerenciasCat(b);
     case "actualizar-tc": return tarActualizarTipoCambio(b);
     case "nuevo-tipo-cliente": return tarNuevoTipoCliente(b);
@@ -895,6 +1119,22 @@ $("tarContenido").addEventListener("change", async (e) => {
     const ok = await tarCambiarVisible(x, el.checked, el);
     if (el.isConnected) el.disabled = false;
     if (ok) tarPintar();
+    return;
+  }
+  if (el.dataset.tcat === "sel") {
+    const x = tar.catItems[Number(el.dataset.i)];
+    if (x) { if (el.checked) tar.catSel.add(x.clave); else tar.catSel.delete(x.clave); }
+    tarPintar();
+    return document.querySelector(`[data-tcat="sel"][data-i="${el.dataset.i}"]`)?.focus({ preventScroll: true });
+  }
+  if (el.dataset.tcat === "sel-todas") {
+    tar.catItems.filter((x) => x.srv).forEach((x) => (el.checked ? tar.catSel.add(x.clave) : tar.catSel.delete(x.clave)));
+    tarPintar();
+    return document.querySelector('[data-tcat="sel-todas"]')?.focus({ preventScroll: true });
+  }
+  if (el.id === "tcfConTemporada") {
+    $("tcfTemporadas").hidden = !el.checked;
+    if (el.checked) $("tcfRangos").querySelector("input")?.focus();
     return;
   }
   if (el.id === "tcfArchivoFotos" && el.files.length) return tarSubirFotos(el.files);

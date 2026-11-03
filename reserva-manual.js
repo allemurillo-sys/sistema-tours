@@ -239,10 +239,11 @@ $("manualContenido").addEventListener("submit", (e) => {
 });
 
 // =====================================================
-// ACTIVIDADES DE LAS RESERVAS MANUALES: SOLO DEL TARIFARIO FINAL
+// ACTIVIDADES DE LAS RESERVAS (MANUALES Y DEL FORMULARIO WEB): SOLO DEL TARIFARIO FINAL
 // La lista sale de las tarifas aprobadas (actividad + proveedor), aunque la
-// actividad no sea visible para clientes. Las actividades nuevas se crean
-// únicamente en el Tarifario (administrador).
+// actividad no sea visible para clientes: "Visible" solo decide lo que ve el
+// cliente en el formulario. Las actividades nuevas se crean únicamente en el
+// Tarifario (administrador).
 // Avisa si la actividad no tiene tarifa vigente o le falta algo necesario.
 // =====================================================
 const esReservaManual = (c) => !!c && !!c.origen && c.origen !== "web";

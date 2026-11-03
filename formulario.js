@@ -56,6 +56,19 @@ const nombreServicio = (id) => tServicio(servicioPorId(id));
 const iconoServicio = (id) => tipos.find((x) => x.id === servicioPorId(id)?.tipo_id)?.icono || "";
 const totalServicios = () => Object.values(seleccion).reduce((n, l) => n + l.length, 0);
 
+// Una actividad con "solo en ciertas fechas" se ofrece únicamente en los días que caen
+// dentro de esos rangos; sin rangos, todo el año
+function disponibleEn(s, fecha) {
+  const rangos = Array.isArray(s?.temporadas_visible) ? s.temporadas_visible : [];
+  return !rangos.length || rangos.some((r) => fecha >= r.desde && fecha <= r.hasta);
+}
+// Orden dentro de cada tipo: recomendadas primero, luego el orden del administrador y el nombre
+function compararServicios(x, y) {
+  return (!!y.recomendada - !!x.recomendada)
+    || ((x.orden ?? 1e9) - (y.orden ?? 1e9))
+    || tServicio(x).localeCompare(tServicio(y), locale());
+}
+
 // ---------- Listas que dependen del idioma ----------
 function pintarCodigos() {
   const actual = $("codigoPais").value || "+506";
@@ -87,7 +100,7 @@ async function cargarCatalogos() {
   if (CONFIG.supabaseUrl.includes("TU-PROYECTO")) return mostrarErrorCarga("e_config");
 
   const [s, k, p] = await Promise.all([
-    db.from("servicios").select("id, nombre, duracion_min, descripcion, tipo_id, traducciones, fotos, horarios, transporte").eq("activo", true).order("nombre"),
+    db.from("servicios").select("id, nombre, duracion_min, descripcion, tipo_id, traducciones, fotos, horarios, transporte, recomendada, orden, temporadas_visible").eq("activo", true).order("nombre"),
     db.from("tipos_servicio").select("id, nombre, icono, traducciones, orden").eq("activo", true).order("orden").order("nombre"),
     db.from("propiedades").select("id, nombre").eq("activa", true).order("nombre")
   ]);
@@ -123,7 +136,11 @@ function pintarDias() {
   }
 
   const fechas = listaFechas(inicio, fin);
-  Object.keys(seleccion).forEach((f) => { if (!fechas.includes(f)) delete seleccion[f]; });
+  Object.keys(seleccion).forEach((f) => {
+    if (!fechas.includes(f)) return delete seleccion[f];
+    if (catalogoListo) seleccion[f] = seleccion[f].filter((id) => disponibleEn(servicioPorId(id), f) && servicioPorId(id));
+    if (!seleccion[f].length) delete seleccion[f];
+  });
   ayuda.textContent = t("f_ayuda_dias");
 
   cont.innerHTML = fechas.map((f) => {
@@ -131,7 +148,7 @@ function pintarDias() {
     const elegidos = seleccion[f] || [];
     const lista = elegidos.map((id) => `
       <li>
-        <span class="dia-act">${iconoServicio(id) ? `<span class="dia-icono" aria-hidden="true">${escapar(iconoServicio(id))}</span>` : ""}<span>${escapar(nombreServicio(id))}</span></span>
+        <span class="dia-act">${iconoServicio(id) ? `<span class="dia-icono" aria-hidden="true">${escapar(iconoServicio(id))}</span>` : ""}<span>${escapar(nombreServicio(id))}${sinTarifaEn(id, f) ? `<span class="nota-sin-tarifa">${escapar(t("f_sin_tarifa"))}</span>` : ""}</span></span>
         <button type="button" class="quitar" data-fecha="${f}" data-id="${id}"
           aria-label="${escapar(t("f_aria_quitar", { servicio: nombreServicio(id), dia }))}">${escapar(t("f_quitar"))}</button>
       </li>`).join("");
@@ -140,7 +157,7 @@ function pintarDias() {
       <div class="dia${elegidos.length ? " activo" : ""}">
         <p class="dia-fecha">${escapar(dia)}</p>
         ${lista ? `<ul class="dia-lista">${lista}</ul>` : `<p class="dia-libre">${escapar(t("f_dia_libre"))}</p>`}
-        <button type="button" class="abrir-selector" data-fecha="${f}" ${catalogoListo && servicios.length ? "" : "disabled"}
+        <button type="button" class="abrir-selector" data-fecha="${f}" ${catalogoListo && servicios.some((s) => disponibleEn(s, f)) ? "" : "disabled"}
           aria-label="${escapar(t("f_aria_agregar", { dia }))}">${escapar(t(elegidos.length ? "f_agregar_mas" : "f_agregar"))}</button>
       </div>`;
   }).join("");
@@ -163,13 +180,14 @@ $("dias").addEventListener("click", (e) => {
 const selector = { fecha: null, tipo: "todas", busqueda: "" };
 
 // Grupos visibles: cada tipo con sus actividades, y al final las que no tienen tipo
-function grupos() {
+function grupos(fecha = selector.fecha) {
+  const delDia = servicios.filter((s) => !fecha || disponibleEn(s, fecha));
   const lista = tipos
-    .map((tp) => ({ id: String(tp.id), nombre: tTipo(tp), icono: tp.icono || "", items: servicios.filter((s) => s.tipo_id === tp.id) }))
+    .map((tp) => ({ id: String(tp.id), nombre: tTipo(tp), icono: tp.icono || "", items: delDia.filter((s) => s.tipo_id === tp.id) }))
     .filter((g) => g.items.length);
-  const sinTipo = servicios.filter((s) => !s.tipo_id);
+  const sinTipo = delDia.filter((s) => !s.tipo_id);
   if (sinTipo.length) lista.push({ id: "otros", nombre: t("s_otros"), icono: "", items: sinTipo });
-  lista.forEach((g) => g.items.sort((x, y) => tServicio(x).localeCompare(tServicio(y), locale())));
+  lista.forEach((g) => g.items.sort(compararServicios));
   return lista;
 }
 
@@ -192,7 +210,8 @@ function pintarSelector() {
   const elegidos = seleccion[selector.fecha] || [];
   $("selDia").textContent = nombreDia(selector.fecha);
 
-  $("selTipos").innerHTML = [{ id: "todas", nombre: t("s_todas"), icono: "", items: servicios }, ...todos].map((g) => `
+  const delDia = todos.flatMap((g) => g.items);
+  $("selTipos").innerHTML = [{ id: "todas", nombre: t("s_todas"), icono: "", items: delDia }, ...todos].map((g) => `
     <button type="button" class="sel-tipo" data-tipo="${g.id}" aria-pressed="${selector.tipo === g.id}">
       ${g.icono ? `<span aria-hidden="true">${escapar(g.icono)}</span>` : ""}${escapar(g.nombre)}
       <span class="sel-tipo-n">${g.items.length}</span>
@@ -208,14 +227,17 @@ function pintarSelector() {
     const marcado = elegidos.includes(s.id);
     const desc = tDescripcion(s);
     const foto = fotosDe(s)[0];
+    const sinTarifa = marcado && sinTarifaEn(s.id, selector.fecha);
     return `
       <div class="sel-item-caja">
         <button type="button" class="sel-item${foto ? " con-foto" : ""}" data-id="${s.id}" aria-pressed="${marcado}">
           ${foto ? `<img class="sel-item-foto" src="${escapar(foto.url)}" alt="" loading="lazy">` : ""}
           <span class="sel-item-texto">
+            ${s.recomendada ? `<span class="sel-rec">⭐ ${escapar(t("s_recomendada"))}</span>` : ""}
             <span class="sel-item-nombre">${escapar(tServicio(s))}</span>
             ${s.duracion_min ? `<span class="sel-item-meta">${escapar(duracion(s.duracion_min))}</span>` : ""}
             ${desc ? `<span class="sel-item-desc">${escapar(desc)}</span>` : ""}
+            ${sinTarifa ? `<span class="nota-sin-tarifa">${escapar(t("f_sin_tarifa"))}</span>` : ""}
           </span>
           <span class="sel-marca" aria-hidden="true"></span>
         </button>
@@ -225,7 +247,7 @@ function pintarSelector() {
   };
 
   let h;
-  if (!servicios.length) h = `<p class="sel-vacio">${escapar(t("s_vacio"))}</p>`;
+  if (!delDia.length) h = `<p class="sel-vacio">${escapar(t("s_vacio"))}</p>`;
   else if (!visibles.length) h = `<p class="sel-vacio">${escapar(t("s_sin_resultados"))}</p>`;
   else {
     const conTitulos = visibles.length > 1 || selector.tipo === "todas" || q;
@@ -272,6 +294,8 @@ $("selLista").addEventListener("click", (e) => {
   if (!lista.length) delete seleccion[selector.fecha];
   b.setAttribute("aria-pressed", i < 0);
   pintarCuenta();
+  if (i >= 0) b.querySelector(".nota-sin-tarifa")?.remove();
+  else revisarTarifa(id, selector.fecha);
 });
 
 $("selListo").addEventListener("click", () => $("selector").close());
@@ -290,6 +314,31 @@ $("selector").addEventListener("close", () => {
 const fotosDe = (s) => (Array.isArray(s?.fotos) ? s.fotos.filter((f) => f?.url) : []);
 const detalle = { id: null, fecha: null, foto: 0, info: null, cargando: false, error: false, abiertoColones: null };
 const cacheDetalle = new Map();   // "id|fecha" → respuesta de detalle_servicio
+
+// ¿Esa actividad no tiene tarifa para esa fecha? (solo se sabe después de consultarla)
+function sinTarifaEn(id, fecha) {
+  const info = cacheDetalle.get(`${id}|${fecha}`);
+  return !!info && !(info.precios || []).length;
+}
+// Al elegir una actividad se consulta su tarifa para ese día; si no tiene,
+// aparece una nota pequeña: el agente le ayudará con el precio
+async function revisarTarifa(id, fecha) {
+  const clave = `${id}|${fecha}`;
+  if (cacheDetalle.has(clave)) return refrescarNotas();
+  const { data, error } = await db.rpc("detalle_servicio", { p_servicio: id, p_fecha: fecha });
+  if (error) return console.error(error);
+  cacheDetalle.set(clave, data || {});
+  refrescarNotas();
+}
+function refrescarNotas() {
+  if ($("selector").open) {
+    const lista = $("selLista"), y = lista.scrollTop;
+    const foco = document.activeElement?.closest?.(".sel-item")?.dataset.id;
+    pintarSelector();
+    lista.scrollTop = y;
+    if (foco) lista.querySelector(`.sel-item[data-id="${foco}"]`)?.focus({ preventScroll: true });
+  } else pintarDias();
+}
 
 function dinero(n) {
   return new Intl.NumberFormat(locale(), { style: "currency", currency: "USD", currencyDisplay: "narrowSymbol" }).format(Number(n) || 0);
@@ -417,6 +466,7 @@ $("detAgregar").addEventListener("click", () => {
   const i = lista.indexOf(detalle.id);
   if (i >= 0) lista.splice(i, 1); else lista.push(detalle.id);
   if (!lista.length) delete seleccion[detalle.fecha];
+  if (i < 0) revisarTarifa(detalle.id, detalle.fecha);
   $("detalle").close();
 });
 $("detVolver").addEventListener("click", () => $("detalle").close());
@@ -529,7 +579,7 @@ $("formulario").addEventListener("submit", async (e) => {
 
   if (error) {
     console.error(error);
-    return mostrarErrores(["e_envio"]);
+    return mostrarErrores([error.hint === "no_disponible" ? "e_no_disponible" : "e_envio"]);
   }
   ultimoEnvio = { numero: data.numero, datos };
   mostrarGracias();

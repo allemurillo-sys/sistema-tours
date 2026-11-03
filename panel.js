@@ -756,7 +756,9 @@ function htmlEditorActividades() {
 function htmlActividad(a, idx) {
   const verNeto = puede("ver_utilidad");
   const serv = servicioPorId(a.servicio_id);
-  const manual = typeof esReservaManual === "function" && esReservaManual(app.actual.cot);
+  // Todas las reservas (manuales y del formulario web) eligen la actividad del Tarifario final.
+  // Si no se pudo cargar esa lista, se usa la lista de servicios visibles como antes.
+  const manual = Array.isArray(app.opcionesTarifario) && typeof htmlSelectorTarifario === "function";
   const servicios = manual ? "" : opcionesServicios(a.servicio_id);
   const horarios = (serv?.horarios || []).map(hora);
 

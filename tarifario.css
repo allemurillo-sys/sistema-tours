@@ -179,7 +179,8 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
    CATÁLOGO PARA CLIENTES (tarifario-catalogo.js)
    ===================================================== */
 .tcat-tabla td { vertical-align: top; }
-.tcat-tabla td:first-child { min-width: 220px; }
+.tcat-tabla td:nth-child(2) { min-width: 220px; }
+.tcat-tabla td:first-child, .tcat-tabla th:first-child { width: 44px; }
 .tabla tr.tcat-con-alerta td:first-child { box-shadow: inset 4px 0 0 var(--rojo); }
 .tcat-varios {
   display: inline-block; font-size: .72rem; font-weight: 700; background: var(--amarillo-suave); color: #6B4E00;
@@ -217,3 +218,26 @@ textarea { font: inherit; padding: 10px 12px; border: 1px solid var(--linea); bo
 
 .tcat-tc { background: var(--fondo); border-radius: 8px; padding: 10px 14px; margin: 4px 0 14px; }
 .tcat-tc p { margin: 0 0 6px; }
+
+/* Catálogo: lo que ve el cliente (etapa 13) */
+.tcat-bloque {
+  position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  background: var(--verde-suave); border: 1px solid var(--verde); border-radius: 10px; padding: 10px 14px; margin: 0 0 12px;
+}
+.tcat-bloque strong { margin-right: 6px; }
+.tabla tr.tcat-marcada td { background: var(--verde-suave); }
+.tcat-rec { font-size: 1rem; }
+.tcat-temporada { display: inline-block; margin-top: 3px; font-size: .8rem; color: #6B4E00; background: var(--amarillo-suave); border-radius: 6px; padding: 2px 8px; }
+.tcat-orden { display: flex; justify-content: center; gap: 4px; margin-top: 6px; }
+.tcat-falta-pub { display: block; margin-top: 4px; font-size: .75rem; line-height: 1.25; color: var(--gris); max-width: 120px; margin-inline: auto; }
+.tcat-publicar { border: 1px solid var(--linea); border-radius: 10px; padding: 10px 14px 12px; margin: 6px 0 14px; }
+.tcat-publicar legend { font-weight: 700; padding: 0 6px; }
+.tcat-publicar p { margin: 4px 0 10px; }
+.tcat-rangos { list-style: none; margin: 6px 0 10px; padding: 0; display: grid; gap: 8px; }
+.tcat-rango { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.tcat-rango label { flex: 0 1 180px; }
+.tcat-rango .enlace { margin-bottom: 10px; }
+@media (max-width: 600px) {
+  .tcat-bloque { position: static; }
+  .tcat-bloque .btn { flex: 1 1 45%; }
+}

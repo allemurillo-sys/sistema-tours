@@ -309,3 +309,14 @@ input:focus-visible, select:focus-visible, button:focus-visible {
   .det-cuerpo > :not(.det-galeria) { margin-left: 16px; margin-right: 16px; }
 }
 @media print { .detalle-act { display: none !important; } }
+
+/* Recomendadas y nota de tarifa pendiente (etapa 13) */
+.sel-rec {
+  justify-self: start; font-size: .75rem; font-weight: 700; color: #6B4E00;
+  background: #FBF1D6; border-radius: 999px; padding: 1px 8px; margin-bottom: 2px;
+}
+.nota-sin-tarifa {
+  display: block; font-size: .8rem; line-height: 1.35; font-weight: 400; color: #6B4E00;
+  border-left: 3px solid #D9A21B; padding-left: 8px; margin-top: 4px;
+}
+.dia-act .nota-sin-tarifa { margin-top: 2px; }
