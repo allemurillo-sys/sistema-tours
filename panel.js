@@ -119,6 +119,9 @@ function sumarMinutos(h, minutos) {
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 }
 
+// Usados por el Calendario y el Tarifario (antes estaban en la sección Servicios)
+const TRANSPORTE_TEXTO = { incluido: "Incluido", opcional: "Opcional", sin_transporte: "Sin transporte" };
+const nombreTipo = (tp) => `${tp.icono ? tp.icono + " " : ""}${tp.nombre}`;
 const puede = (permiso) => app.yo?.rol === "administrador" || app.permisos.has(permiso);
 const esAutorizado = () => puede("reabrir_finalizadas");
 const servicioPorId = (id) => app.servicios.find((s) => s.id === Number(id));
@@ -449,7 +452,7 @@ $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, as
 }));
 
 // ---------- Menú de secciones ----------
-const VISTAS = { reservas: "vistaReservas", calendario: "vistaCalendario", servicios: "vistaServicios", mantenimiento: "vistaMantenimiento" };
+const VISTAS = { reservas: "vistaReservas", calendario: "vistaCalendario", mantenimiento: "vistaMantenimiento" };
 function mostrarVista(nombre) {
   Object.entries(VISTAS).forEach(([k, id]) => ($(id).hidden = k !== nombre));
   document.querySelectorAll(".menu-btn[data-vista]").forEach((b) => {

@@ -48,7 +48,6 @@
         <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
         <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
         <button type="button" class="menu-btn" data-vista="chat">Chat <span id="chatMenuCuenta" class="menu-cuenta" hidden></span></button>
-        <button type="button" class="menu-btn" data-vista="servicios">Servicios</button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
         <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
         <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
@@ -88,19 +87,6 @@
     <!-- Chat interno (solo colaboradores) -->
     <section id="vistaChat" class="vista" hidden></section>
 
-    <!-- Servicios -->
-    <section id="vistaServicios" class="vista" hidden>
-      <div class="catalogo">
-        <h1 class="vista-titulo">Servicios</h1>
-        <div class="pestanas" role="tablist" aria-label="Catálogo">
-          <button type="button" role="tab" class="pestana" data-pestana="servicios">Servicios</button>
-          <button type="button" role="tab" class="pestana" data-pestana="tipos">Tipos de actividad</button>
-          <button type="button" role="tab" class="pestana" data-pestana="operadores">Operadores</button>
-          <button type="button" role="tab" class="pestana" data-pestana="propiedades">Propiedades</button>
-        </div>
-        <div id="catalogoContenido"></div>
-      </div>
-    </section>
 
     <!-- Mantenimiento -->
     <section id="vistaMantenimiento" class="vista" hidden>
@@ -112,6 +98,7 @@
           <button type="button" role="tab" class="pestana" data-mant="autorizaciones" data-solo="admin">Autorizaciones</button>
           <button type="button" role="tab" class="pestana" data-mant="empresa" data-solo="admin">Datos de la empresa</button>
           <button type="button" role="tab" class="pestana" data-mant="correo" data-solo="admin">Correo</button>
+          <button type="button" role="tab" class="pestana" data-mant="propiedades">Propiedades</button>
           <button type="button" role="tab" class="pestana" data-mant="reportes" data-solo="ver_reportes">Reportes</button>
         </div>
         <div id="mantContenido"></div>
@@ -171,17 +158,16 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=14"></script>
-  <script src="panel.js?v=25"></script>
-  <script src="servicios.js?v=17"></script>
-  <script src="mantenimiento.js?v=20"></script>
+  <script src="panel.js?v=26"></script>
+  <script src="mantenimiento.js?v=21"></script>
   <script src="calendario.js?v=14"></script>
   <script src="finanzas.js?v=2"></script>
   <script src="correo.js?v=1"></script>
   <script src="proveedores.js?v=3"></script>
   <script src="tarifario.js?v=29"></script>
-  <script src="tarifario-comparar.js?v=3"></script>
-  <script src="tarifario-servicios.js?v=3"></script>
-  <script src="tarifario-catalogo.js?v=3"></script>
+  <script src="tarifario-comparar.js?v=4"></script>
+  <script src="tarifario-servicios.js?v=4"></script>
+  <script src="tarifario-catalogo.js?v=4"></script>
   <script src="reserva-manual.js?v=3"></script>
   <script src="chat.js?v=1"></script>
 </body>

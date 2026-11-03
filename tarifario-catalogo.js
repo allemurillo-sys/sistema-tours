@@ -8,7 +8,7 @@
 //   · equivalencia entre las categorías del tarifario y los tipos de cliente.
 // Los datos del cliente se guardan en la tabla servicios (la que leen el formulario y el panel),
 // enlazada a su ficha del tarifario (tar_fichas.servicio_id).
-// Usa utilidades de panel.js, servicios.js, tarifario.js y tarifario-comparar.js.
+// Usa utilidades de panel.js, tarifario.js y tarifario-comparar.js.
 // =====================================================
 
 const TAR_FOTOS_MIN = 3;

@@ -1,5 +1,5 @@
 // =====================================================
-// SECCIÓN MANTENIMIENTO: cuenta, usuarios, autorizaciones y reportes
+// SECCIÓN MANTENIMIENTO: cuenta, usuarios, autorizaciones, propiedades y reportes
 // (usa las utilidades y datos de panel.js)
 // =====================================================
 
@@ -9,7 +9,7 @@ const ROLES = ["colaborador", "jefatura", "gerente", "administrador"];
 const NOMBRE_ROL = { colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
 const PERMISOS = [
   { id: "ver_utilidad", nombre: "Ver costos netos y utilidad", detalle: "Muestra el neto y la utilidad en cotizaciones, servicios y reportes." },
-  { id: "editar_catalogo", nombre: "Modificar el catálogo", detalle: "Crear y editar las propiedades (los servicios, precios y operadores se administran en el Tarifario)." },
+  { id: "editar_catalogo", nombre: "Modificar las propiedades", detalle: "Agregar, renombrar, ocultar y eliminar las propiedades (hospedajes) que ve el cliente en el formulario, en Mantenimiento › Propiedades. Las actividades, precios y operadores se administran en el Tarifario." },
   { id: "registrar_pagos", nombre: "Registrar pagos", detalle: "Definir el prepago, registrar y eliminar pagos de las reservas." },
   { id: "reabrir_finalizadas", nombre: "Reabrir reservas finalizadas", detalle: "Devolver una reserva finalizada a la columna Reserva para revisarla." },
   { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." },
@@ -19,7 +19,7 @@ const PERMISOS = [
 
 const esAdmin = () => app.yo?.rol === "administrador";
 const pestanaPermitida = (p) =>
-  p === "cuenta" || ((p === "usuarios" || p === "autorizaciones" || p === "empresa" || p === "correo") && esAdmin()) || (p === "reportes" && puede("ver_reportes"));
+  p === "cuenta" || p === "propiedades" || ((p === "usuarios" || p === "autorizaciones" || p === "empresa" || p === "correo") && esAdmin()) || (p === "reportes" && puede("ver_reportes"));
 
 document.addEventListener("vista-abierta", (e) => { if (e.detail === "mantenimiento") abrirMantenimiento(); });
 document.addEventListener("datos-actualizados", () => { if (!$("vistaMantenimiento").hidden) abrirMantenimiento(); });
@@ -54,6 +54,7 @@ function pintarMantenimiento() {
     autorizaciones: htmlAutorizaciones,
     empresa: htmlEmpresa,
     correo: htmlCorreoConfig,
+    propiedades: () => htmlPropiedades(puede("editar_catalogo")),
     reportes: htmlReportes
   }[mant.pestana]();
   $("mantContenido").innerHTML = html;
@@ -706,5 +707,92 @@ $("mantContenido").addEventListener("click", async (e) => {
     case "imprimir-reporte":
       window.print();
       break;
+  }
+});
+
+// =====================================================
+// PROPIEDADES (hospedajes que ve el cliente en "¿Dónde te hospedas?")
+// Todos las pueden consultar; las modifica quien tiene "Modificar las propiedades".
+// =====================================================
+function htmlPropiedades(editable) {
+  const filas = app.propiedades.map((p) => `
+    <tr class="${p.activa ? "" : "inactivo"}">
+      <td><strong>${escapar(p.nombre)}</strong></td>
+      <td>${p.activa ? "Visible para clientes" : "Oculta"}</td>
+      <td class="acciones-fila">${editable ? `
+        <button type="button" class="enlace" data-prop="renombrar" data-id="${p.id}">Cambiar nombre</button>
+        <button type="button" class="enlace" data-prop="alternar" data-id="${p.id}">${p.activa ? "Ocultar" : "Mostrar"}</button>
+        <button type="button" class="enlace peligro" data-prop="eliminar" data-id="${p.id}">Eliminar</button>` : ""}
+      </td>
+    </tr>`).join("");
+
+  return `
+    ${editable ? "" : `<p class="aviso">Puedes consultar las propiedades. Tu usuario no tiene autorización para modificarlas.</p>`}
+    <div class="det-seccion sin-margen">
+      <h3>Propiedades</h3>
+      <p class="nota">Estas son las opciones que ve el cliente en "¿Dónde te hospedas?". Cuando un cliente elige "Otro lugar", lo que escribe queda solo en su cotización y no se agrega a esta lista.</p>
+      ${editable ? `
+        <div class="fila-form">
+          <label>Nueva propiedad <input id="nuevaPropiedad" type="text" placeholder="Nombre de la propiedad"></label>
+          <button type="button" class="btn primario" data-prop="agregar">Agregar</button>
+        </div>` : ""}
+      ${app.propiedades.length ? `
+        <div class="tabla-scroll">
+          <table class="tabla">
+            <thead><tr><th>Propiedad</th><th>Estado</th><th></th></tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>` : `<p class="nota">Todavía no hay propiedades.</p>`}
+    </div>`;
+}
+
+$("mantContenido").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "nuevaPropiedad") {
+    e.preventDefault();
+    document.querySelector('[data-prop="agregar"]')?.click();
+  }
+});
+
+$("mantContenido").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-prop]");
+  if (!btn || !puede("editar_catalogo")) return;
+  const id = Number(btn.dataset.id);
+  const actual = app.propiedades.find((p) => p.id === id);
+  const repintar = async () => { await cargarCatalogos(); if (mant.pestana === "propiedades") pintarMantenimiento(); };
+
+  switch (btn.dataset.prop) {
+    case "agregar": {
+      const nombre = $("nuevaPropiedad").value.trim();
+      if (!nombre) return avisar("Escribe el nombre de la propiedad.", "error");
+      return conBoton(btn, async () => {
+        const { error } = await db.from("propiedades").insert({ nombre });
+        if (error) return fallo(error, error.code === "23505" ? "Esa propiedad ya existe." : "No se pudo agregar.");
+        await repintar();
+        $("nuevaPropiedad")?.focus();
+        avisar("Propiedad agregada.");
+      });
+    }
+    case "renombrar": {
+      const nombre = prompt("Nuevo nombre de la propiedad:", actual?.nombre ?? "")?.trim();
+      if (!nombre || nombre === actual?.nombre) return;
+      const { error } = await db.from("propiedades").update({ nombre }).eq("id", id);
+      if (error) return fallo(error, error.code === "23505" ? "Esa propiedad ya existe." : "No se pudo guardar.");
+      return repintar();
+    }
+    case "alternar": {
+      const { error } = await db.from("propiedades").update({ activa: !actual.activa }).eq("id", id);
+      if (error) return fallo(error);
+      return repintar();
+    }
+    case "eliminar": {
+      if (!confirm(`¿Eliminar "${actual?.nombre}"?`)) return;
+      const { error } = await db.from("propiedades").delete().eq("id", id);
+      if (error) {
+        if (error.code === "23503") return avisar("Esta propiedad ya aparece en cotizaciones, así que no se puede eliminar. Usa \"Ocultar\" para que los clientes ya no la vean.", "error");
+        return fallo(error, "No se pudo eliminar.");
+      }
+      await repintar();
+      return avisar("Propiedad eliminada.");
+    }
   }
 });

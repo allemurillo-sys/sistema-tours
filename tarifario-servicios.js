@@ -11,7 +11,7 @@
 //   · Propiedades no se tocan.
 // La actualización es automática (al cambiar algo del tarifario y al entrar al panel)
 // y solo la hace un administrador. La pestaña "Servicios" del Tarifario muestra qué se envía.
-// Usa utilidades de panel.js, servicios.js y tarifario.js.
+// Usa utilidades de panel.js y tarifario.js.
 // Las categorías usan la equivalencia de Tarifario › Ajustes (tar_categorias).
 // =====================================================
 
@@ -295,24 +295,7 @@ function tarGuardarVinculos(d) {
 }
 
 function tarRepintarDespuesSync() {
-  if (!$("vistaServicios").hidden && !catalogo.editando) pintarCatalogo();
   if (!$("vistaTarifario").hidden && ["conexion", "catalogo"].includes(tar.pestana) && !tar.editando) tarPintar();
-}
-
-// ---------- Marcas que usa servicios.js ----------
-function tarEtiquetaServicio(id) {
-  const v = tarSync.vinculos.get(Number(id));
-  return v ? ` <span class="tcmp-tipo" title="${escapar(`Del tarifario: ${v.operador} · ${v.temporadas.join(" / ")}`)}">📋 Tarifario</span>` : "";
-}
-function tarAvisoServicio(id) {
-  const v = tarSync.vinculos.get(Number(id));
-  if (!v) return "";
-  return `<p class="aviso suave">Este servicio se actualiza desde el <strong>Tarifario</strong> (${escapar(v.operador)} · ${escapar(v.servicio)}).
-    Temporada usada: ${escapar(v.temporadas.join(" / ") || "—")}. Rack = precio TC y neto = neto del operador con IVA.
-    Si cambias aquí los precios de las categorías que vienen del tarifario, se reemplazan en la próxima actualización: para cambiarlos, hazlo en el Tarifario.</p>`;
-}
-function tarEtiquetaOperador(id) {
-  return tarSync.opVinculados.has(Number(id)) ? ` <span class="tcmp-tipo">📋 Tarifario</span>` : "";
 }
 
 // =====================================================

@@ -7,7 +7,7 @@
 //
 // La clasificación vive en la tabla tar_fichas (una ficha por operador + servicio)
 // y no depende del año: al importar las tarifas del año siguiente se conserva.
-// Usa las utilidades de panel.js, servicios.js (nombreTipo) y tarifario.js.
+// Usa las utilidades de panel.js (nombreTipo) y tarifario.js.
 // =====================================================
 
 tar.fichas = [];
