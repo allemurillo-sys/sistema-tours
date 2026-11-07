@@ -5,8 +5,9 @@
 
 const mant = { pestana: "cuenta", usuarios: [], permisos: [], editando: null, reporte: null, mensaje: "", empresa: null };
 
-const ROLES = ["colaborador", "jefatura", "gerente", "administrador"];
-const NOMBRE_ROL = { colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
+const ROLES = ["personal", "colaborador", "jefatura", "gerente", "administrador"];
+const ROLES_PERMISOS = ["colaborador", "jefatura", "gerente", "administrador"];
+const NOMBRE_ROL = { personal: "Solo horario", colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
 const PERMISOS = [
   { id: "ver_utilidad", nombre: "Ver costos netos y utilidad", detalle: "Muestra el neto y la utilidad en cotizaciones, servicios y reportes." },
   { id: "editar_catalogo", nombre: "Modificar las propiedades", detalle: "Agregar, renombrar, ocultar y eliminar las propiedades (hospedajes) que ve el cliente en el formulario, en Mantenimiento › Propiedades. Las actividades, precios y operadores se administran en el Tarifario." },
@@ -353,7 +354,7 @@ function htmlAutorizaciones() {
   const filas = PERMISOS.map((p) => `
     <tr>
       <th scope="row"><strong>${p.nombre}</strong><br><span class="nota">${p.detalle}</span></th>
-      ${ROLES.map((r) => `
+      ${ROLES_PERMISOS.map((r) => `
         <td class="centro">
           <input type="checkbox" class="permiso" data-rol="${r}" data-permiso="${p.id}"
             ${permitido(r, p.id) ? "checked" : ""} ${r === "administrador" ? "disabled" : ""}
@@ -367,11 +368,11 @@ function htmlAutorizaciones() {
       <p class="nota">Marca lo que puede hacer cada tipo de usuario. Los cambios se guardan al instante y llegan al panel de cada persona en menos de un minuto (o de inmediato si presiona Actualizar); se notan al abrir la siguiente pantalla. El administrador siempre tiene todos los permisos, y es el único que puede gestionar usuarios y autorizaciones.</p>
       <div class="tabla-scroll">
         <table class="tabla permisos">
-          <thead><tr><th>Permiso</th>${ROLES.map((r) => `<th class="centro">${NOMBRE_ROL[r]}</th>`).join("")}</tr></thead>
+          <thead><tr><th>Permiso</th>${ROLES_PERMISOS.map((r) => `<th class="centro">${NOMBRE_ROL[r]}</th>`).join("")}</tr></thead>
           <tbody>${filas}</tbody>
         </table>
       </div>
-      <p class="nota">Todos los usuarios activos pueden ver el tablero de reservas, atender cotizaciones, armar itinerarios y consultar el catálogo.</p>
+      <p class="nota">Todos los usuarios activos pueden ver el tablero de reservas, atender cotizaciones, armar itinerarios y consultar el catálogo. Los usuarios «Solo horario» (por ejemplo, mucamas) únicamente ven Staff › Horarios de su departamento.</p>
     </div>`;
 }
 

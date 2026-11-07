@@ -7,6 +7,9 @@ VISTAS.staff = "vistaStaff";
 
 const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const DIAS_CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const DEPARTAMENTOS = ["Recepción", "Ama de llaves", "Administración", "Operaciones"];
+// Departamentos con su propia tabla de horario (cada persona ve solo la de su departamento)
+const DEP_HORARIO = ["Recepción", "Ama de llaves"];
 const EMPRESAS = { HV: "Home Vacations", THT: "The House of Tours", Ambas: "Ambas empresas" };
 const TIPOS_CELDA = {
   trabajo: { nombre: "Trabaja", clase: "t-trabajo" },
@@ -70,6 +73,7 @@ const iniciales = (n) => String(n || "").split(/\s+/).filter(Boolean).slice(0, 2
 const fechaCorta = (f) => fecha(f, { day: "numeric", month: "short" });
 const fechaAnio = (f) => fecha(f, { day: "numeric", month: "short", year: "numeric" });
 const horasJornada = (p) => (p?.jornada === "media" ? 4 : 8);
+const chipDep = (d) => d ? `<span class="stf-chip dep">${escapar(d)}</span>` : `<span class="stf-chip gris">General</span>`;
 
 let stfPromesaExcel = null;
 function stfCargarExcel() {
@@ -306,6 +310,7 @@ function htmlFicha(p) {
       <div class="det-seccion">
         <h3>Datos laborales</h3>
         <div class="fila">
+          <label>Departamento <select name="departamento" ${dis}><option value="">Sin departamento</option>${DEPARTAMENTOS.map((x) => `<option ${p.departamento === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
           <label>Puesto <input name="puesto" value="${v("puesto")}" list="stfPuestos" ${dis}></label>
           <label>Empresa <select name="empresa" ${dis}>${Object.entries(EMPRESAS).map(([k, t]) => `<option value="${k}" ${p.empresa === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
           <label>Fecha de ingreso <input name="fecha_ingreso" type="date" value="${v("fecha_ingreso")}" ${dis}></label>
@@ -323,7 +328,7 @@ function htmlFicha(p) {
           <label>Usuario vinculado <select name="perfil_id" ${dis}><option value="">Sin usuario</option>${usuarios.map((u) => `<option value="${u.id}" ${u.id === p.perfil_id ? "selected" : ""}>${escapar(u.nombre)} (${escapar(u.rol)})</option>`).join("")}</select></label>
           <label>Nombre en el reloj marcador <input name="nombre_reloj" value="${v("nombre_reloj")}" placeholder="Como aparece en el reloj" ${dis}></label>
         </div>
-        <p class="nota">Con el usuario vinculado, la persona ve en Staff › Horarios los horarios publicados en los que está incluida. El correo, la clave y el tipo de usuario se siguen administrando en Mantenimiento › Usuarios.</p>
+        <p class="nota">Con el usuario vinculado, la persona ve en Staff › Horarios los horarios publicados de su departamento (y cualquier otro en el que esté incluida). Para mucamas u otro personal que solo debe ver su horario, crea el usuario con el tipo «Solo horario». El correo, la clave y el tipo de usuario se siguen administrando en Mantenimiento › Usuarios.</p>
       </div>
       ${admin ? `
       <div class="det-seccion stf-privado">
@@ -362,7 +367,7 @@ async function stfGuardarPersona() {
     nombre: d.nombre.trim(), cedula: d.cedula || null, fecha_nacimiento: d.fecha_nacimiento || null, idiomas: d.idiomas || null,
     telefono: d.telefono || null, correo: d.correo || null,
     emergencia_nombre: d.emergencia_nombre || null, emergencia_parentesco: d.emergencia_parentesco || null, emergencia_telefono: d.emergencia_telefono || null,
-    puesto: d.puesto || null, empresa: d.empresa || "THT", fecha_ingreso: d.fecha_ingreso || null, fecha_salida: d.fecha_salida || null,
+    departamento: d.departamento || null, puesto: d.puesto || null, empresa: d.empresa || "THT", fecha_ingreso: d.fecha_ingreso || null, fecha_salida: d.fecha_salida || null,
     jornada: d.jornada || "completa", dia_libre: d.dia_libre === "" ? null : Number(d.dia_libre),
     perfil_id: d.perfil_id || null, nombre_reloj: d.nombre_reloj || null, actualizado_en: new Date().toISOString()
   };
@@ -409,11 +414,15 @@ async function stfCambiarActivo(id) {
 // =====================================================
 function htmlHorarios() {
   const gestiona = stfGestiona();
-  const filas = stf.horarios.map((h) => {
+  const filtro = stf.filtroDep || "";
+  const lista = stf.horarios.filter((h) => !filtro || (filtro === "general" ? !h.departamento : h.departamento === filtro));
+  const pill = (v, t) => `<button type="button" class="stf-pill ${filtro === v ? "on" : ""}" data-stf-accion="filtro-dep" data-dep="${v}">${t}</button>`;
+  const filas = lista.map((h) => {
     const n = (h.staff_horario_personas || []).length;
     return `
       <tr>
         <td><button type="button" class="enlace" data-stf-accion="abrir-horario" data-id="${h.id}">${escapar(h.nombre || `${fechaCorta(h.desde)} – ${fechaAnio(h.hasta)}`)}</button></td>
+        <td>${chipDep(h.departamento)}</td>
         <td>${fechaCorta(h.desde)} – ${fechaAnio(h.hasta)}</td>
         <td>${n}</td>
         <td><span class="stf-chip ${h.estado === "publicado" ? "ok" : "aviso"}">${h.estado === "publicado" ? "Publicado" : "Borrador"}</span></td>
@@ -425,11 +434,11 @@ function htmlHorarios() {
       <h2 class="stf-h2">${gestiona ? "Horarios" : "Mis horarios"}</h2>
       ${gestiona ? `<button type="button" class="btn primario" data-stf-accion="nuevo-horario">+ Nuevo horario</button>` : ""}
     </div>
-    ${!gestiona ? `<p class="nota">Aquí aparecen los horarios publicados en los que estás incluido.</p>` : ""}
-    ${stf.horarios.length ? `
+    ${!gestiona ? `<p class="nota">Aquí aparecen los horarios publicados de tu departamento.</p>` : `<div class="stf-pills">${pill("", "Todos")}${DEP_HORARIO.map((d) => pill(d, d)).join("")}${pill("general", "General")}</div>`}
+    ${lista.length ? `
     <div class="det-seccion sin-margen tabla-scroll">
       <table class="tabla">
-        <thead><tr><th>Horario</th><th>Periodo</th><th>Personas</th><th>Estado</th><th>Publicado</th></tr></thead>
+        <thead><tr><th>Horario</th><th>Departamento</th><th>Periodo</th><th>Personas</th><th>Estado</th><th>Publicado</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
     </div>` : `<p class="nota">${gestiona ? "Todavía no hay horarios. Crea el primero con “Nuevo horario”." : "Todavía no tienes horarios publicados."}</p>`}`;
@@ -458,15 +467,27 @@ function stfIniciarNuevo() {
   stf.nuevo = {
     desde, hasta, nombre: "", rapido: "proxima",
     seleccion: new Set(stf.personas.filter((p) => p.activo && stf.privado.get(p.id)?.tipo_pago !== "socio").map((p) => p.id)),
-    puesto: "", empresa: "", diaLibre: true, copiar: ""
+    puesto: "", empresa: "", diaLibre: true, copiar: "", departamento: ""
   };
   if (!stfEsAdmin()) stf.nuevo.seleccion = new Set(stf.personas.filter((p) => p.activo).map((p) => p.id));
+  stfElegirDep(stf.filtroDep && stf.filtroDep !== "general" ? stf.filtroDep : "");
   stfPintar();
+}
+
+// Al elegir el departamento se marcan sus colaboradores activos (y solo ellos)
+function stfElegirDep(dep) {
+  const n = stf.nuevo;
+  n.departamento = dep;
+  n.copiar = "";
+  if (dep) n.seleccion = new Set(stf.personas.filter((p) => p.activo && p.departamento === dep).map((p) => p.id));
+  else n.seleccion = new Set(stf.personas.filter((p) => p.activo && (!stfEsAdmin() || stf.privado.get(p.id)?.tipo_pago !== "socio")).map((p) => p.id));
 }
 
 function htmlNuevoHorario() {
   const n = stf.nuevo;
-  const activos = stf.personas.filter((p) => p.activo);
+  const activos = stf.personas.filter((p) => p.activo && (!n.departamento || p.departamento === n.departamento));
+  const depPill = (v, t) => `<button type="button" class="stf-pill ${n.departamento === v ? "on" : ""}" data-stf-accion="dep-nuevo" data-dep="${v}">${t}</button>`;
+  const anteriores = stf.horarios.filter((h) => (h.departamento || "") === n.departamento);
   const visibles = activos.filter((p) => (!n.puesto || p.puesto === n.puesto) && (!n.empresa || p.empresa === n.empresa));
   const dias = n.desde && n.hasta && n.hasta >= n.desde ? fechasEntre(n.desde, n.hasta).length : 0;
   const rapido = (id, t) => `<button type="button" class="stf-pill ${n.rapido === id ? "on" : ""}" data-stf-accion="rango" data-rango="${id}">${t}</button>`;
@@ -478,7 +499,12 @@ function htmlNuevoHorario() {
     <div class="stf-dos">
       <div class="stf-col">
         <div class="det-seccion sin-margen">
-          <h3><span class="stf-paso">1</span> Periodo del horario</h3>
+          <h3><span class="stf-paso">1</span> Departamento</h3>
+          <div class="stf-pills">${DEP_HORARIO.map((d) => depPill(d, d)).join("")}${depPill("", "General (varios departamentos)")}</div>
+          <p class="nota">${n.departamento ? `Este horario lo verá todo el personal de ${escapar(n.departamento)} cuando lo publiques, y nadie de otros departamentos.` : "Un horario general solo lo ven las personas incluidas en él."}</p>
+        </div>
+        <div class="det-seccion sin-margen">
+          <h3><span class="stf-paso">2</span> Periodo del horario</h3>
           <div class="stf-pills">${rapido("semana", "Esta semana")}${rapido("proxima", "Próxima semana")}${rapido("quincena", "Quincena actual")}${rapido("mes", "Este mes")}</div>
           <div class="fila">
             <label>Desde <input id="stfNDesde" type="date" value="${n.desde}"></label>
@@ -487,7 +513,7 @@ function htmlNuevoHorario() {
           <label>Nombre (opcional) <input id="stfNNombre" value="${escapar(n.nombre)}" placeholder="Ej.: Semana del 9 de noviembre"></label>
         </div>
         <div class="det-seccion sin-margen">
-          <h3><span class="stf-paso">2</span> Colaboradores a incluir</h3>
+          <h3><span class="stf-paso">3</span> Colaboradores a incluir</h3>
           <div class="stf-pills">
             <select id="stfNPuesto" aria-label="Puesto"><option value="">Todos los puestos</option>${puestosConocidos().map((x) => `<option ${x === n.puesto ? "selected" : ""}>${escapar(x)}</option>`).join("")}</select>
             <select id="stfNEmpresa" aria-label="Empresa"><option value="">Ambas empresas</option><option value="HV" ${n.empresa === "HV" ? "selected" : ""}>Home Vacations</option><option value="THT" ${n.empresa === "THT" ? "selected" : ""}>The House of Tours</option></select>
@@ -506,13 +532,14 @@ function htmlNuevoHorario() {
       <aside class="det-seccion sin-margen stf-resumen">
         <h3>Resumen</h3>
         <dl class="stf-dl">
+          <dt>Departamento</dt><dd>${escapar(n.departamento || "General")}</dd>
           <dt>Periodo</dt><dd>${n.desde && n.hasta ? `${fechaCorta(n.desde)} – ${fechaAnio(n.hasta)}` : "—"}</dd>
           <dt>Días</dt><dd>${dias || "—"}</dd>
           <dt>Colaboradores</dt><dd>${n.seleccion.size} seleccionados</dd>
         </dl>
         <label class="check-linea chico"><input type="checkbox" id="stfNLibre" ${n.diaLibre ? "checked" : ""}> Proponer el día libre habitual de cada persona</label>
         <label>Copiar los turnos de un horario anterior
-          <select id="stfNCopiar"><option value="">No copiar</option>${stf.horarios.map((h) => `<option value="${h.id}" ${String(h.id) === n.copiar ? "selected" : ""}>${escapar(h.nombre || `${fechaCorta(h.desde)} – ${fechaAnio(h.hasta)}`)}</option>`).join("")}</select>
+          <select id="stfNCopiar"><option value="">No copiar</option>${anteriores.map((h) => `<option value="${h.id}" ${String(h.id) === n.copiar ? "selected" : ""}>${escapar(h.nombre || `${fechaCorta(h.desde)} – ${fechaAnio(h.hasta)}`)}</option>`).join("")}</select>
         </label>
         <p class="nota">Al copiar se repite el turno de cada persona día por día, en el mismo orden.</p>
         <button type="button" class="btn primario" data-stf-accion="crear-horario">Crear tabla del horario</button>
@@ -530,10 +557,10 @@ async function stfCrearHorario() {
   if (!personas.length) return avisar("Elige al menos un colaborador.", "error");
 
   const { data: h, error } = await db.from("staff_horarios")
-    .insert({ nombre: n.nombre.trim() || null, desde: n.desde, hasta: n.hasta }).select().single();
+    .insert({ nombre: n.nombre.trim() || null, desde: n.desde, hasta: n.hasta, departamento: n.departamento || null }).select().single();
   if (error) return fallo(error, "No se pudo crear el horario.");
 
-  const filas = personas.map((p, i) => ({ horario_id: h.id, persona_id: p.id, nombre: p.nombre, puesto: p.puesto, orden: i }));
+  const filas = personas.map((p, i) => ({ horario_id: h.id, persona_id: p.id, nombre: p.nombre, puesto: p.puesto, jornada: p.jornada, orden: i }));
   const { error: e2 } = await db.from("staff_horario_personas").insert(filas);
   if (e2) return fallo(e2);
 
@@ -591,7 +618,7 @@ async function stfCargarHorario(id) {
 function resumenHorario(hp) {
   const H = stf.horario;
   const fechas = fechasEntre(H.h.desde, H.h.hasta);
-  const persona = personaPorId(hp.persona_id);
+  const persona = personaPorId(hp.persona_id) || hp;
   let dias = 0;
   fechas.forEach((f) => { if (H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo") dias++; });
   return { dias, horas: dias * horasJornada(persona) };
@@ -619,7 +646,7 @@ function htmlHorario() {
   }).join("");
 
   const filas = H.personas.map((hp) => {
-    const persona = personaPorId(hp.persona_id);
+    const persona = personaPorId(hp.persona_id) || hp;
     const r = resumenHorario(hp);
     const celdas = fechas.map((f) => {
       const c = H.celdas.get(`${hp.persona_id}|${f}`);
@@ -648,14 +675,14 @@ function htmlHorario() {
     return `<td class="stf-cob">${n}</td>`;
   }).join("");
 
-  const fuera = stf.personas.filter((p) => p.activo && !H.personas.some((hp) => hp.persona_id === p.id));
+  const fuera = stf.personas.filter((p) => p.activo && (!h.departamento || p.departamento === h.departamento) && !H.personas.some((hp) => hp.persona_id === p.id));
 
   return `
     <div class="stf-horario-cab">
       <div>
         <button type="button" class="enlace" data-stf-accion="volver-horarios">‹ Volver a horarios</button>
         <h2 class="stf-h2">${escapar(h.nombre || `${fechaCorta(h.desde)} – ${fechaAnio(h.hasta)}`)}
-          <span class="stf-chip ${h.estado === "publicado" ? "ok" : "aviso"}">${h.estado === "publicado" ? "Publicado" : "Borrador"}</span></h2>
+          <span class="stf-chip ${h.estado === "publicado" ? "ok" : "aviso"}">${h.estado === "publicado" ? "Publicado" : "Borrador"}</span> ${chipDep(h.departamento)}</h2>
         <p class="nota">${fechaLarga(h.desde)} al ${fechaLarga(h.hasta)} · ${H.personas.length} colaboradores · la salida se calcula sola (jornada de 8 h; 4 h en medio tiempo)</p>
       </div>
       <div class="stf-botones">
@@ -762,7 +789,7 @@ async function stfAgregarPersona(id) {
   const p = personaPorId(id);
   if (!p) return;
   const { error } = await db.from("staff_horario_personas")
-    .insert({ horario_id: H.h.id, persona_id: p.id, nombre: p.nombre, puesto: p.puesto, orden: H.personas.length });
+    .insert({ horario_id: H.h.id, persona_id: p.id, nombre: p.nombre, puesto: p.puesto, jornada: p.jornada, orden: H.personas.length });
   if (error) return fallo(error);
   await stfCargarHorario(H.h.id);
   stfPintar();
@@ -797,7 +824,7 @@ function stfImprimirHorario() {
   const h = H.h;
   const fechas = fechasEntre(h.desde, h.hasta);
   const filas = H.personas.map((hp) => {
-    const persona = personaPorId(hp.persona_id);
+    const persona = personaPorId(hp.persona_id) || hp;
     const r = resumenHorario(hp);
     return `<tr><th>${escapar(hp.nombre)}<small>${escapar(hp.puesto || "")}</small></th>${fechas.map((f) => {
       const t = textoCelda(H.celdas.get(`${hp.persona_id}|${f}`), persona);
@@ -848,7 +875,7 @@ async function stfExcelHorario() {
   cab.height = 30;
 
   H.personas.forEach((hp, i) => {
-    const persona = personaPorId(hp.persona_id);
+    const persona = personaPorId(hp.persona_id) || hp;
     const r = resumenHorario(hp);
     const fila = ws.getRow(5 + i);
     fila.getCell(1).value = `${hp.nombre}${hp.puesto ? "\n" + hp.puesto : ""}`;
@@ -905,6 +932,8 @@ $("staffContenido").addEventListener("click", (e) => {
     "ficha": () => stfAbrirModal(htmlFicha(personaPorId(id))),
     "nueva-persona": () => stfAbrirModal(htmlFicha({ activo: true, empresa: "THT", jornada: "completa" })),
     "nuevo-horario": () => stfIniciarNuevo(),
+    "filtro-dep": () => { stf.filtroDep = b.dataset.dep; stfPintar(); },
+    "dep-nuevo": () => { stfElegirDep(b.dataset.dep); stfPintar(); },
     "volver-horarios": () => { stf.horario = null; stf.nuevo = null; stfPintar(); },
     "rango": () => {
       const r = rangoRapido(b.dataset.rango);

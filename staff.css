@@ -209,3 +209,13 @@ tr.stf-yo th.stf-nombre { box-shadow: inset 4px 0 0 var(--verde); }
   .stf-tabla .stf-nombre { min-width: 130px; }
   .pla-kpis b { font-size: 1.1rem; }
 }
+
+/* Departamentos */
+.stf-chip.dep { background: #e8f0fb; color: #1f4f8a; }
+
+/* Usuarios «Solo horario»: solo Staff › Horarios, Actualizar y Salir */
+body.solo-horario .menu-btn[data-vista]:not([data-vista="staff"]),
+body.solo-horario #chatBurbuja,
+body.solo-horario #chatMenuPerfil,
+body.solo-horario [data-staff="perfiles"],
+body.solo-horario [data-staff="planilla"] { display: none !important; }

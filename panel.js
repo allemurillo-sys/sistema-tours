@@ -284,7 +284,10 @@ async function recargarPerfil() {
   const { data: permisos } = await db.from("permisos_rol").select("permiso, permitido").eq("rol", perfil.rol);
   app.yo = perfil;
   app.permisos = new Set((permisos || []).filter((p) => p.permitido).map((p) => p.permiso));
-  $("usuarioNombre").textContent = `${perfil.nombre} (${perfil.rol})`;
+  // Usuarios «Solo horario» (rol personal): únicamente ven Staff › Horarios
+  app.soloHorario = perfil.rol === "personal";
+  document.body.classList.toggle("solo-horario", app.soloHorario);
+  $("usuarioNombre").textContent = `${perfil.nombre} (${app.soloHorario ? "solo horario" : perfil.rol})`;
   return true;
 }
 
@@ -296,6 +299,10 @@ async function actualizarTodo(silencioso = false) {
   app.actualizando = true;
   try {
     if (!(await recargarPerfil())) return;
+    if (app.soloHorario) {
+      if (!silencioso) document.dispatchEvent(new Event("datos-actualizados"));
+      return;
+    }
     await db.rpc("finalizar_vencidas");
     await cargarCatalogos();
     await cargarTablero();
@@ -311,9 +318,13 @@ async function entrar() {
   $("vistaLogin").hidden = true;
   $("vistaApp").hidden = false;
 
+  if (app.soloHorario) {
+    mostrarVista("staff");
+  } else {
   await db.rpc("finalizar_vencidas");
   await cargarCatalogos();
   await cargarTablero();
+  }
 
   // Actualización automática cada minuto
   clearInterval(app.temporizador);
@@ -454,6 +465,7 @@ $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, as
 // ---------- Menú de secciones ----------
 const VISTAS = { reservas: "vistaReservas", calendario: "vistaCalendario", mantenimiento: "vistaMantenimiento" };
 function mostrarVista(nombre) {
+  if (app.soloHorario && nombre !== "staff") nombre = "staff";
   Object.entries(VISTAS).forEach(([k, id]) => ($(id).hidden = k !== nombre));
   document.querySelectorAll(".menu-btn[data-vista]").forEach((b) => {
     if (b.dataset.vista === nombre) b.setAttribute("aria-current", "page");
