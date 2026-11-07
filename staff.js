@@ -73,6 +73,9 @@ const iniciales = (n) => String(n || "").split(/\s+/).filter(Boolean).slice(0, 2
 const fechaCorta = (f) => fecha(f, { day: "numeric", month: "short" });
 const fechaAnio = (f) => fecha(f, { day: "numeric", month: "short", year: "numeric" });
 const horasJornada = (p) => (p?.jornada === "media" ? 4 : 8);
+// Recepción lleva la fila «Ingresos previstos» (casas que ingresan cada día), escrita a mano
+const conIngresos = (h) => h?.departamento === "Recepción";
+const ingresoDe = (h, f) => { const v = h?.ingresos?.[f]; return v === undefined || v === null || v === "" ? "" : v; };
 const chipDep = (d) => d ? `<span class="stf-chip dep">${escapar(d)}</span>` : `<span class="stf-chip gris">General</span>`;
 
 let stfPromesaExcel = null;
@@ -710,7 +713,10 @@ function htmlHorario() {
     </div>` : ""}
     <div class="det-seccion sin-margen tabla-scroll stf-tabla-caja">
       <table class="stf-tabla">
-        <thead><tr><th class="stf-nombre">Colaborador</th>${cab}<th>Total</th></tr></thead>
+        <thead><tr><th class="stf-nombre">Colaborador</th>${cab}<th>Total</th></tr>
+        ${conIngresos(h) ? `<tr class="stf-ingresos"><th scope="row" class="stf-nombre">Ingresos previstos<small>casas que ingresan</small></th>${fechas.map((f) => `<td>${editable
+          ? `<input type="number" min="0" step="1" inputmode="numeric" class="stf-ing" data-stf-ingreso="${f}" value="${ingresoDe(h, f)}" aria-label="Ingresos previstos ${fechaLarga(f)}">`
+          : `<b>${ingresoDe(h, f) === "" ? "—" : ingresoDe(h, f)}</b>`}</td>`).join("")}<td><b>${fechas.reduce((t, f) => t + (Number(ingresoDe(h, f)) || 0), 0)}</b></td></tr>` : ""}</thead>
         <tbody>${filas || `<tr><td colspan="${fechas.length + 2}" class="nota">Agrega colaboradores al horario.</td></tr>`}</tbody>
         <tfoot><tr><th scope="row" class="stf-nombre">Personas trabajando</th>${cobertura}<td></td></tr></tfoot>
       </table>
@@ -784,6 +790,21 @@ async function stfEliminarHorario() {
   avisar("Horario eliminado.");
 }
 
+// Guarda la cantidad de casas que ingresan ese día (sin redibujar, para no perder el cursor)
+async function stfGuardarIngreso(input) {
+  const H = stf.horario;
+  if (!H || !stfGestiona()) return;
+  const f = input.dataset.stfIngreso;
+  const v = input.value === "" ? null : Math.max(0, Math.round(Number(input.value)));
+  // Se actualiza primero en memoria para que dos cambios seguidos no se pisen
+  const ingresos = H.h.ingresos = { ...(H.h.ingresos || {}) };
+  if (v === null || Number.isNaN(v)) delete ingresos[f]; else ingresos[f] = v;
+  const { error } = await db.from("staff_horarios").update({ ingresos: { ...ingresos } }).eq("id", H.h.id);
+  if (error) return fallo(error, "No se pudo guardar el número de ingresos.");
+  const total = input.closest("tr")?.lastElementChild?.querySelector("b");
+  if (total) total.textContent = Object.entries(ingresos).filter(([k]) => k >= H.h.desde && k <= H.h.hasta).reduce((t, [, n]) => t + (Number(n) || 0), 0);
+}
+
 async function stfAgregarPersona(id) {
   const H = stf.horario;
   const p = personaPorId(id);
@@ -837,7 +858,8 @@ function stfImprimirHorario() {
       <p class="imp-titulo">Horario ${escapar(h.nombre || "")} — ${fechaCorta(h.desde)} al ${fechaAnio(h.hasta)}</p>
     </div>
     <table class="stf-imp-tabla">
-      <thead><tr><th>Colaborador</th>${fechas.map((f) => `<th>${DIAS_CORTO[diaSemana(f)]}<small>${fechaCorta(f)}</small></th>`).join("")}<th>Total</th></tr></thead>
+      <thead><tr><th>Colaborador</th>${fechas.map((f) => `<th>${DIAS_CORTO[diaSemana(f)]}<small>${fechaCorta(f)}</small></th>`).join("")}<th>Total</th></tr>
+      ${conIngresos(h) ? `<tr class="stf-ingresos"><th>Ingresos previstos</th>${fechas.map((f) => `<td><b>${ingresoDe(h, f) === "" ? "—" : ingresoDe(h, f)}</b></td>`).join("")}<td><b>${fechas.reduce((t, f) => t + (Number(ingresoDe(h, f)) || 0), 0)}</b></td></tr>` : ""}</thead>
       <tbody>${filas}</tbody>
       <tfoot><tr><th>Personas trabajando</th>${fechas.map((f) => `<td>${H.personas.filter((hp) => H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo").length}</td>`).join("")}<td></td></tr></tfoot>
     </table>
@@ -857,7 +879,7 @@ async function stfExcelHorario() {
   wb.creator = "THOT Sistema";
   const ws = wb.addWorksheet("Horario", {
     pageSetup: { paperSize: 1, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } },
-    views: [{ state: "frozen", xSplit: 1, ySplit: 4 }]
+    views: [{ state: "frozen", xSplit: 1, ySplit: conIngresos(h) ? 5 : 4 }]
   });
   const ultimaCol = fechas.length + 2;
   ws.mergeCells(1, 1, 1, ultimaCol);
@@ -874,10 +896,24 @@ async function stfExcelHorario() {
   cab.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF23343D" } }; c.border = excelBorde; });
   cab.height = 30;
 
+  // Fila de ingresos previstos (solo Recepción)
+  const ini = conIngresos(h) ? 6 : 5;
+  if (conIngresos(h)) {
+    const fi = ws.getRow(5);
+    fi.getCell(1).value = "Ingresos previstos";
+    fechas.forEach((f, j) => { const v = ingresoDe(h, f); fi.getCell(2 + j).value = v === "" ? null : Number(v); });
+    fi.getCell(ultimaCol).value = fechas.reduce((t, f) => t + (Number(ingresoDe(h, f)) || 0), 0);
+    fi.font = { bold: true, color: { argb: "FFC0392B" } };
+    fi.alignment = { horizontal: "center", vertical: "middle" };
+    fi.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
+    fi.height = 22;
+    fi.eachCell({ includeEmpty: true }, (c) => { c.border = excelBorde; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFDF0EE" } }; });
+  }
+
   H.personas.forEach((hp, i) => {
     const persona = personaPorId(hp.persona_id) || hp;
     const r = resumenHorario(hp);
-    const fila = ws.getRow(5 + i);
+    const fila = ws.getRow(ini + i);
     fila.getCell(1).value = `${hp.nombre}${hp.puesto ? "\n" + hp.puesto : ""}`;
     fila.getCell(1).alignment = { wrapText: true, vertical: "middle" };
     fila.getCell(1).font = { bold: true };
@@ -896,7 +932,7 @@ async function stfExcelHorario() {
     fila.height = 34;
     fila.eachCell({ includeEmpty: true }, (c) => (c.border = excelBorde));
   });
-  const fCob = ws.getRow(5 + H.personas.length);
+  const fCob = ws.getRow(ini + H.personas.length);
   fCob.getCell(1).value = "Personas trabajando";
   fechas.forEach((f, j) => {
     fCob.getCell(2 + j).value = H.personas.filter((hp) => H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo").length;
@@ -905,7 +941,7 @@ async function stfExcelHorario() {
   fCob.font = { bold: true };
   fCob.eachCell({ includeEmpty: true }, (c) => { c.border = excelBorde; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAF8" } }; });
 
-  const ley = ws.getRow(7 + H.personas.length);
+  const ley = ws.getRow(ini + 2 + H.personas.length);
   [["Trabaja", "t-trabajo"], ["Libre", "t-libre"], ["Vacaciones", "t-vac"], ["Incapacidad", "t-inc"]].forEach(([t, k], j) => {
     const c = ley.getCell(2 + j);
     c.value = t; c.alignment = { horizontal: "center" };
@@ -985,6 +1021,7 @@ $("staffContenido").addEventListener("input", (e) => {
 });
 $("staffContenido").addEventListener("change", (e) => {
   const t = e.target;
+  if (t.dataset.stfIngreso) return stfGuardarIngreso(t);
   const f = stf.filtro;
   if (t.id === "stfFiltroPuesto") { f.puesto = t.value; stfPintar(); }
   if (t.id === "stfFiltroEmpresa") { f.empresa = t.value; stfPintar(); }

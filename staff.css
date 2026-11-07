@@ -219,3 +219,14 @@ body.solo-horario #chatBurbuja,
 body.solo-horario #chatMenuPerfil,
 body.solo-horario [data-staff="perfiles"],
 body.solo-horario [data-staff="planilla"] { display: none !important; }
+
+/* Recepción: fila de ingresos previstos */
+.stf-ingresos th, .stf-ingresos td { background: #fdf0ee; color: #c0392b; text-align: center; font-weight: 700; }
+.stf-ingresos th.stf-nombre, .stf-ingresos th:first-child { text-align: left; }
+.stf-ingresos th small { display: block; font-weight: 400; color: #8a5a54; font-size: .72rem; }
+.stf-ing { width: 3.6rem; text-align: center; font-weight: 700; color: #c0392b; border: 1px solid #e6b8b2; border-radius: 6px; padding: .25rem; background: #fff; font-size: 1rem; }
+.stf-ing:focus { outline: 2px solid #c0392b; outline-offset: 1px; }
+@media print { .stf-ingresos th, .stf-ingresos td { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+.stf-tabla thead tr.stf-ingresos th, .stf-tabla thead tr.stf-ingresos td { position: static; background: #fdf0ee; }
+.stf-tabla thead tr.stf-ingresos th.stf-nombre { position: sticky; left: 0; top: auto; z-index: 1; background: #fdf0ee; color: #c0392b; }
+.stf-imp-tabla tr.stf-ingresos th { text-align: left; }
