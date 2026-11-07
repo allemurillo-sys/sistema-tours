@@ -173,12 +173,27 @@ async function stfCargar() {
   if (stf.horario) await stfCargarHorario(stf.horario.h.id);
 }
 
-function stfPintar() {
+// Redibuja el contenido sin perder la posición de las barras de desplazamiento
+// (la tabla del horario y las tablas anchas de la planilla) mientras se sigue en la misma pantalla.
+function stfRedibujar(html, vista) {
   const c = $("staffContenido");
-  if (stf.pestana === "perfiles") c.innerHTML = htmlPerfiles();
-  else if (stf.nuevo) c.innerHTML = htmlNuevoHorario();
-  else if (stf.horario) c.innerHTML = htmlHorario();
-  else c.innerHTML = htmlHorarios();
+  const misma = c.dataset.vista === vista;
+  const cajas = misma ? [...c.querySelectorAll(".tabla-scroll, .stf-tabla-caja")].map((x) => [x.scrollLeft, x.scrollTop]) : [];
+  const y = window.scrollY;
+  c.innerHTML = html;
+  c.dataset.vista = vista;
+  if (!misma) return;
+  c.querySelectorAll(".tabla-scroll, .stf-tabla-caja").forEach((x, i) => {
+    if (cajas[i]) { x.scrollLeft = cajas[i][0]; x.scrollTop = cajas[i][1]; }
+  });
+  window.scrollTo(window.scrollX, y);
+}
+
+function stfPintar() {
+  if (stf.pestana === "perfiles") stfRedibujar(htmlPerfiles(), "perfiles");
+  else if (stf.nuevo) stfRedibujar(htmlNuevoHorario(), "nuevo-horario");
+  else if (stf.horario) stfRedibujar(htmlHorario(), `horario-${stf.horario.h.id}`);
+  else stfRedibujar(htmlHorarios(), "horarios");
 }
 
 // =====================================================

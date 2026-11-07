@@ -160,7 +160,7 @@ function plaPintar() {
   if (pla.sub === "liquidaciones") cuerpo = pla.liq ? htmlLiquidacionForm() : htmlLiquidaciones();
   if (pla.sub === "respaldos") cuerpo = htmlRespaldos();
   if (pla.sub === "ajustes") cuerpo = htmlAjustes();
-  $("staffContenido").innerHTML = nav + cuerpo;
+  stfRedibujar(nav + cuerpo, `planilla-${pla.sub}-${pla.actual || ""}-${pla.liq ? "liq" : ""}`);
 }
 
 // ---------- Lista de quincenas ----------
