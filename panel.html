@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="panel.css?v=23">
   <link rel="stylesheet" href="tarifario.css?v=27">
   <link rel="stylesheet" href="chat.css?v=1">
+  <link rel="stylesheet" href="staff.css?v=1">
 </head>
 <body class="panel">
 
@@ -50,6 +51,7 @@
         <button type="button" class="menu-btn" data-vista="chat">Chat <span id="chatMenuCuenta" class="menu-cuenta" hidden></span></button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
         <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
+        <button type="button" class="menu-btn" data-vista="staff">Staff</button>
         <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
         <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
         <button type="button" class="menu-btn salir" id="btnSalir">Salir</button>
@@ -105,6 +107,19 @@
       </div>
     </section>
 
+    <!-- Staff: perfiles, horarios y planilla -->
+    <section id="vistaStaff" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Staff</h1>
+        <div class="pestanas no-imprimir" role="tablist" aria-label="Staff">
+          <button type="button" role="tab" class="pestana" data-staff="perfiles">Perfiles de colaboradores</button>
+          <button type="button" role="tab" class="pestana" data-staff="horarios">Horarios</button>
+          <button type="button" role="tab" class="pestana" data-staff="planilla" hidden>Planilla 🔒</button>
+        </div>
+        <div id="staffContenido"></div>
+      </div>
+    </section>
+
     <!-- Ventas y cuentas por pagar (solo administrador) -->
     <section id="vistaFinanzas" class="vista" hidden>
       <div class="catalogo">
@@ -150,6 +165,9 @@
     </section>
   </div>
 
+  <!-- Ventana de Staff (ficha de colaborador, rebajos) -->
+  <div id="staffModal" class="detalle-fondo" hidden></div>
+
   <!-- Ventanas del chat (nuevo chat, grupos, Mi perfil, compartir) -->
   <div id="chatModal" class="chat-modal-fondo" hidden></div>
 
@@ -159,7 +177,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=14"></script>
   <script src="panel.js?v=26"></script>
-  <script src="mantenimiento.js?v=21"></script>
+  <script src="mantenimiento.js?v=22"></script>
   <script src="calendario.js?v=14"></script>
   <script src="finanzas.js?v=2"></script>
   <script src="correo.js?v=1"></script>
@@ -170,5 +188,7 @@
   <script src="tarifario-catalogo.js?v=4"></script>
   <script src="reserva-manual.js?v=3"></script>
   <script src="chat.js?v=1"></script>
+  <script src="staff.js?v=1"></script>
+  <script src="planilla.js?v=1"></script>
 </body>
 </html>

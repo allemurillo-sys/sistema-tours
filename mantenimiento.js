@@ -14,7 +14,9 @@ const PERMISOS = [
   { id: "reabrir_finalizadas", nombre: "Reabrir reservas finalizadas", detalle: "Devolver una reserva finalizada a la columna Reserva para revisarla." },
   { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." },
   { id: "ver_tarifario", nombre: "Consultar el tarifario final", detalle: "Ver, buscar, imprimir y descargar en Excel las tarifas aprobadas del Tarifario, sin poder editarlas ni revertirlas. Incluye el neto con IVA y sin IVA." },
-  { id: "cancelar_reservas", nombre: "Cancelar reservas confirmadas", detalle: "Cancelar o reactivar reservas que el cliente ya confirmó. Cualquier usuario puede cancelar cotizaciones sin confirmar." }
+  { id: "cancelar_reservas", nombre: "Cancelar reservas confirmadas", detalle: "Cancelar o reactivar reservas que el cliente ya confirmó. Cualquier usuario puede cancelar cotizaciones sin confirmar." },
+  { id: "ver_perfiles_staff", nombre: "Ver perfiles de colaboradores", detalle: "Abrir Staff › Perfiles y consultar las fichas del personal, sin editarlas. Crear, modificar o inactivar perfiles es exclusivo del administrador; los salarios y notas internas solo los ve el administrador." },
+  { id: "gestionar_horarios", nombre: "Crear y editar horarios", detalle: "Armar, modificar, publicar, imprimir y descargar horarios, y ver todos los horarios (también los borradores). Sin este permiso, cada persona ve solo los horarios publicados en los que está incluida." }
 ];
 
 const esAdmin = () => app.yo?.rol === "administrador";
