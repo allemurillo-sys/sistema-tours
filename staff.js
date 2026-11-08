@@ -46,7 +46,7 @@ const stfGestiona = () => puede("gestionar_horarios");
 // Gestión de los horarios de un departamento
 const stfEditaDep = (dep) => stfGestiona() || (dep === "Ama de llaves" && ["ama_llaves", "supervisora"].includes(stfMiNivel()));
 const stfPuedeCrear = () => stfGestiona() || ["ama_llaves", "supervisora"].includes(stfMiNivel());
-const stfDepsCreables = () => stfGestiona() ? [...DEP_HORARIO, ""] : stfPuedeCrear() ? ["Ama de llaves"] : [];
+const stfDepsCreables = () => stfGestiona() ? [...DEP_HORARIO] : stfPuedeCrear() ? ["Ama de llaves"] : [];
 const stfPestanaPermitida = (p) =>
   p === "horarios" || (p === "perfiles" && stfVePerfiles()) || (p === "planilla" && stfEsAdmin());
 
@@ -88,7 +88,7 @@ const horasJornada = (p) => (p?.jornada === "media" ? 4 : 8);
 // Recepción lleva la fila «Ingresos previstos» (casas que ingresan cada día), escrita a mano
 const conIngresos = (h) => h?.departamento === "Recepción";
 const ingresoDe = (h, f) => { const v = h?.ingresos?.[f]; return v === undefined || v === null || v === "" ? "" : v; };
-const chipDep = (d) => d ? `<span class="stf-chip dep">${escapar(d)}</span>` : `<span class="stf-chip gris">General</span>`;
+const chipDep = (d) => d ? `<span class="stf-chip dep">${escapar(d)}</span>` : "";
 
 let stfPromesaExcel = null;
 function stfCargarExcel() {
@@ -444,9 +444,9 @@ async function stfCambiarActivo(id) {
 // =====================================================
 function htmlHorarios() {
   const gestiona = stfPuedeCrear();
-  const depsVistos = new Set(stf.horarios.map((h) => h.departamento || "general"));
+  const depsVistos = new Set(stf.horarios.map((h) => h.departamento));
   const filtro = stf.filtroDep || "";
-  const lista = stf.horarios.filter((h) => !filtro || (filtro === "general" ? !h.departamento : h.departamento === filtro));
+  const lista = stf.horarios.filter((h) => !filtro || h.departamento === filtro);
   const pill = (v, t) => `<button type="button" class="stf-pill ${filtro === v ? "on" : ""}" data-stf-accion="filtro-dep" data-dep="${v}">${t}</button>`;
   const filas = lista.map((h) => {
     const n = (h.staff_horario_personas || []).length;
@@ -466,7 +466,7 @@ function htmlHorarios() {
       ${gestiona ? `<button type="button" class="btn primario" data-stf-accion="nuevo-horario">+ Nuevo horario</button>` : ""}
     </div>
     ${!gestiona ? `<p class="nota">Aquí aparecen los horarios publicados que te corresponde ver.</p>` : ""}
-    ${depsVistos.size > 1 || filtro ? `<div class="stf-pills">${pill("", "Todos")}${DEP_HORARIO.filter((d) => stfGestiona() || depsVistos.has(d)).map((d) => pill(d, d)).join("")}${stfGestiona() ? pill("general", "General") : ""}</div>` : ""}
+    ${depsVistos.size > 1 || filtro ? `<div class="stf-pills">${pill("", "Todos")}${DEP_HORARIO.filter((d) => stfGestiona() || depsVistos.has(d)).map((d) => pill(d, d)).join("")}</div>` : ""}
     ${lista.length ? `
     <div class="det-seccion sin-margen tabla-scroll">
       <table class="tabla">
@@ -503,7 +503,7 @@ function stfIniciarNuevo() {
   };
   if (!stfEsAdmin()) stf.nuevo.seleccion = new Set(stf.personas.filter((p) => p.activo).map((p) => p.id));
   const deps = stfDepsCreables();
-  const pedido = stf.filtroDep === "general" ? "" : (stf.filtroDep || "");
+  const pedido = stf.filtroDep || "";
   stfElegirDep(deps.includes(pedido) ? pedido : deps[0]);
   stfPintar();
 }
@@ -534,8 +534,8 @@ function htmlNuevoHorario() {
       <div class="stf-col">
         <div class="det-seccion sin-margen">
           <h3><span class="stf-paso">1</span> Departamento</h3>
-          <div class="stf-pills">${stfDepsCreables().map((d) => depPill(d, d || "General (varios departamentos)")).join("")}</div>
-          <p class="nota">${n.departamento ? `Este horario lo verá todo el personal de ${escapar(n.departamento)} cuando lo publiques, y nadie de otros departamentos.` : "Un horario general solo lo ven las personas incluidas en él."}</p>
+          <div class="stf-pills">${stfDepsCreables().map((d) => depPill(d, d)).join("")}</div>
+          <p class="nota">${n.departamento === "Recepción" ? "Al publicarlo lo ven Recepción y la ama de llaves." : n.departamento === "Ama de llaves" ? "Al publicarlo lo ven mucamas, supervisoras, ama de llaves y Recepción." : "Elige el departamento."}</p>
         </div>
         <div class="det-seccion sin-margen">
           <h3><span class="stf-paso">2</span> Periodo del horario</h3>
@@ -566,7 +566,7 @@ function htmlNuevoHorario() {
       <aside class="det-seccion sin-margen stf-resumen">
         <h3>Resumen</h3>
         <dl class="stf-dl">
-          <dt>Departamento</dt><dd>${escapar(n.departamento || "General")}</dd>
+          <dt>Departamento</dt><dd>${escapar(n.departamento || "—")}</dd>
           <dt>Periodo</dt><dd>${n.desde && n.hasta ? `${fechaCorta(n.desde)} – ${fechaAnio(n.hasta)}` : "—"}</dd>
           <dt>Días</dt><dd>${dias || "—"}</dd>
           <dt>Colaboradores</dt><dd>${n.seleccion.size} seleccionados</dd>
@@ -588,6 +588,7 @@ async function stfCrearHorario() {
   const fechas = fechasEntre(n.desde, n.hasta);
   if (fechas.length > 62) return avisar("El periodo no puede ser mayor a dos meses.", "error");
   const personas = stf.personas.filter((p) => n.seleccion.has(p.id));
+  if (!n.departamento) return avisar("Elige el departamento del horario.", "error");
   if (!personas.length) return avisar("Elige al menos un colaborador.", "error");
 
   const { data: h, error } = await db.from("staff_horarios")
