@@ -7,7 +7,7 @@ const mant = { pestana: "cuenta", usuarios: [], permisos: [], editando: null, re
 
 const ROLES = ["personal", "colaborador", "jefatura", "gerente", "administrador"];
 const ROLES_PERMISOS = ["colaborador", "jefatura", "gerente", "administrador"];
-const NOMBRE_ROL = { personal: "Solo horario", colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
+const NOMBRE_ROL = { personal: "Solo Staff", colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
 const PERMISOS = [
   { id: "ver_utilidad", nombre: "Ver costos netos y utilidad", detalle: "Muestra el neto y la utilidad en cotizaciones, servicios y reportes." },
   { id: "editar_catalogo", nombre: "Modificar las propiedades", detalle: "Agregar, renombrar, ocultar y eliminar las propiedades (hospedajes) que ve el cliente en el formulario, en Mantenimiento › Propiedades. Las actividades, precios y operadores se administran en el Tarifario." },
@@ -372,7 +372,7 @@ function htmlAutorizaciones() {
           <tbody>${filas}</tbody>
         </table>
       </div>
-      <p class="nota">Todos los usuarios activos pueden ver el tablero de reservas, atender cotizaciones, armar itinerarios y consultar el catálogo. Los usuarios «Solo horario» (por ejemplo, mucamas) únicamente ven Staff › Horarios de su departamento.</p>
+      <p class="nota">Todos los usuarios activos pueden ver el tablero de reservas, atender cotizaciones, armar itinerarios y consultar el catálogo. Los usuarios «Solo Staff» (mucamas, supervisoras, ama de llaves) únicamente entran a Staff; lo que ven ahí depende del «Nivel en Staff» de su ficha.</p>
     </div>`;
 }
 

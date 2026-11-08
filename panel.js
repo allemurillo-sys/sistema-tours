@@ -284,10 +284,10 @@ async function recargarPerfil() {
   const { data: permisos } = await db.from("permisos_rol").select("permiso, permitido").eq("rol", perfil.rol);
   app.yo = perfil;
   app.permisos = new Set((permisos || []).filter((p) => p.permitido).map((p) => p.permiso));
-  // Usuarios «Solo horario» (rol personal): únicamente ven Staff › Horarios
+  // Usuarios «Solo Staff» (rol personal): únicamente entran a la sección Staff
   app.soloHorario = perfil.rol === "personal";
   document.body.classList.toggle("solo-horario", app.soloHorario);
-  $("usuarioNombre").textContent = `${perfil.nombre} (${app.soloHorario ? "solo horario" : perfil.rol})`;
+  $("usuarioNombre").textContent = `${perfil.nombre} (${app.soloHorario ? "Staff" : perfil.rol})`;
   return true;
 }
 

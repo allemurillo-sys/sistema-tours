@@ -33,8 +33,20 @@ const stf = {
 };
 
 const stfEsAdmin = () => app.yo?.rol === "administrador";
-const stfVePerfiles = () => puede("ver_perfiles_staff");
+// Nivel de la persona dentro de Staff (se asigna en su ficha):
+//  recepcion   → ve horarios de Recepción y Ama de llaves
+//  ama_llaves  → crea/edita horarios de Ama de llaves, ve los de Recepción y las fichas de su departamento
+//  supervisora → crea/edita horarios de Ama de llaves, solo ve esos horarios
+//  mucama      → ve horarios de Ama de llaves
+const NIVELES_STAFF = { recepcion: "Recepción", ama_llaves: "Ama de llaves (jefatura)", supervisora: "Supervisora", mucama: "Mucama" };
+const stfMiNivel = () => stf.personas.find((p) => p.perfil_id && p.perfil_id === app.yo?.id && p.activo)?.nivel_staff || null;
+const stfVePerfiles = () => puede("ver_perfiles_staff") || stfMiNivel() === "ama_llaves";
+// Gestión global de horarios (administrador o permiso «Crear y editar horarios»)
 const stfGestiona = () => puede("gestionar_horarios");
+// Gestión de los horarios de un departamento
+const stfEditaDep = (dep) => stfGestiona() || (dep === "Ama de llaves" && ["ama_llaves", "supervisora"].includes(stfMiNivel()));
+const stfPuedeCrear = () => stfGestiona() || ["ama_llaves", "supervisora"].includes(stfMiNivel());
+const stfDepsCreables = () => stfGestiona() ? [...DEP_HORARIO, ""] : stfPuedeCrear() ? ["Ama de llaves"] : [];
 const stfPestanaPermitida = (p) =>
   p === "horarios" || (p === "perfiles" && stfVePerfiles()) || (p === "planilla" && stfEsAdmin());
 
@@ -142,6 +154,15 @@ document.querySelectorAll(".pestana[data-staff]").forEach((b) => b.addEventListe
 }));
 
 async function stfAbrir(recargar = false) {
+  // Primero se cargan los datos: el nivel de la persona decide qué pestañas ve
+  if (!stf.cargado) {
+    $("staffContenido").innerHTML = `<p class="nota">Cargando…</p>`;
+    try { await stfCargar(); } catch (error) {
+      $("staffContenido").innerHTML = "";
+      return fallo(error, "No se pudo cargar Staff.");
+    }
+    recargar = false;
+  }
   document.querySelectorAll(".pestana[data-staff]").forEach((b) => (b.hidden = !stfPestanaPermitida(b.dataset.staff)));
   if (!stfPestanaPermitida(stf.pestana)) stf.pestana = stfVePerfiles() ? "perfiles" : "horarios";
   document.querySelectorAll(".pestana[data-staff]").forEach((b) => {
@@ -163,14 +184,19 @@ async function stfAbrir(recargar = false) {
 async function stfCargar() {
   const tareas = [
     db.from("staff_personas").select("*").order("nombre"),
+    db.rpc("staff_personas_para_horario"),
     db.from("staff_horarios").select("*, staff_horario_personas(persona_id)").order("desde", { ascending: false }),
     db.from("staff_ajustes").select("*")
   ];
   if (stfEsAdmin()) tareas.push(db.from("staff_privado").select("*"), db.from("pla_ajustes").select("valor").eq("clave", "conceptos").maybeSingle());
-  const [p, h, a, pr, co] = await Promise.all(tareas);
+  const [p, ph, h, a, pr, co] = await Promise.all(tareas);
   const error = p.error || h.error || a.error || pr?.error || co?.error;
   if (error) throw error;
-  stf.personas = p.data || [];
+  if (ph.error) console.error("Lista para horarios:", ph.error);
+  // Ficha completa si se puede ver; si no, solo los datos mínimos para armar horarios
+  const mapa = new Map((ph.data || []).map((x) => [x.id, x]));
+  (p.data || []).forEach((x) => mapa.set(x.id, x));
+  stf.personas = [...mapa.values()].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es"));
   stf.horarios = h.data || [];
   const turnos = (a.data || []).find((x) => x.clave === "turnos");
   if (Array.isArray(turnos?.valor)) stf.turnos = turnos.valor;
@@ -313,6 +339,7 @@ function htmlFicha(p) {
       <div class="det-seccion">
         <h3>Datos laborales</h3>
         <div class="fila">
+          <label>Nivel en Staff <select name="nivel_staff" ${dis}><option value="">Sin nivel</option>${Object.entries(NIVELES_STAFF).map(([k, t]) => `<option value="${k}" ${p.nivel_staff === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
           <label>Departamento <select name="departamento" ${dis}><option value="">Sin departamento</option>${DEPARTAMENTOS.map((x) => `<option ${p.departamento === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
           <label>Puesto <input name="puesto" value="${v("puesto")}" list="stfPuestos" ${dis}></label>
           <label>Empresa <select name="empresa" ${dis}>${Object.entries(EMPRESAS).map(([k, t]) => `<option value="${k}" ${p.empresa === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
@@ -331,7 +358,7 @@ function htmlFicha(p) {
           <label>Usuario vinculado <select name="perfil_id" ${dis}><option value="">Sin usuario</option>${usuarios.map((u) => `<option value="${u.id}" ${u.id === p.perfil_id ? "selected" : ""}>${escapar(u.nombre)} (${escapar(u.rol)})</option>`).join("")}</select></label>
           <label>Nombre en el reloj marcador <input name="nombre_reloj" value="${v("nombre_reloj")}" placeholder="Como aparece en el reloj" ${dis}></label>
         </div>
-        <p class="nota">Con el usuario vinculado, la persona ve en Staff › Horarios los horarios publicados de su departamento (y cualquier otro en el que esté incluida). Para mucamas u otro personal que solo debe ver su horario, crea el usuario con el tipo «Solo horario». El correo, la clave y el tipo de usuario se siguen administrando en Mantenimiento › Usuarios.</p>
+        <p class="nota">Con el usuario vinculado, la persona ve en Staff › Horarios los horarios publicados de su departamento (y cualquier otro en el que esté incluida). El «Nivel en Staff» decide qué horarios y fichas ve. Para mucamas, supervisoras y ama de llaves, crea el usuario con el tipo «Solo Staff». El correo, la clave y el tipo de usuario se siguen administrando en Mantenimiento › Usuarios.</p>
       </div>
       ${admin ? `
       <div class="det-seccion stf-privado">
@@ -370,7 +397,7 @@ async function stfGuardarPersona() {
     nombre: d.nombre.trim(), cedula: d.cedula || null, fecha_nacimiento: d.fecha_nacimiento || null, idiomas: d.idiomas || null,
     telefono: d.telefono || null, correo: d.correo || null,
     emergencia_nombre: d.emergencia_nombre || null, emergencia_parentesco: d.emergencia_parentesco || null, emergencia_telefono: d.emergencia_telefono || null,
-    departamento: d.departamento || null, puesto: d.puesto || null, empresa: d.empresa || "THT", fecha_ingreso: d.fecha_ingreso || null, fecha_salida: d.fecha_salida || null,
+    departamento: d.departamento || null, nivel_staff: d.nivel_staff || null, puesto: d.puesto || null, empresa: d.empresa || "THT", fecha_ingreso: d.fecha_ingreso || null, fecha_salida: d.fecha_salida || null,
     jornada: d.jornada || "completa", dia_libre: d.dia_libre === "" ? null : Number(d.dia_libre),
     perfil_id: d.perfil_id || null, nombre_reloj: d.nombre_reloj || null, actualizado_en: new Date().toISOString()
   };
@@ -416,7 +443,8 @@ async function stfCambiarActivo(id) {
 // HORARIOS
 // =====================================================
 function htmlHorarios() {
-  const gestiona = stfGestiona();
+  const gestiona = stfPuedeCrear();
+  const depsVistos = new Set(stf.horarios.map((h) => h.departamento || "general"));
   const filtro = stf.filtroDep || "";
   const lista = stf.horarios.filter((h) => !filtro || (filtro === "general" ? !h.departamento : h.departamento === filtro));
   const pill = (v, t) => `<button type="button" class="stf-pill ${filtro === v ? "on" : ""}" data-stf-accion="filtro-dep" data-dep="${v}">${t}</button>`;
@@ -434,17 +462,18 @@ function htmlHorarios() {
   }).join("");
   return `
     <div class="herramientas stf-herramientas">
-      <h2 class="stf-h2">${gestiona ? "Horarios" : "Mis horarios"}</h2>
+      <h2 class="stf-h2">Horarios</h2>
       ${gestiona ? `<button type="button" class="btn primario" data-stf-accion="nuevo-horario">+ Nuevo horario</button>` : ""}
     </div>
-    ${!gestiona ? `<p class="nota">Aquí aparecen los horarios publicados de tu departamento.</p>` : `<div class="stf-pills">${pill("", "Todos")}${DEP_HORARIO.map((d) => pill(d, d)).join("")}${pill("general", "General")}</div>`}
+    ${!gestiona ? `<p class="nota">Aquí aparecen los horarios publicados que te corresponde ver.</p>` : ""}
+    ${depsVistos.size > 1 || filtro ? `<div class="stf-pills">${pill("", "Todos")}${DEP_HORARIO.filter((d) => stfGestiona() || depsVistos.has(d)).map((d) => pill(d, d)).join("")}${stfGestiona() ? pill("general", "General") : ""}</div>` : ""}
     ${lista.length ? `
     <div class="det-seccion sin-margen tabla-scroll">
       <table class="tabla">
         <thead><tr><th>Horario</th><th>Departamento</th><th>Periodo</th><th>Personas</th><th>Estado</th><th>Publicado</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
-    </div>` : `<p class="nota">${gestiona ? "Todavía no hay horarios. Crea el primero con “Nuevo horario”." : "Todavía no tienes horarios publicados."}</p>`}`;
+    </div>` : `<p class="nota">${gestiona ? "No hay horarios aquí. Crea uno con “Nuevo horario”." : "Todavía no hay horarios publicados para ti."}</p>`}`;
 }
 
 // ---------- Nuevo horario ----------
@@ -473,7 +502,9 @@ function stfIniciarNuevo() {
     puesto: "", empresa: "", diaLibre: true, copiar: "", departamento: ""
   };
   if (!stfEsAdmin()) stf.nuevo.seleccion = new Set(stf.personas.filter((p) => p.activo).map((p) => p.id));
-  stfElegirDep(stf.filtroDep && stf.filtroDep !== "general" ? stf.filtroDep : "");
+  const deps = stfDepsCreables();
+  const pedido = stf.filtroDep === "general" ? "" : (stf.filtroDep || "");
+  stfElegirDep(deps.includes(pedido) ? pedido : deps[0]);
   stfPintar();
 }
 
@@ -503,7 +534,7 @@ function htmlNuevoHorario() {
       <div class="stf-col">
         <div class="det-seccion sin-margen">
           <h3><span class="stf-paso">1</span> Departamento</h3>
-          <div class="stf-pills">${DEP_HORARIO.map((d) => depPill(d, d)).join("")}${depPill("", "General (varios departamentos)")}</div>
+          <div class="stf-pills">${stfDepsCreables().map((d) => depPill(d, d || "General (varios departamentos)")).join("")}</div>
           <p class="nota">${n.departamento ? `Este horario lo verá todo el personal de ${escapar(n.departamento)} cuando lo publiques, y nadie de otros departamentos.` : "Un horario general solo lo ven las personas incluidas en él."}</p>
         </div>
         <div class="det-seccion sin-margen">
@@ -635,7 +666,7 @@ function textoCelda(c, persona) {
 function htmlHorario() {
   const H = stf.horario;
   const h = H.h;
-  const editable = stfGestiona();
+  const editable = stfEditaDep(h.departamento);
   const fechas = fechasEntre(h.desde, h.hasta);
   const sel = stf.turnoSel;
   const chipTurno = (t) => `<button type="button" class="stf-turno t-trabajo ${sel.tipo === "trabajo" && sel.entrada === t ? "on" : ""}" data-stf-accion="turno" data-tipo="trabajo" data-entrada="${t}" aria-pressed="${sel.tipo === "trabajo" && sel.entrada === t}">${hora12(t)}</button>`;
@@ -705,7 +736,7 @@ function htmlHorario() {
       <span class="stf-otra">
         <input id="stfOtraHora" type="time" value="${sel.tipo === "trabajo" && !stf.turnos.includes(sel.entrada) ? sel.entrada : ""}" aria-label="Otra hora de entrada">
         <button type="button" class="stf-turno" data-stf-accion="otra-hora">Usar</button>
-        <button type="button" class="enlace" data-stf-accion="guardar-turno" title="Agregar esta hora a los turnos rápidos">Guardar</button>
+        ${stfGestiona() ? `<button type="button" class="enlace" data-stf-accion="guardar-turno" title="Agregar esta hora a los turnos rápidos">Guardar</button>` : ""}
       </span>
       <span class="stf-sep" aria-hidden="true"></span>
       ${chipTipo("libre", "Libre", "t-libre")}${chipTipo("vacaciones", "Vacaciones", "t-vac")}${chipTipo("incapacidad", "Incapacidad", "t-inc")}${chipTipo("borrar", "Borrar", "")}
@@ -793,7 +824,7 @@ async function stfEliminarHorario() {
 // Guarda la cantidad de casas que ingresan ese día (sin redibujar, para no perder el cursor)
 async function stfGuardarIngreso(input) {
   const H = stf.horario;
-  if (!H || !stfGestiona()) return;
+  if (!H || !stfEditaDep(H.h.departamento)) return;
   const f = input.dataset.stfIngreso;
   const v = input.value === "" ? null : Math.max(0, Math.round(Number(input.value)));
   // Se actualiza primero en memoria para que dos cambios seguidos no se pisen

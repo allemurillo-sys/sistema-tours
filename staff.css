@@ -213,11 +213,10 @@ tr.stf-yo th.stf-nombre { box-shadow: inset 4px 0 0 var(--verde); }
 /* Departamentos */
 .stf-chip.dep { background: #e8f0fb; color: #1f4f8a; }
 
-/* Usuarios «Solo horario»: solo Staff › Horarios, Actualizar y Salir */
+/* Usuarios «Solo Staff»: solo la sección Staff (lo que su nivel permita), Actualizar y Salir */
 body.solo-horario .menu-btn[data-vista]:not([data-vista="staff"]),
 body.solo-horario #chatBurbuja,
 body.solo-horario #chatMenuPerfil,
-body.solo-horario [data-staff="perfiles"],
 body.solo-horario [data-staff="planilla"] { display: none !important; }
 
 /* Recepción: fila de ingresos previstos */
