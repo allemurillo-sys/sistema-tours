@@ -6,6 +6,8 @@
   --t-libre: #E6EBEA;   --t-libre-tx: #45535A;   --t-libre-bd: #CBD4D2;
   --t-vac: #E3ECF7;     --t-vac-tx: #24527A;     --t-vac-bd: #BCD0E8;
   --t-inc: #FCEBDD;     --t-inc-tx: #8A3B12;     --t-inc-bd: #EFC9AE;
+  --t-extra: #EFE7F7;   --t-extra-tx: #5B2E86;   --t-extra-bd: #D3BFEA;
+  --t-excede: #C0392B;
 }
 
 .stf-herramientas { padding: 0 0 16px; }
@@ -229,3 +231,19 @@ body.solo-horario [data-staff="planilla"] { display: none !important; }
 .stf-tabla thead tr.stf-ingresos th, .stf-tabla thead tr.stf-ingresos td { position: static; background: #fdf0ee; }
 .stf-tabla thead tr.stf-ingresos th.stf-nombre { position: sticky; left: 0; top: auto; z-index: 1; background: #fdf0ee; color: #c0392b; }
 .stf-imp-tabla tr.stf-ingresos th { text-align: left; }
+
+/* Horas extra (etapa 15) */
+.stf-extras { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 8px; border-top: 1px dashed var(--linea); margin-top: 2px; }
+.stf-extras .stf-otra input { width: 76px; }
+.stf-solo-extra { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: .88rem; margin: 0; width: auto; cursor: pointer; }
+.stf-solo-extra input { width: auto; margin: 0; }
+.t-extra { background: var(--t-extra); color: var(--t-extra-tx); border-color: var(--t-extra-bd); }
+.stf-extra { display: block; font-style: normal; font-weight: 700; font-size: .72rem; line-height: 1.2; margin-top: 2px; padding: 1px 6px; border-radius: 999px; background: var(--t-extra); color: var(--t-extra-tx); border: 1px solid var(--t-extra-bd); white-space: nowrap; }
+.stf-extra.excede { background: #FDECEA; color: var(--t-excede); border-color: #F1B8B0; }
+.stf-celda.con-extra { border-color: var(--t-extra-bd); box-shadow: inset 0 -3px 0 var(--t-extra-bd); }
+.stf-celda.excede { border: 2px solid var(--t-excede) !important; }
+.stf-total .stf-extra { display: inline-block; margin: 2px 0; }
+.stf-leyenda span.excede { background: #FDECEA; color: var(--t-excede); border-color: #F1B8B0; }
+.stf-imp-tabla .stf-extra { display: block; border: 0; background: none; padding: 0; font-size: 7pt; color: #5B2E86; }
+.stf-imp-tabla td.excede { outline: 1.5pt solid #C0392B; outline-offset: -1.5pt; }
+.stf-imp-tabla td.excede .stf-extra { color: #C0392B; }

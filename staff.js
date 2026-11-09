@@ -28,7 +28,7 @@ const stf = {
   horarios: [],
   horario: null,             // { h, personas, celdas: Map("persona|fecha" → celda) }
   turnos: ["06:00", "07:00", "08:00", "10:00", "12:00"],
-  turnoSel: { tipo: "trabajo", entrada: "08:00" },
+  turnoSel: { tipo: "trabajo", entrada: "08:00", extra: 0 },   // tipo "extra" = solo cambia las horas extra
   nuevo: null                // formulario de horario nuevo
 };
 
@@ -85,6 +85,11 @@ const iniciales = (n) => String(n || "").split(/\s+/).filter(Boolean).slice(0, 2
 const fechaCorta = (f) => fecha(f, { day: "numeric", month: "short" });
 const fechaAnio = (f) => fecha(f, { day: "numeric", month: "short", year: "numeric" });
 const horasJornada = (p) => (p?.jornada === "media" ? 4 : 8);
+// Horas extra (etapa 15): opcionales por casilla de trabajo; se avisa si el día pasa de 12 h
+const EXTRAS_RAPIDAS = [1, 2, 3, 4];
+const MAX_HORAS_DIA = 12;
+const extraDe = (c) => (c?.tipo === "trabajo" ? Number(c.horas_extra) || 0 : 0);
+const horasTxt = (n) => String(Math.round(n * 100) / 100).replace(".", ",");
 // Recepción lleva la fila «Ingresos previstos» (casas que ingresan cada día), escrita a mano
 const conIngresos = (h) => h?.departamento === "Recepción";
 const ingresoDe = (h, f) => { const v = h?.ingresos?.[f]; return v === undefined || v === null || v === "" ? "" : v; };
@@ -654,14 +659,25 @@ function resumenHorario(hp) {
   const H = stf.horario;
   const fechas = fechasEntre(H.h.desde, H.h.hasta);
   const persona = personaPorId(hp.persona_id) || hp;
-  let dias = 0;
-  fechas.forEach((f) => { if (H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo") dias++; });
-  return { dias, horas: dias * horasJornada(persona) };
+  let dias = 0, extra = 0;
+  fechas.forEach((f) => {
+    const c = H.celdas.get(`${hp.persona_id}|${f}`);
+    if (c?.tipo === "trabajo") { dias++; extra += extraDe(c); }
+  });
+  return { dias, horas: dias * horasJornada(persona), extra };
 }
+const totalTxt = (r) => `${r.horas} h${r.extra ? ` + ${horasTxt(r.extra)} h extra` : ""}`;
 function textoCelda(c, persona) {
   if (!c) return { a: "—", b: "", clase: "t-vacia" };
-  if (c.tipo === "trabajo") return { a: hora12(c.entrada), b: `a ${hora12(sumarHoras(c.entrada, horasJornada(persona)))}`, clase: "t-trabajo" };
-  return { a: TIPOS_CELDA[c.tipo].nombre, b: "", clase: TIPOS_CELDA[c.tipo].clase };
+  if (c.tipo === "trabajo") {
+    const extra = extraDe(c);
+    const total = horasJornada(persona) + extra;
+    return {
+      a: hora12(c.entrada), b: `a ${hora12(sumarHoras(c.entrada, total))}`, clase: "t-trabajo",
+      x: extra ? `+${horasTxt(extra)} h extra` : "", excede: total > MAX_HORAS_DIA, total
+    };
+  }
+  return { a: TIPOS_CELDA[c.tipo].nombre, b: "", clase: TIPOS_CELDA[c.tipo].clase, x: "" };
 }
 
 function htmlHorario() {
@@ -670,6 +686,8 @@ function htmlHorario() {
   const editable = stfEditaDep(h.departamento);
   const fechas = fechasEntre(h.desde, h.hasta);
   const sel = stf.turnoSel;
+  const chipExtra = (n) => `<button type="button" class="stf-turno t-extra ${(sel.extra || 0) === n ? "on" : ""}" data-stf-accion="extra" data-extra="${n}" aria-pressed="${(sel.extra || 0) === n}">${n ? `+${horasTxt(n)} h` : "Ninguna"}</button>`;
+  const extraLibre = sel.extra && !EXTRAS_RAPIDAS.includes(sel.extra) ? sel.extra : "";
   const chipTurno = (t) => `<button type="button" class="stf-turno t-trabajo ${sel.tipo === "trabajo" && sel.entrada === t ? "on" : ""}" data-stf-accion="turno" data-tipo="trabajo" data-entrada="${t}" aria-pressed="${sel.tipo === "trabajo" && sel.entrada === t}">${hora12(t)}</button>`;
   const chipTipo = (tipo, txt, clase) => `<button type="button" class="stf-turno ${clase} ${sel.tipo === tipo ? "on" : ""}" data-stf-accion="turno" data-tipo="${tipo}" aria-pressed="${sel.tipo === tipo}">${txt}</button>`;
   const yo = staffMiPersona();
@@ -686,10 +704,12 @@ function htmlHorario() {
     const celdas = fechas.map((f) => {
       const c = H.celdas.get(`${hp.persona_id}|${f}`);
       const t = textoCelda(c, persona);
-      const etiqueta = `${hp.nombre}, ${fechaLarga(f)}: ${t.a} ${t.b}`.trim();
+      const etiqueta = `${hp.nombre}, ${fechaLarga(f)}: ${t.a} ${t.b} ${t.x}${t.excede ? ` (más de ${MAX_HORAS_DIA} h en el día)` : ""}`.trim();
+      const marca = t.x ? `<em class="stf-extra ${t.excede ? "excede" : ""}"${t.excede ? ` title="${horasTxt(t.total)} h en el día: pasa de ${MAX_HORAS_DIA} h"` : ""}>${t.excede ? "⚠ " : ""}${t.x}</em>` : "";
+      const clase = `${t.clase}${t.x ? " con-extra" : ""}${t.excede ? " excede" : ""}`;
       return editable
-        ? `<td><button type="button" class="stf-celda ${t.clase}" data-stf-accion="celda" data-persona="${hp.persona_id}" data-fecha="${f}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small></button></td>`
-        : `<td><span class="stf-celda ${t.clase}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small></span></td>`;
+        ? `<td><button type="button" class="stf-celda ${clase}" data-stf-accion="celda" data-persona="${hp.persona_id}" data-fecha="${f}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small>${marca}</button></td>`
+        : `<td><span class="stf-celda ${clase}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small>${marca}</span></td>`;
     }).join("");
     const esYo = yo && yo === hp.persona_id;
     return `
@@ -701,7 +721,7 @@ function htmlHorario() {
           ${editable ? `<button type="button" class="btn-icono stf-quitar" data-stf-accion="quitar-persona" data-persona="${hp.persona_id}" aria-label="Quitar a ${escapar(hp.nombre)} del horario" title="Quitar del horario">×</button>` : ""}
         </th>
         ${celdas}
-        <td class="stf-total"><b>${r.horas} h</b><small>${r.dias} días</small></td>
+        <td class="stf-total"><b>${r.horas} h</b>${r.extra ? `<em class="stf-extra">+${horasTxt(r.extra)} h extra</em>` : ""}<small>${r.dias} días</small></td>
       </tr>`;
   }).join("");
 
@@ -718,7 +738,7 @@ function htmlHorario() {
         <button type="button" class="enlace" data-stf-accion="volver-horarios">‹ Volver a horarios</button>
         <h2 class="stf-h2">${escapar(h.nombre || `${fechaCorta(h.desde)} – ${fechaAnio(h.hasta)}`)}
           <span class="stf-chip ${h.estado === "publicado" ? "ok" : "aviso"}">${h.estado === "publicado" ? "Publicado" : "Borrador"}</span> ${chipDep(h.departamento)}</h2>
-        <p class="nota">${fechaLarga(h.desde)} al ${fechaLarga(h.hasta)} · ${H.personas.length} colaboradores · la salida se calcula sola (jornada de 8 h; 4 h en medio tiempo)</p>
+        <p class="nota">${fechaLarga(h.desde)} al ${fechaLarga(h.hasta)} · ${H.personas.length} colaboradores · la salida se calcula sola (jornada de 8 h; 4 h en medio tiempo) más las horas extra que se indiquen</p>
       </div>
       <div class="stf-botones">
         <button type="button" class="btn" data-stf-accion="imprimir-horario">Imprimir</button>
@@ -741,7 +761,17 @@ function htmlHorario() {
       </span>
       <span class="stf-sep" aria-hidden="true"></span>
       ${chipTipo("libre", "Libre", "t-libre")}${chipTipo("vacaciones", "Vacaciones", "t-vac")}${chipTipo("incapacidad", "Incapacidad", "t-inc")}${chipTipo("borrar", "Borrar", "")}
-      <p class="nota">Elige un turno y toca las casillas. Toca un día o un nombre para aplicarlo a toda la columna o la fila.</p>
+      <div class="stf-extras">
+        <span class="stf-turnos-tit">Horas extra:</span>
+        ${[0, ...EXTRAS_RAPIDAS].map(chipExtra).join("")}
+        <span class="stf-otra">
+          <input id="stfOtraExtra" type="number" min="0.5" max="${MAX_HORAS_DIA}" step="0.5" inputmode="decimal" placeholder="Otra" value="${extraLibre}" aria-label="Otra cantidad de horas extra">
+          <button type="button" class="stf-turno" data-stf-accion="otra-extra">Usar</button>
+        </span>
+        <label class="stf-solo-extra"><input type="checkbox" id="stfSoloExtra" ${sel.tipo === "extra" ? "checked" : ""}> Solo cambiar las horas extra (mantener la entrada de cada casilla)</label>
+      </div>
+      <p class="nota">Elige un turno (y si hace falta, sus horas extra) y toca las casillas. Toca un día o un nombre para aplicarlo a toda la columna o la fila.
+        ${sel.tipo === "extra" ? `<strong>Modo horas extra:</strong> las casillas con turno conservan su entrada y solo cambian sus extras (${sel.extra ? `+${horasTxt(sel.extra)} h` : "se quitan"}).` : ""}</p>
     </div>` : ""}
     <div class="det-seccion sin-margen tabla-scroll stf-tabla-caja">
       <table class="stf-tabla">
@@ -758,7 +788,15 @@ function htmlHorario() {
         <label>Agregar colaborador <select id="stfAgregarPersona"><option value="">Elegir…</option>${fuera.map((p) => `<option value="${p.id}">${escapar(p.nombre)}</option>`).join("")}</select></label>
         <button type="button" class="btn" data-stf-accion="agregar-persona">Agregar</button>
       </div>` : ""}
-    <div class="stf-leyenda"><span class="t-trabajo">Trabaja</span><span class="t-libre">Libre</span><span class="t-vac">Vacaciones</span><span class="t-inc">Incapacidad</span></div>`;
+    <div class="stf-leyenda"><span class="t-trabajo">Trabaja</span><span class="t-extra">+ h extra</span><span class="t-libre">Libre</span><span class="t-vac">Vacaciones</span><span class="t-inc">Incapacidad</span><span class="excede">⚠ más de ${MAX_HORAS_DIA} h en el día</span></div>`;
+}
+
+// Elige las horas extra a aplicar. Si el turno elegido no es de trabajo, se pasa al modo «solo horas extra».
+function stfElegirExtra(n) {
+  const sel = stf.turnoSel;
+  if (sel.tipo === "trabajo" || sel.tipo === "extra") stf.turnoSel = { ...sel, extra: n };
+  else stf.turnoSel = { tipo: "extra", entrada: null, extra: n };
+  stfPintar();
 }
 
 function staffMiPersona() {
@@ -771,14 +809,27 @@ async function stfAplicar(objetivos) {
   const sel = stf.turnoSel;
   if (sel.tipo === "trabajo" && !sel.entrada) return avisar("Elige una hora de entrada.", "error");
   const borrar = [], guardar = [];
+  let excedidos = 0;
   objetivos.forEach(({ persona, fecha: f }) => {
     const k = `${persona}|${f}`;
     if (sel.tipo === "borrar") { if (H.celdas.has(k)) { borrar.push(f); H.celdas.delete(k); } return; }
-    const c = { horario_id: H.h.id, persona_id: persona, fecha: f, tipo: sel.tipo, entrada: sel.tipo === "trabajo" ? sel.entrada : null };
+    let c;
+    if (sel.tipo === "extra") {
+      // Solo se cambian las extras de las casillas que ya tienen turno
+      const actual = H.celdas.get(k);
+      if (actual?.tipo !== "trabajo") return;
+      c = { ...actual, horas_extra: sel.extra || null };
+    } else {
+      const trabajo = sel.tipo === "trabajo";
+      c = { horario_id: H.h.id, persona_id: persona, fecha: f, tipo: sel.tipo, entrada: trabajo ? sel.entrada : null, horas_extra: trabajo && sel.extra ? sel.extra : null };
+    }
     H.celdas.set(k, c);
     guardar.push(c);
+    if (c.tipo === "trabajo" && horasJornada(personaPorId(persona)) + extraDe(c) > MAX_HORAS_DIA) excedidos++;
   });
+  if (sel.tipo === "extra" && !guardar.length) return avisar("Esas casillas no tienen turno de trabajo: primero asígnales una hora de entrada.", "error");
   stfPintar();
+  if (excedidos) avisar(`Atención: ${excedidos === 1 ? "una jornada pasa" : `${excedidos} jornadas pasan`} de ${MAX_HORAS_DIA} horas en el día (jornada + extras). Quedó guardado, pero revísalo.`, "error");
   try {
     if (guardar.length) {
       const { error } = await db.from("staff_horario_celdas").upsert(guardar);
@@ -881,8 +932,8 @@ function stfImprimirHorario() {
     const r = resumenHorario(hp);
     return `<tr><th>${escapar(hp.nombre)}<small>${escapar(hp.puesto || "")}</small></th>${fechas.map((f) => {
       const t = textoCelda(H.celdas.get(`${hp.persona_id}|${f}`), persona);
-      return `<td class="${t.clase}"><b>${t.a}</b><small>${t.b}</small></td>`;
-    }).join("")}<td><b>${r.horas} h</b><small>${r.dias} días</small></td></tr>`;
+      return `<td class="${t.clase}${t.excede ? " excede" : ""}"><b>${t.a}</b><small>${t.b}</small>${t.x ? `<em class="stf-extra">${t.excede ? "⚠ " : ""}${t.x}</em>` : ""}</td>`;
+    }).join("")}<td><b>${r.horas} h</b>${r.extra ? `<em class="stf-extra">+${horasTxt(r.extra)} h extra</em>` : ""}<small>${r.dias} días</small></td></tr>`;
   }).join("");
   stfImprimir(`
     <div class="imp-cabeza">
@@ -898,8 +949,8 @@ function stfImprimirHorario() {
     <p class="imp-pie">${h.estado === "publicado" ? "Publicado" : "Borrador"} · Impreso el ${fechaHora(new Date())} por ${escapar(app.yo.nombre)}</p>`, true);
 }
 
-const EXCEL_COLOR = { "t-trabajo": "FFE4EFE8", "t-libre": "FFE6EBEA", "t-vac": "FFE3ECF7", "t-inc": "FFFCEBDD", "t-vacia": "FFFFFFFF" };
-const EXCEL_TEXTO = { "t-trabajo": "FF1F4F38", "t-libre": "FF45535A", "t-vac": "FF24527A", "t-inc": "FF8A3B12", "t-vacia": "FF8A979C" };
+const EXCEL_COLOR = { "t-extra": "FFEFE7F7", "t-trabajo": "FFE4EFE8", "t-libre": "FFE6EBEA", "t-vac": "FFE3ECF7", "t-inc": "FFFCEBDD", "t-vacia": "FFFFFFFF" };
+const EXCEL_TEXTO = { "t-extra": "FF5B2E86", "t-trabajo": "FF1F4F38", "t-libre": "FF45535A", "t-vac": "FF24527A", "t-inc": "FF8A3B12", "t-vacia": "FF8A979C" };
 const excelBorde = { top: { style: "thin", color: { argb: "FFD5DEDA" } }, left: { style: "thin", color: { argb: "FFD5DEDA" } }, bottom: { style: "thin", color: { argb: "FFD5DEDA" } }, right: { style: "thin", color: { argb: "FFD5DEDA" } } };
 
 async function stfExcelHorario() {
@@ -918,7 +969,7 @@ async function stfExcelHorario() {
   ws.getCell(1, 1).value = `Horario ${h.nombre ? h.nombre + " — " : ""}${fechaCorta(h.desde)} al ${fechaAnio(h.hasta)}`;
   ws.getCell(1, 1).font = { bold: true, size: 14, color: { argb: "FF1F4F38" } };
   ws.mergeCells(2, 1, 2, ultimaCol);
-  ws.getCell(2, 1).value = `${h.estado === "publicado" ? "Publicado" : "Borrador"} · Generado el ${fechaHora(new Date())} · Jornada de 8 horas (la salida se calcula sola)`;
+  ws.getCell(2, 1).value = `${h.estado === "publicado" ? "Publicado" : "Borrador"} · Generado el ${fechaHora(new Date())} · Jornada de 8 horas (la salida se calcula sola, incluidas las horas extra)`;
   ws.getCell(2, 1).font = { size: 9, color: { argb: "FF5B6B72" } };
 
   const cab = ws.getRow(4);
@@ -952,17 +1003,19 @@ async function stfExcelHorario() {
     fechas.forEach((f, j) => {
       const t = textoCelda(H.celdas.get(`${hp.persona_id}|${f}`), persona);
       const c = fila.getCell(2 + j);
-      c.value = t.b ? `${t.a}\n${t.b}` : t.a;
+      c.value = [t.a, t.b, t.x ? `${t.excede ? "⚠ " : ""}${t.x}` : ""].filter(Boolean).join("\n");
       c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EXCEL_COLOR[t.clase] } };
-      c.font = { color: { argb: EXCEL_TEXTO[t.clase] }, size: 10 };
+      const color = t.x ? "t-extra" : t.clase;
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EXCEL_COLOR[color] } };
+      c.font = { color: { argb: EXCEL_TEXTO[color] }, size: 10, bold: !!t.x };
+      if (t.excede) c.border = { ...excelBorde, top: { style: "medium", color: { argb: "FFC0392B" } }, bottom: { style: "medium", color: { argb: "FFC0392B" } }, left: { style: "medium", color: { argb: "FFC0392B" } }, right: { style: "medium", color: { argb: "FFC0392B" } } };
     });
     const tot = fila.getCell(ultimaCol);
-    tot.value = `${r.horas} h\n${r.dias} días`;
+    tot.value = `${r.horas} h${r.extra ? `\n+${horasTxt(r.extra)} h extra` : ""}\n${r.dias} días`;
     tot.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     tot.font = { bold: true };
-    fila.height = 34;
-    fila.eachCell({ includeEmpty: true }, (c) => (c.border = excelBorde));
+    fila.height = r.extra ? 48 : 34;
+    fila.eachCell({ includeEmpty: true }, (c) => { if (c.border?.top?.style !== "medium") c.border = excelBorde; });
   });
   const fCob = ws.getRow(ini + H.personas.length);
   fCob.getCell(1).value = "Personas trabajando";
@@ -974,7 +1027,7 @@ async function stfExcelHorario() {
   fCob.eachCell({ includeEmpty: true }, (c) => { c.border = excelBorde; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAF8" } }; });
 
   const ley = ws.getRow(ini + 2 + H.personas.length);
-  [["Trabaja", "t-trabajo"], ["Libre", "t-libre"], ["Vacaciones", "t-vac"], ["Incapacidad", "t-inc"]].forEach(([t, k], j) => {
+  [["Trabaja", "t-trabajo"], ["+ h extra", "t-extra"], ["Libre", "t-libre"], ["Vacaciones", "t-vac"], ["Incapacidad", "t-inc"]].forEach(([t, k], j) => {
     const c = ley.getCell(2 + j);
     c.value = t; c.alignment = { horizontal: "center" };
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EXCEL_COLOR[k] } };
@@ -1010,11 +1063,22 @@ $("staffContenido").addEventListener("click", (e) => {
     },
     "marcar-todos": () => { $("staffContenido").querySelectorAll("[data-stf-sel]").forEach((x) => stf.nuevo.seleccion.add(Number(x.dataset.stfSel))); stfPintar(); },
     "quitar-todos": () => { $("staffContenido").querySelectorAll("[data-stf-sel]").forEach((x) => stf.nuevo.seleccion.delete(Number(x.dataset.stfSel))); stfPintar(); },
-    "turno": () => { stf.turnoSel = { tipo: b.dataset.tipo, entrada: b.dataset.entrada || null }; stfPintar(); },
+    "turno": () => {
+      const tipo = b.dataset.tipo;
+      // Las extras se mantienen al cambiar de hora de entrada; Libre/Vacaciones/etc. no llevan extras
+      stf.turnoSel = { tipo, entrada: b.dataset.entrada || null, extra: tipo === "trabajo" ? stf.turnoSel.extra || 0 : 0 };
+      stfPintar();
+    },
     "otra-hora": () => {
       const v = $("stfOtraHora").value;
       if (!v) return avisar("Escribe una hora de entrada.", "error");
-      stf.turnoSel = { tipo: "trabajo", entrada: v }; stfPintar();
+      stf.turnoSel = { tipo: "trabajo", entrada: v, extra: stf.turnoSel.extra || 0 }; stfPintar();
+    },
+    "extra": () => stfElegirExtra(Number(b.dataset.extra)),
+    "otra-extra": () => {
+      const v = Number(String($("stfOtraExtra").value).replace(",", "."));
+      if (!(v > 0) || v > MAX_HORAS_DIA || Math.round(v * 2) !== v * 2) return avisar(`Escribe las horas extra en medias horas (entre 0,5 y ${MAX_HORAS_DIA}).`, "error");
+      stfElegirExtra(v);
     },
     "imprimir-horario": () => stfImprimirHorario()
   };
@@ -1054,6 +1118,13 @@ $("staffContenido").addEventListener("input", (e) => {
 $("staffContenido").addEventListener("change", (e) => {
   const t = e.target;
   if (t.dataset.stfIngreso) return stfGuardarIngreso(t);
+  if (t.id === "stfSoloExtra") {
+    const sel = stf.turnoSel;
+    stf.turnoSel = t.checked
+      ? { tipo: "extra", entrada: sel.tipo === "trabajo" ? sel.entrada : null, extra: sel.extra || 0, antes: sel.tipo === "trabajo" ? sel.entrada : null }
+      : { tipo: "trabajo", entrada: sel.antes || sel.entrada || stf.turnos[0] || "08:00", extra: sel.extra || 0 };
+    return stfPintar();
+  }
   const f = stf.filtro;
   if (t.id === "stfFiltroPuesto") { f.puesto = t.value; stfPintar(); }
   if (t.id === "stfFiltroEmpresa") { f.empresa = t.value; stfPintar(); }
