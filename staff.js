@@ -949,8 +949,8 @@ function stfImprimirHorario() {
     <p class="imp-pie">${h.estado === "publicado" ? "Publicado" : "Borrador"} · Impreso el ${fechaHora(new Date())} por ${escapar(app.yo.nombre)}</p>`, true);
 }
 
-const EXCEL_COLOR = { "t-extra": "FFEFE7F7", "t-trabajo": "FFE4EFE8", "t-libre": "FFE6EBEA", "t-vac": "FFE3ECF7", "t-inc": "FFFCEBDD", "t-vacia": "FFFFFFFF" };
-const EXCEL_TEXTO = { "t-extra": "FF5B2E86", "t-trabajo": "FF1F4F38", "t-libre": "FF45535A", "t-vac": "FF24527A", "t-inc": "FF8A3B12", "t-vacia": "FF8A979C" };
+const EXCEL_COLOR = { "t-extra": "FFEFE7F7", "t-trabajo": "FFE4EFE8", "t-libre": "FFFFE27A", "t-vac": "FFE3ECF7", "t-inc": "FFFCEBDD", "t-vacia": "FFFFFFFF" };
+const EXCEL_TEXTO = { "t-extra": "FF5B2E86", "t-trabajo": "FF1F4F38", "t-libre": "FF5C4300", "t-vac": "FF24527A", "t-inc": "FF8A3B12", "t-vacia": "FF8A979C" };
 const excelBorde = { top: { style: "thin", color: { argb: "FFD5DEDA" } }, left: { style: "thin", color: { argb: "FFD5DEDA" } }, bottom: { style: "thin", color: { argb: "FFD5DEDA" } }, right: { style: "thin", color: { argb: "FFD5DEDA" } } };
 
 async function stfExcelHorario() {

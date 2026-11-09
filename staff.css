@@ -3,7 +3,7 @@
    ===================================================== */
 :root {
   --t-trabajo: #E4EFE8; --t-trabajo-tx: #1F4F38; --t-trabajo-bd: #B9D6C5;
-  --t-libre: #E6EBEA;   --t-libre-tx: #45535A;   --t-libre-bd: #CBD4D2;
+  --t-libre: #FFE27A;   --t-libre-tx: #5C4300;   --t-libre-bd: #E3B500;
   --t-vac: #E3ECF7;     --t-vac-tx: #24527A;     --t-vac-bd: #BCD0E8;
   --t-inc: #FCEBDD;     --t-inc-tx: #8A3B12;     --t-inc-bd: #EFC9AE;
   --t-extra: #EFE7F7;   --t-extra-tx: #5B2E86;   --t-extra-bd: #D3BFEA;
@@ -113,6 +113,8 @@
 .stf-sep { width: 1px; height: 26px; background: var(--linea); margin: 0 4px; }
 .t-trabajo { background: var(--t-trabajo); color: var(--t-trabajo-tx); border-color: var(--t-trabajo-bd); }
 .t-libre { background: var(--t-libre); color: var(--t-libre-tx); border-color: var(--t-libre-bd); }
+.stf-celda.t-libre { border: 2px solid var(--t-libre-bd); }
+.stf-celda.t-libre b, .stf-imp-tabla td.t-libre b { text-transform: uppercase; letter-spacing: .04em; font-weight: 800; }
 .t-vac { background: var(--t-vac); color: var(--t-vac-tx); border-color: var(--t-vac-bd); }
 .t-inc { background: var(--t-inc); color: var(--t-inc-tx); border-color: var(--t-inc-bd); }
 .t-vacia { background: var(--blanco); color: #8A979C; border: 1px dashed var(--linea) !important; }
