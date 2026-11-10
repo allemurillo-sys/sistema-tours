@@ -387,6 +387,7 @@ async function cargarTablero() {
   app.codigos = cods.error ? [] : cods.data;
   app.codigosP = sols.error ? [] : sols.data;   // solicitudes al proveedor (P00001…)
   app.proximosSinConfirmar = prox.error ? [] : prox.data.filter((a) => !["confirmado", "cancelado"].includes(a.estado_servicio || "por_solicitar"));
+  if (typeof cargarAvanceTablero === "function") await cargarAvanceTablero();
   pintarTablero();
   $("ultimaActualizacion").textContent =
     `Actualizado a las ${new Date().toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -398,7 +399,8 @@ function pintarTablero() {
     !q || nombreCompleto(c).toLowerCase().includes(q) || c.numero.toLowerCase().includes(q)
     || app.codigos.some((x) => x.cotizacion_id === c.id
       && (x.codigo_reserva.toLowerCase().includes(q) || `${c.numero}-${x.codigo_reserva}`.toLowerCase().includes(q)))
-    || (app.codigosP || []).some((x) => x.cotizacion_id === c.id && x.codigo.toLowerCase().includes(q)));
+    || (app.codigosP || []).some((x) => x.cotizacion_id === c.id && x.codigo.toLowerCase().includes(q)))
+    .filter((c) => typeof vistaRes === "undefined" || !vistaRes.soloAccion || requiereAccion(c));
 
   const columnas = COLUMNAS.filter((col) => col.id !== "cancelado" || app.verCanceladas);
   $("tablero").classList.toggle("con-canceladas", app.verCanceladas);
@@ -430,10 +432,8 @@ function htmlItem(c) {
     if (avisos) extra.push(`<span class="etiqueta alerta">${avisos} ${avisos === 1 ? "aviso pendiente" : "avisos pendientes"} a proveedores</span>`);
     if ((app.proximosSinConfirmar || []).some((a) => a.cotizacion_id === c.id)) extra.push(`<span class="etiqueta urgente">Servicio próximo sin confirmar</span>`);
   }
-  if (c.estado === "proceso") extra.push(`<span class="etiqueta">${c.enviada_en ? "Enviada" : "Sin enviar"}</span>`);
-  if (c.estado === "reserva" && Number(c.total) > 0) {
-    extra.push(`<span class="etiqueta">${Number(c.balance) > 0 ? "Balance " + dinero(c.balance) : "Pagada"}</span>`);
-  }
+  // "Enviada/Sin enviar" y el balance ahora se ven en las barras de avance y el siguiente paso
+  const avance = typeof htmlAvanceItem === "function" ? htmlAvanceItem(c) : "";
   const atiende = c.colaborador_id ? `<span>${escapar(nombrePerfil(c.colaborador_id))}</span>` : "";
 
   return `
@@ -442,6 +442,7 @@ function htmlItem(c) {
         <span class="item-nombre">${escapar(nombreCompleto(c))}</span>
         <span class="item-meta"><span>${c.numero}</span><span>${fecha(c.fecha_inicio)} al ${fecha(c.fecha_fin)}</span>${atiende}</span>
         ${extra.length ? `<span class="item-extra">${extra.join("")}</span>` : ""}
+        ${avance}
       </button>
     </li>`;
 }
@@ -616,6 +617,7 @@ function pintarDetalle() {
       </div>
     </div>`;
 
+  if (typeof htmlAvanceDetalle === "function") h += htmlAvanceDetalle(c);
   h += htmlCambiosCliente(c, bitacora);
   if (c.alerta_proveedor && typeof htmlAlertaProveedor === "function") h += htmlAlertaProveedor(c);
   if (c.estado === "cancelado") h += htmlCancelada(c);
@@ -752,22 +754,25 @@ function htmlSolicitud(solicitudes) {
 function htmlEditorActividades() {
   const { actividades, solicitudes } = app.actual;
   return `
-    <section class="det-seccion">
+    <section class="det-seccion" id="secItinerario">
       <div class="sec-cabeza">
         <h3>Itinerario y precios</h3>
         <div class="sec-botones">
           ${solicitudes.length ? `<button type="button" class="btn" data-accion="cargar-solicitud">Cargar lo que pidió el cliente</button>` : ""}
-          <button type="button" class="btn" data-accion="agregar-actividad">Agregar actividad</button>
+          <button type="button" class="btn" data-accion="agregar-actividad">+ Agregar servicio</button>
         </div>
       </div>
-      ${actividades.length ? "" : `<p class="nota">Todavía no hay actividades. Usa "Cargar lo que pidió el cliente" para empezar con su solicitud, o agrégalas una por una.</p>`}
-      <div id="listaActividades">${actividades.map(htmlActividad).join("")}</div>
+      ${actividades.length ? `<p class="nota">Toca un servicio para ver o cambiar sus datos.</p>` : `<p class="nota">Todavía no hay servicios. Usa "Cargar lo que pidió el cliente" para empezar con su solicitud, o agrégalos uno por uno.</p>`}
+      <div id="listaActividades">${typeof htmlListaPorDia === "function" ? htmlListaPorDia(actividades) : actividades.map(htmlActividad).join("")}</div>
       <div class="barra-guardar">
         <button type="button" class="btn primario" data-accion="guardar-todo">Guardar cambios</button>
       </div>
     </section>`;
 }
 
+// Tarjeta de un servicio (rediseño nov 2026): fila compacta que se despliega en
+// un resumen en palabras simples, lo que falta y cuatro secciones-pregunta.
+// Los campos conservan sus data-campo / data-p, que leerTarjeta() usa al guardar.
 function htmlActividad(a, idx) {
   const verNeto = puede("ver_utilidad");
   const serv = servicioPorId(a.servicio_id);
@@ -776,122 +781,154 @@ function htmlActividad(a, idx) {
   const manual = Array.isArray(app.opcionesTarifario) && typeof htmlSelectorTarifario === "function";
   const servicios = manual ? "" : opcionesServicios(a.servicio_id);
   const horarios = (serv?.horarios || []).map(hora);
+  const cot = app.actual.cot;
+  const vista = typeof htmlPasoAct === "function";
+  const faltas = vista ? faltasServicio(a) : [];
+  const abierta = vista ? actAbierta(a, idx) : true;
+  const paso = (n, titulo, cuerpo) => vista ? htmlPasoAct(a, idx, n, titulo, cuerpo, faltas)
+    : `<fieldset class="act-paso-simple"><legend>${titulo}</legend>${cuerpo}</fieldset>`;
 
   const filas = a.participantes.map((p) => `
     <tr data-cat="${p.categoria_id}">
       <th scope="row">${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}</th>
-      <td><input data-p="cantidad" type="number" min="0" value="${p.cantidad}" aria-label="Cantidad"></td>
-      <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio rack por persona"></td>
-      ${verNeto ? `<td><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="Neto por persona"></td>` : ""}
+      <td><input data-p="cantidad" type="number" min="0" value="${p.cantidad}" aria-label="Cuántas personas"></td>
+      <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio al cliente por persona"></td>
+      ${verNeto ? `<td class="celda-oficina"><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="El proveedor nos cobra por persona"></td>` : ""}
       <td class="num celda-subtotal">${dinero(p.cantidad * p.precio_unitario)}</td>
       <td><button type="button" class="enlace" data-accion="quitar-cat" data-cat="${p.categoria_id}">Quitar</button></td>
     </tr>`).join("");
-
   const faltantes = app.categorias.filter((c) => !a.participantes.some((p) => p.categoria_id === c.id));
-  const cot = app.actual.cot;
+
+  const paso1 = `
+    <div class="act-campos">
+      ${manual ? htmlSelectorTarifario(a) : `<label class="ancho">Actividad
+        <select data-campo="servicio_id"><option value="">Elige un servicio</option>${servicios}</select>
+      </label>`}
+      <label>Día <input data-campo="fecha" type="date" value="${a.fecha}"></label>
+      <label>Empieza
+        <input data-campo="hora_inicio" type="time" value="${a.hora_inicio}" list="horarios-${idx}">
+        <datalist id="horarios-${idx}">${horarios.map((x) => `<option value="${x}">`).join("")}</datalist>
+        ${horarios.length ? `<span class="horarios-nota">Horarios de este tour: ${horarios.join(", ")}</span>` : ""}
+      </label>
+      <label>Termina <input data-campo="hora_fin" type="time" value="${a.hora_fin}">
+        ${serv?.duracion_min ? `<span class="horarios-nota">Se calcula sola con la duración.</span>` : ""}
+      </label>
+    </div>
+    ${manual ? htmlAlertasTarifario(a) : ""}
+    <div class="caja-oficina">
+      <p class="oficina-tit">Solo para la oficina · el cliente no lo ve</p>
+      <label>¿Qué proveedor lo opera?
+        <select data-campo="operador_id">
+          <option value="">Sin proveedor</option>
+          ${app.operadores.filter((o) => o.activo || o.id === a.operador_id)
+            .map((o) => `<option value="${o.id}" ${o.id === a.operador_id ? "selected" : ""}>${escapar(o.nombre)}</option>`).join("")}
+        </select>
+      </label>
+      ${htmlCambioProveedor(a)}
+      ${cot.estado === "reserva" ? htmlConfirmacionOperador(a) : ""}
+    </div>`;
+
+  const paso2 = `
+    ${htmlTarifa(a)}
+    <div class="tabla-scroll">
+      <table class="participantes">
+        <thead><tr><th>Personas</th><th>Cuántas</th><th>Precio al cliente<br>por persona</th>${verNeto ? `<th class="celda-oficina">El proveedor nos cobra<br>por persona <span class="interno">oficina</span></th>` : ""}<th class="num">Total</th><th></th></tr></thead>
+        <tbody>${filas}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="${verNeto ? 4 : 3}">
+              <select data-accion="agregar-cat" aria-label="Agregar otro tipo de persona">
+                <option value="">+ Otro tipo de persona (estudiante, adulto mayor…)</option>
+                ${faltantes.map((c) => `<option value="${c.id}">${escapar(c.nombre)}</option>`).join("")}
+                <option value="nueva">Crear un tipo nuevo…</option>
+              </select>
+            </td>
+            <td class="num act-subtotal">${dinero(subtotal(a))}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="act-costos">${typeof htmlCostosAct === "function" ? htmlCostosAct(a) : ""}</div>
+    ${verNeto ? `<p class="horarios-nota">Lo gris es solo para la oficina.</p>` : ""}`;
+
+  const paso4 = `
+    <div class="fila-form act-pago">
+      <label>¿Cuándo paga el cliente este servicio?
+        <select data-campo="forma_pago">
+          <option value="prepago" ${a.forma_pago !== "oficina" ? "selected" : ""}>Por adelantado (prepago)</option>
+          <option value="oficina" ${a.forma_pago === "oficina" ? "selected" : ""}>En la oficina, antes del tour</option>
+        </select></label>
+      <label>Fecha límite para pagar (opcional) <input data-campo="pago_limite" type="date" value="${escapar(a.pago_limite || "")}"></label>
+    </div>
+    ${a.id && (cot.estado === "reserva" || cot.estado === "finalizado") ? `<p class="act-pagado">Pagado ${dinero(pagadoServicio(a))} · <strong>falta ${dinero(Math.max(0, saldoServicio(a)))}</strong></p>` : ""}
+    <label>Mensaje para el cliente <span class="horarios-nota">Sale en su tiquete.</span>
+      <input data-campo="notas" type="text" value="${escapar(a.notas)}" placeholder="Ej.: llevar ropa cómoda, bloqueador y repelente"></label>
+    <label>Mensaje para el proveedor <span class="horarios-nota">Sale en la solicitud que le enviamos (P).</span>
+      <input data-campo="notas_proveedor" type="text" value="${escapar(a.notas_proveedor)}" placeholder="Ej.: cliente vegetariano, llegan en carro propio"></label>`;
 
   return `
-    <article class="actividad${a._pendiente ? " pendiente" : ""}" data-idx="${idx}">
-      <div class="act-cabeza">
-        <p class="act-titulo">${escapar(serv?.nombre ?? "Actividad nueva")}
-          ${a.codigo_reserva ? `<span class="act-codigo" title="Código de reserva">${escapar(cot.numero)}-${escapar(a.codigo_reserva)}</span>` : ""}
-          ${a.operador_confirmado ? `<span class="act-confirmada">Confirmada con el operador</span>` : ""}
-          ${a.tarifa_tipo === "pendiente" ? `<span class="act-sin-tarifa">Tarifa pendiente</span>` : ""}</p>
-        <span class="act-estado">${a._pendiente ? "Cambios sin guardar" : ""}</span>
-        <button type="button" class="enlace peligro" data-accion="eliminar-act">Eliminar</button>
-      </div>
-      <div class="act-campos">
-        ${manual ? htmlSelectorTarifario(a) : `<label>Servicio
-          <select data-campo="servicio_id"><option value="">Elige un servicio</option>${servicios}</select>
-        </label>`}
-        <label>Fecha <input data-campo="fecha" type="date" value="${a.fecha}"></label>
-        <label>Hora de inicio
-          <input data-campo="hora_inicio" type="time" value="${a.hora_inicio}" list="horarios-${idx}">
-          <datalist id="horarios-${idx}">${horarios.map((x) => `<option value="${x}">`).join("")}</datalist>
-          ${horarios.length ? `<span class="horarios-nota">Habituales: ${horarios.join(", ")}</span>` : ""}
-        </label>
-        <label>Hora de fin <input data-campo="hora_fin" type="time" value="${a.hora_fin}"></label>
-        <label class="ancho">Operador <span class="interno">interno</span>
-          <select data-campo="operador_id">
-            <option value="">Sin operador</option>
-            ${app.operadores.filter((o) => o.activo || o.id === a.operador_id)
-              .map((o) => `<option value="${o.id}" ${o.id === a.operador_id ? "selected" : ""}>${escapar(o.nombre)}</option>`).join("")}
-          </select>
-        </label>
-      </div>
-      ${manual ? htmlAlertasTarifario(a) : ""}
-      ${htmlTarifa(a)}
-      ${cot.estado === "reserva" ? htmlConfirmacionOperador(a) : ""}
-      ${htmlTransporte(a)}
-      <div class="tabla-scroll">
-        <table class="participantes">
-          <thead><tr><th>Tipo de cliente</th><th>Cantidad</th><th>Rack c/u</th>${verNeto ? `<th>Neto c/u <span class="interno">interno</span></th>` : ""}<th class="num">Subtotal</th><th></th></tr></thead>
-          <tbody>${filas}</tbody>
-          <tfoot>
-            <tr>
-              <td colspan="${verNeto ? 4 : 3}">
-                <select data-accion="agregar-cat" aria-label="Agregar tipo de cliente">
-                  <option value="">+ Agregar tipo de cliente</option>
-                  ${faltantes.map((c) => `<option value="${c.id}">${escapar(c.nombre)}</option>`).join("")}
-                  <option value="nueva">Crear un tipo nuevo…</option>
-                </select>
-              </td>
-              <td class="num act-subtotal">${dinero(subtotal(a))}</td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <label>Notas para el cliente (aparecen en el tiquete) <input data-campo="notas" type="text" value="${escapar(a.notas)}" placeholder="Ej.: llevar ropa cómoda, bloqueador y repelente"></label>
-      <label>Notas para el proveedor (aparecen en la solicitud P) <input data-campo="notas_proveedor" type="text" value="${escapar(a.notas_proveedor)}" placeholder="Ej.: cliente vegetariano, llegan en carro propio"></label>
-      <div class="fila-form act-pago">
-        <label>Forma de pago acordada
-          <select data-campo="forma_pago">
-            <option value="prepago" ${a.forma_pago !== "oficina" ? "selected" : ""}>Prepago</option>
-            <option value="oficina" ${a.forma_pago === "oficina" ? "selected" : ""}>Pago en oficina antes del tour</option>
-          </select></label>
-        <label>Fecha límite de pago (opcional) <input data-campo="pago_limite" type="date" value="${escapar(a.pago_limite || "")}"></label>
-        ${a.id && (cot.estado === "reserva" || cot.estado === "finalizado") ? `<span class="nota">Pagado ${dinero(pagadoServicio(a))} · saldo ${dinero(Math.max(0, saldoServicio(a)))}</span>` : ""}
+    <article class="actividad${a._pendiente ? " pendiente" : ""}${abierta ? " abierta" : ""}" data-idx="${idx}">
+      ${vista ? htmlFilaActividad(a, idx, faltas) : ""}
+      <div class="act-cuerpo" ${abierta ? "" : "hidden"}>
+        <div class="act-cabeza">
+          <p class="act-titulo">${escapar(serv?.nombre ?? "Servicio nuevo")}
+            ${a.codigo_reserva ? `<span class="act-codigo" title="Código de reserva">${escapar(cot.numero)}-${escapar(a.codigo_reserva)}</span>` : ""}
+            ${a.operador_confirmado ? `<span class="act-confirmada">Confirmada con el proveedor</span>` : ""}</p>
+          <span class="act-estado">${a._pendiente ? "Cambios sin guardar" : ""}</span>
+          <button type="button" class="enlace peligro" data-accion="eliminar-act">Eliminar servicio</button>
+        </div>
+        ${vista ? `<div class="act-explica">${htmlExplicaServicio(a)}</div><div class="act-faltas-caja">${htmlFaltasServicio(faltas)}</div>` : ""}
+        ${paso(1, "¿Qué actividad y cuándo?", paso1)}
+        ${paso(2, "¿Quiénes van y cuánto cuesta?", paso2)}
+        ${paso(3, "¿Cómo llegan?", htmlTransporte(a))}
+        ${paso(4, "¿Cómo paga y qué hay que avisar?", paso4)}
       </div>
     </article>`;
 }
 
-// Tarifa de la temporada: TC, Cash o Manual, y los otros proveedores de la misma actividad
+// ¿Qué precio se usa? TC, Efectivo (Cash) o Manual, con la tarifa de la temporada
 function htmlTarifa(a) {
-  if (!a.servicio_id) return "";
+  if (!a.servicio_id) return `<p class="nota">Primero elige la actividad en "¿Qué actividad y cuándo?".</p>`;
   const t = tarifaDe(a);
   const conPrecios = tienePrecios(t);
   const cash = tieneCash(t);
   const tipo = a.tarifa_tipo || "manual";
   const opciones = [
-    ["tc", "TC (tarjeta)", !conPrecios],
-    ["cash", cash ? "Cash" : "Cash (no la ofrece)", !conPrecios || !cash],
-    ["manual", "Manual", false]
+    ["tc", "Tarjeta (TC): precio del Tarifario", !conPrecios],
+    ["cash", cash ? "Efectivo (Cash): precio del Tarifario" : "Efectivo (este proveedor no lo ofrece)", !conPrecios || !cash],
+    ["manual", "Manual: tú escribes el precio", false]
   ].map(([v, txt, off]) => `<option value="${v}" ${v === tipo ? "selected" : ""} ${off && v !== tipo ? "disabled" : ""}>${txt}</option>`).join("")
-    + (tipo === "pendiente" ? `<option value="pendiente" selected>Tarifa pendiente</option>` : "");
+    + (tipo === "pendiente" ? `<option value="pendiente" selected>Sin tarifa (pendiente)</option>` : "");
 
   let info;
   if (!t) info = `<span class="nota">Consultando la tarifa…</span>`;
-  else if (!t.tarifario) info = `<span class="act-aviso">Este servicio no viene del Tarifario: no tiene tarifa. Escribe el precio y deja la tarifa en Manual.</span>`;
-  else if (!conPrecios) info = `<span class="act-aviso">No hay tarifa aprobada para el ${escapar(fecha(a.fecha, { day: "numeric", month: "long", year: "numeric" }))}: <strong>tarifa pendiente</strong>. Consulta el precio con el operador, escríbelo y elige Manual.</span>`;
+  else if (!t.tarifario) info = `<span class="act-aviso">Esta actividad no viene del Tarifario: escribe el precio a mano y deja "Manual".</span>`;
+  else if (!conPrecios) info = `<span class="act-aviso"><strong>El Tarifario no tiene precio para el ${escapar(fecha(a.fecha, { day: "numeric", month: "long", year: "numeric" }))}.</strong> Pregúntale al proveedor, escribe el precio abajo y elige "Manual".</span>`;
   else {
     const temporadas = [...new Set(t.precios.map((p) => p.temporada).filter(Boolean))].join(", ");
-    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}: TC ${dinero(p.tc)}${p.cash != null ? ` · Cash ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">neto ${dinero(p.neto)}</span>` : ""}`).join("<br>");
-    info = `<span class="nota">Temporada ${escapar(temporadas)}${t.precios.some((p) => p.colones) ? " · tarifa en colones convertida a dólares" : ""}</span><br>${lista}`;
+    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">nos cobra ${dinero(p.neto)}</span>` : ""}`).join("<br>");
+    info = `<span class="nota">Precios del Tarifario para esa fecha (temporada ${escapar(temporadas)})${t.precios.some((p) => p.colones) ? " · tarifa en colones convertida a dólares" : ""}:</span><br>${lista}`;
   }
-  const alt = t?.alternativas || [];
   return `
     <div class="act-tarifa${tipo === "pendiente" ? " sin-tarifa" : ""}">
-      <label>Tarifa <select data-campo="tarifa_tipo">${opciones}</select></label>
+      <label>¿Qué precio se usa? <select data-campo="tarifa_tipo">${opciones}</select></label>
       <p class="act-tarifa-info">${info}</p>
-      ${alt.length ? `
-        <label>Cambiar de proveedor <span class="interno">interno</span>
-          <select data-accion="cambiar-proveedor">
-            <option value="">${escapar(nombreOperador(a.operador_id)) || "Proveedor actual"} (actual)</option>
-            ${alt.map((x) => `<option value="${x.servicio_id}">${escapar(x.operador)} · ${escapar(x.nombre)}${x.visible ? "" : " (oculto para clientes)"}</option>`).join("")}
-          </select>
-        </label>` : ""}
     </div>`;
+}
+
+// Otros proveedores que ofrecen la misma actividad (solo oficina)
+function htmlCambioProveedor(a) {
+  if (!a.servicio_id) return "";
+  const alt = tarifaDe(a)?.alternativas || [];
+  if (!alt.length) return "";
+  return `
+    <label>Cambiar a otro proveedor que también la ofrece
+      <select data-accion="cambiar-proveedor">
+        <option value="">${escapar(nombreOperador(a.operador_id)) || "Proveedor actual"} (actual)</option>
+        ${alt.map((x) => `<option value="${x.servicio_id}">${escapar(x.operador)} · ${escapar(x.nombre)}${x.visible ? "" : " (oculto para clientes)"}</option>`).join("")}
+      </select>
+    </label>`;
 }
 
 // Confirmación de la actividad con el operador (solo en Reserva; el número es de uso interno)
@@ -901,54 +938,63 @@ function htmlConfirmacionOperador(a) {
   return `
     <div class="act-confirmacion">
       ${a.operador_confirmado
-        ? `<span class="act-confirmada">Confirmada con el operador${a.operador_confirmacion ? ` · N.º ${escapar(a.operador_confirmacion)}` : ""}</span>`
-        : `<span class="act-sin-tarifa">Sin confirmar con el operador</span>`}
+        ? `<span class="act-confirmada">Confirmada con el proveedor${a.operador_confirmacion ? ` · N.º ${escapar(a.operador_confirmacion)}` : ""}</span>`
+        : `<span class="act-sin-tarifa">Sin confirmar con el proveedor</span>`}
       ${sol ? `<span class="etiqueta">${escapar(sol.codigo)}</span>` : ""}
-      <span class="nota">Se registra en "Solicitudes a proveedores".</span>
+      <span class="nota">Se confirma en "Solicitudes a proveedores".</span>
     </div>`;
 }
 
+const TRANSPORTE_OPCIONES = {
+  sin_transporte: "No: llegan por su cuenta",
+  incluido: "Incluido: ya va en el precio",
+  opcional: "Opcional: el cliente decide si lo quiere"
+};
+
 function htmlTransporte(a) {
   const modo = a.transporte_modo;
-  const opciones = Object.entries(MODOS_TRANSPORTE)
+  const opciones = Object.entries(TRANSPORTE_OPCIONES)
     .map(([k, v]) => `<option value="${k}" ${k === modo ? "selected" : ""}>${v}</option>`).join("");
 
   let campos = "";
   if (modo !== "sin_transporte") {
     campos += `
       <div class="trans-campos">
-        <label class="ancho">Pick up (lugar de recogida) <input data-campo="lugar_recogida" type="text" value="${escapar(a.lugar_recogida)}"></label>
-        <label>Hora de pick up <input data-campo="hora_recogida" type="time" value="${a.hora_recogida}"></label>
-        <label class="ancho">Drop off (lugar de dejada) <input data-campo="lugar_dejada" type="text" value="${escapar(a.lugar_dejada)}"></label>
-      </div>
-      ${puede("ver_utilidad") ? `
-      <div class="trans-campos">
-        <label>Costo neto del transporte <span class="interno">interno</span>
-          <input data-campo="transporte_neto" type="number" min="0" step="0.01" value="${a.transporte_neto || 0}">
-        </label>
-      </div>` : ""}`;
+        <label class="ancho">¿Dónde lo recogen? <input data-campo="lugar_recogida" type="text" value="${escapar(a.lugar_recogida)}"></label>
+        <label>¿A qué hora lo recogen? <input data-campo="hora_recogida" type="time" value="${a.hora_recogida}"></label>
+        <label class="ancho">¿Dónde lo dejan? <input data-campo="lugar_dejada" type="text" value="${escapar(a.lugar_dejada)}"></label>
+      </div>`;
   }
   if (modo === "opcional") {
     campos += `
       <div class="trans-campos">
-        <label>Costo del transporte (total) <input data-campo="transporte_costo" type="number" min="0" step="0.01" value="${a.transporte_costo}"></label>
-        <label class="ancho">Respuesta del cliente
+        <label>Costo del transporte para el cliente (total) <input data-campo="transporte_costo" type="number" min="0" step="0.01" value="${a.transporte_costo}">
+          <span class="horarios-nota">Deja 0 si es gratis.</span></label>
+        <label class="ancho">¿El cliente lo quiere?
           <select data-campo="transporte_respuesta">
-            <option value="" ${!a.transporte_respuesta ? "selected" : ""}>Pendiente de respuesta</option>
-            <option value="si" ${a.transporte_respuesta === "si" ? "selected" : ""}>Sí requiere transporte</option>
-            <option value="no" ${a.transporte_respuesta === "no" ? "selected" : ""}>No requiere transporte</option>
+            <option value="" ${!a.transporte_respuesta ? "selected" : ""}>Todavía no ha dicho</option>
+            <option value="si" ${a.transporte_respuesta === "si" ? "selected" : ""}>Sí lo quiere</option>
+            <option value="no" ${a.transporte_respuesta === "no" ? "selected" : ""}>No lo quiere</option>
           </select>
+          <span class="horarios-nota">El cliente también puede elegirlo en su enlace. Si te responde por otro medio, anótalo aquí.</span>
         </label>
-      </div>
-      <p class="horarios-nota">Deja el costo en 0 si el transporte no tiene costo. El cliente lo elige en el enlace de su cotización; si te responde por otro medio, anótalo aquí.</p>`;
+      </div>`;
+  }
+  if (modo !== "sin_transporte" && puede("ver_utilidad")) {
+    campos += `
+      <div class="caja-oficina">
+        <p class="oficina-tit">Solo para la oficina</p>
+        <label>El transporte nos cuesta
+          <input data-campo="transporte_neto" type="number" min="0" step="0.01" value="${a.transporte_neto || 0}">
+        </label>
+      </div>`;
   }
 
   return `
-    <fieldset class="transporte">
-      <legend>Transporte</legend>
-      <label class="trans-modo">Tipo de transporte <select data-campo="transporte_modo">${opciones}</select></label>
+    <div class="transporte">
+      <label class="trans-modo">¿Lleva transporte? <select data-campo="transporte_modo">${opciones}</select></label>
       ${campos}
-    </fieldset>`;
+    </div>`;
 }
 
 function htmlActividadesLectura() {
@@ -1028,6 +1074,7 @@ function pintarTotales() {
   }
   if (actividades.some((a) => a._pendiente)) h += `<p class="nota">Hay cambios sin guardar; el total ya los incluye.</p>`;
   cont.innerHTML = h + "</div>";
+  if (typeof refrescarAvance === "function") refrescarAvance();
 }
 
 function enlaceCliente(c) {
@@ -1053,7 +1100,7 @@ function htmlEnvio(c) {
   }
 
   return `
-    <section class="det-seccion">
+    <section class="det-seccion" id="secEnvio">
       <h3>Enviar al cliente</h3>
       <p>${c.enviada_en
         ? `Lista para el cliente desde el ${fechaHora(c.enviada_en)}. El enlace siempre muestra la versión guardada más reciente; si hiciste cambios importantes, vuelve a avisarle.`
@@ -1079,7 +1126,7 @@ function htmlPagos(c, editable) {
     </tr>`).join("");
 
   return `
-    <section class="det-seccion">
+    <section class="det-seccion" id="secPagos">
       <h3>Pagos</h3>
       ${editable ? `
         <div class="fila-form">
@@ -1392,6 +1439,7 @@ function marcarPendiente(card) {
     tr.querySelector(".celda-subtotal").textContent = dinero(p.cantidad * p.precio_unitario);
   });
   card.querySelector(".act-subtotal").textContent = dinero(subtotal(a));
+  if (typeof refrescarActividad === "function") refrescarActividad(card, a);
   pintarTotales();
 }
 
@@ -1666,7 +1714,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
       sincronizar();
       app.actual.actividades.push(nuevaActividad());
       pintarDetalle();
-      document.querySelector(".actividad:last-of-type")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector(`.actividad[data-idx="${app.actual.actividades.length - 1}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       break;
 
     case "cargar-solicitud": {

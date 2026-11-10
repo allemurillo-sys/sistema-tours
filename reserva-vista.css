@@ -1,0 +1,138 @@
+/* =====================================================
+   REDISEÑO DE RESERVAS (nov 2026): tarjeta de servicio,
+   avance del detalle y avance en el tablero
+   ===================================================== */
+
+.rv-chip {
+  display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 10px;
+  font-size: .8rem; font-weight: 700; white-space: nowrap; line-height: 1.5;
+}
+.rv-chip.ok { background: var(--verde-suave); color: var(--verde-hondo); }
+.rv-chip.espera { background: var(--amarillo-suave); color: #6B4E00; }
+.rv-chip.falta { background: var(--alerta-fondo); color: var(--alerta); }
+.rv-chip.neutro { background: #E6EBEA; color: #3E4C52; }
+
+.det-seccion .btn.chico, .rv-avance .btn.chico { padding: 6px 12px; font-size: .88rem; min-height: 36px; }
+
+/* ---------- Avance y "Lo que falta" ---------- */
+.rv-avance { display: grid; gap: 18px; }
+.rv-pasos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.rv-paso { display: grid; gap: 5px; }
+.rv-paso-tit { font-size: .9rem; font-weight: 700; }
+.rv-paso.listo .rv-paso-tit { color: var(--verde-hondo); }
+.rv-paso-txt { font-size: .85rem; color: var(--gris); }
+.rv-pista { display: flex; height: 6px; border-radius: 4px; background: var(--linea); overflow: hidden; }
+.rv-pista > span { background: var(--amarillo); }
+.rv-paso.listo .rv-pista > span, .rv-mini.listo .rv-pista > span { background: var(--verde); }
+
+.rv-falta { border: 2px solid var(--amarillo); border-radius: 12px; padding: 14px 16px; }
+.rv-falta.vacio { border-color: var(--verde-suave); }
+.rv-falta h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px !important; }
+.rv-falta ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.rv-falta li {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 0; border-top: 1px solid var(--linea);
+}
+.rv-falta li:first-child { border-top: 0; }
+.rv-falta li > span { flex: 1 1 260px; }
+.rv-falta li.neutro > span { color: var(--gris); }
+
+/* ---------- Itinerario por día ---------- */
+.act-dia {
+  font-family: var(--titulos); font-size: 1rem; margin: 18px 0 8px !important; text-transform: capitalize;
+  padding-bottom: 4px; border-bottom: 1px solid var(--linea);
+}
+.act-dia:first-child { margin-top: 4px !important; }
+
+/* ---------- Tarjeta del servicio ---------- */
+.actividad { padding: 0; overflow: hidden; margin-bottom: 8px; }
+.actividad.abierta { box-shadow: 0 8px 22px -16px rgba(35, 52, 61, .55); }
+.act-fila {
+  width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; background: transparent; border: 0;
+  display: grid; grid-template-columns: 82px minmax(0, 1fr) auto auto 20px; gap: 12px; align-items: center;
+  padding: 12px 14px; min-height: 56px;
+}
+.act-fila:hover { background: var(--fondo); }
+.act-fila:focus-visible { outline: 3px solid var(--verde); outline-offset: -3px; }
+.act-fila-cuando, .act-fila-que { display: grid; min-width: 0; }
+.act-fila-cuando small, .act-fila-que small { color: var(--gris); font-size: .82rem; }
+.act-fila-que strong, .act-fila-que small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-fila-chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 360px; }
+.act-fila-total { font-weight: 700; font-variant-numeric: tabular-nums; }
+.act-fila-flecha { color: var(--gris); }
+.abierta > .act-fila { border-bottom: 1px solid var(--linea); }
+
+.act-cuerpo { padding: 14px 16px 16px; display: grid; gap: 12px; }
+.act-cuerpo .act-cabeza { margin: 0; }
+.act-explica { background: var(--fondo); border-radius: 10px; padding: 12px 14px; font-size: 1.02rem; line-height: 1.5; }
+.act-explica p { margin: 0 !important; }
+.act-explica .act-explica-oficina { margin-top: 4px !important; font-size: .85rem; color: #3E4C52; }
+
+.act-faltas { border: 2px solid #E8A87C; border-radius: 10px; padding: 10px 14px; }
+.act-faltas > strong { color: var(--alerta); }
+.act-faltas ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.act-faltas li { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.act-faltas li > span { flex: 1 1 240px; }
+
+.act-paso { border: 1px solid var(--linea); border-radius: 10px; background: var(--blanco); }
+.act-paso-cab {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 10px 14px; min-height: 52px;
+}
+.act-paso-cab::-webkit-details-marker { display: none; }
+.act-paso-cab::after { content: "▾"; color: var(--gris); margin-left: 4px; }
+.act-paso[open] > .act-paso-cab::after { content: "▴"; }
+.act-paso-cab:focus-visible { outline: 3px solid var(--verde); outline-offset: -3px; border-radius: 10px; }
+.act-num {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 700; font-size: .9rem; color: #fff; background: var(--verde);
+}
+.act-num.falta { background: #C2571F; }
+.act-paso-txt { flex: 1; min-width: 0; display: grid; }
+.act-paso-tit { font-family: var(--titulos); font-weight: 700; font-size: 1rem; }
+.act-paso-res { font-size: .85rem; color: var(--gris); }
+.act-paso-cuerpo { padding: 14px; border-top: 1px solid var(--linea); display: grid; gap: 12px; }
+.act-paso-cuerpo .act-campos { margin: 0; }
+.act-paso-cuerpo .act-tarifa { margin: 0; grid-template-columns: minmax(240px, 300px) 1fr; }
+@media (max-width: 640px) { .act-paso-cuerpo .act-tarifa { grid-template-columns: 1fr; } }
+.act-paso-cuerpo .transporte { border: 0; background: none; padding: 0; margin: 0; }
+.act-paso-cuerpo .fila-form { margin: 0; }
+.act-paso-cuerpo .participantes { margin: 0; }
+.act-paso-simple { border: 1px solid var(--linea); border-radius: 10px; padding: 12px; }
+
+.caja-oficina {
+  background: #F2F4F4; border: 1px dashed #9AA8AD; border-radius: 10px; padding: 12px; display: grid; gap: 10px;
+}
+.caja-oficina .oficina-tit {
+  margin: 0 !important; font-size: .75rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #3E4C52;
+}
+.caja-oficina .act-confirmacion { margin: 0; }
+.participantes .celda-oficina { background: #F2F4F4; }
+
+.act-costos { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.act-costos > div { background: var(--verde-suave); border-radius: 8px; padding: 8px 10px; display: grid; text-align: center; }
+.act-costos > div.oficina { background: #F2F4F4; }
+.act-costos span { font-size: .82rem; color: #3E4C52; }
+.act-costos strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.act-pagado { background: var(--fondo); border-radius: 8px; padding: 8px 12px; margin: 0 !important; }
+
+/* ---------- Tablero ---------- */
+.rv-minis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.rv-mini { display: grid; gap: 3px; font-size: .75rem; color: #3E4C52; }
+.rv-mini .rv-pista { height: 5px; }
+.rv-siguiente { display: block; margin-top: 6px; font-size: .82rem; font-weight: 700; border-radius: 6px; padding: 4px 8px; }
+.rv-siguiente.ok { background: var(--verde-suave); color: var(--verde-hondo); }
+.rv-siguiente.espera { background: var(--amarillo-suave); color: #6B4E00; }
+.rv-siguiente.falta { background: var(--alerta-fondo); color: var(--alerta); }
+.rv-siguiente.neutro { background: #E6EBEA; color: #3E4C52; }
+
+@media (max-width: 800px) {
+  .act-fila { grid-template-columns: 64px minmax(0, 1fr) auto 18px; }
+  .act-fila-chips { grid-column: 2 / -1; grid-row: 2; justify-content: flex-start; max-width: none; }
+  .act-fila-total { grid-column: 3; grid-row: 1; }
+  .act-fila-flecha { grid-column: 4; grid-row: 1; }
+}
+
+@media print {
+  .rv-avance, .act-fila { display: none !important; }
+}
+.act-num.neutro { background: #9AA8AD; }
