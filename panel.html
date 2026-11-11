@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="panel.css?v=23">
   <link rel="stylesheet" href="tarifario.css?v=27">
   <link rel="stylesheet" href="chat.css?v=1">
-  <link rel="stylesheet" href="staff.css?v=6">
+  <link rel="stylesheet" href="staff.css?v=7">
   <link rel="stylesheet" href="reserva-vista.css?v=1">
 </head>
 <body class="panel">
@@ -53,6 +53,7 @@
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
         <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
         <button type="button" class="menu-btn" data-vista="staff">Staff</button>
+        <button type="button" class="menu-btn" data-vista="permisos" id="btnMenuPermisos" hidden>Permisos <span id="permMenuCuenta" class="menu-cuenta" hidden></span></button>
         <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
         <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
         <button type="button" class="menu-btn salir" id="btnSalir">Salir</button>
@@ -122,6 +123,14 @@
       </div>
     </section>
 
+    <!-- Permisos y vencimientos (solo administradores) -->
+    <section id="vistaPermisos" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Permisos y vencimientos</h1>
+        <div id="permContenido"></div>
+      </div>
+    </section>
+
     <!-- Ventas y cuentas por pagar (solo administrador) -->
     <section id="vistaFinanzas" class="vista" hidden>
       <div class="catalogo">
@@ -170,6 +179,9 @@
   <!-- Ventana de Staff (ficha de colaborador, rebajos) -->
   <div id="staffModal" class="detalle-fondo" hidden></div>
 
+  <!-- Ventana de Permisos (ficha, renovación) -->
+  <div id="permModal" class="detalle-fondo" hidden></div>
+
   <!-- Ventanas del chat (nuevo chat, grupos, Mi perfil, compartir) -->
   <div id="chatModal" class="chat-modal-fondo" hidden></div>
 
@@ -193,5 +205,6 @@
   <script src="chat.js?v=2"></script>
   <script src="staff.js?v=8"></script>
   <script src="planilla.js?v=2"></script>
+  <script src="permisos.js?v=1"></script>
 </body>
 </html>

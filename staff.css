@@ -264,3 +264,38 @@ body.solo-horario [data-staff="planilla"] { display: none !important; }
   .stf-doc { flex-wrap: wrap; }
   .stf-doc-acciones { width: 100%; justify-content: flex-start; }
 }
+
+/* Permisos y vencimientos */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.perm-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.perm-cifras .fin-cifra { font: inherit; text-align: left; cursor: pointer; color: inherit; }
+.perm-cifras .fin-cifra:hover { border-color: var(--verde); }
+.perm-cifras .fin-cifra.activa { box-shadow: 0 0 0 2px var(--verde) inset; }
+.perm-cifras .perm-aviso strong { color: #8a6200; }
+.perm-estado { display: inline-block; font-size: .78rem; font-weight: 700; border-radius: 999px; padding: 2px 10px; white-space: nowrap; background: var(--fondo); }
+.perm-estado.alerta { background: var(--alerta-fondo); color: var(--alerta); }
+.perm-estado.aviso { background: #FBF1D6; color: #6E4F05; }
+.perm-estado.ok { background: var(--verde-suave); color: var(--verde-hondo); }
+.perm-estado.gris { background: #E6EBEA; color: #45535A; }
+.perm-tabla td { vertical-align: middle; }
+.perm-tabla .perm-nombre .enlace { text-align: left; padding: 0; }
+.perm-tabla small { display: block; color: var(--gris); font-size: .82rem; }
+.perm-tabla .perm-vence { white-space: nowrap; }
+.perm-tabla tr.perm-vencido td { background: #fdf3f1; }
+.perm-tabla tr.perm-vencido .perm-vence small { color: var(--alerta); font-weight: 700; }
+.perm-tabla tr.perm-por_vencer .perm-vence small { color: #8a6200; font-weight: 700; }
+.perm-acciones { white-space: nowrap; text-align: right; }
+.perm-acciones .btn { padding: 6px 12px; }
+.perm-sub { margin: 4px 0 0; color: var(--pizarra); }
+#vistaPermisos .tabla-scroll { max-width: 100%; margin-bottom: 12px; }
+.perm-zona-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+@media (max-width: 640px) {
+  #vistaPermisos .catalogo { padding: 16px; }
+  .perm-cifras { grid-template-columns: repeat(2, 1fr); }
+  .perm-tabla th:nth-child(1), .perm-tabla td:nth-child(1),
+  .perm-tabla th:nth-child(3), .perm-tabla td:nth-child(3), .perm-tabla th:nth-child(4), .perm-tabla td:nth-child(4),
+  .perm-tabla th:nth-child(6), .perm-tabla td:nth-child(6) { display: none; }
+  .perm-acciones { white-space: normal; }
+  .perm-acciones .btn { display: block; width: 100%; margin: 2px 0; }
+  .stf-herramientas select, .stf-herramientas input[type="search"] { width: 100%; max-width: none; }
+}
