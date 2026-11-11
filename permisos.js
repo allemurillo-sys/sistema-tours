@@ -24,6 +24,7 @@ const PERM_ACEPTA = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx";
 const PERM_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
   doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
 const PERM_MAX = 10 * 1024 * 1024;
+const PERM_AVISO_DIAS = 14;   // todos los permisos avisan dos semanas antes de vencer
 
 const perm = {
   cargado: false,
@@ -49,7 +50,7 @@ function permEstado(p) {
   if (!p.activo) return { clave: "inactivo", texto: "Inactivo", clase: "gris", dias: null };
   const dias = permDias(p.vence);
   if (dias < 0) return { clave: "vencido", texto: "Vencido", clase: "alerta", dias };
-  if (dias <= (Number(p.avisar_dias) || 0)) return { clave: "por_vencer", texto: "Por vencer", clase: "aviso", dias };
+  if (dias <= PERM_AVISO_DIAS) return { clave: "por_vencer", texto: "Por vencer", clase: "aviso", dias };
   return { clave: "al_dia", texto: "Al día", clase: "ok", dias };
 }
 function permFalta(dias) {
@@ -182,7 +183,7 @@ function permPintar() {
         <tbody>${filas}</tbody>
       </table></div>`
     : `<p class="nota perm-vacio">${perm.lista.length ? "No hay permisos con ese filtro." : "Todavía no hay permisos registrados. Toca «+ Nuevo permiso» para agregar la patente, el permiso de salud, el mantenimiento de un vehículo, etc."}</p>`}
-    <p class="nota">Cada permiso empieza a aparecer como «Por vencer» según los días de aviso que tenga (30 por defecto). El número rojo del menú cuenta los vencidos y por vencer. Solo los administradores ven esta sección.</p>`;
+    <p class="nota">Cada permiso pasa a «Por vencer» dos semanas (14 días) antes de su fecha de vencimiento. El número rojo del menú cuenta los vencidos y por vencer. Solo los administradores ven esta sección.</p>`;
   window.scrollTo(window.scrollX, y);
 }
 
@@ -233,11 +234,10 @@ function htmlPermFicha(p) {
         </div>
       </div>
       <div class="det-seccion">
-        <h3>Vencimiento y avisos</h3>
+        <h3>Vencimiento</h3>
         <div class="fila">
           <label>Fecha de vencimiento <input name="vence" type="date" value="${v("vence")}" required></label>
           <label>Se renueva <select name="periodicidad_meses">${Object.entries(PERM_PERIODOS).map(([k, t]) => `<option value="${k}" ${String(p.periodicidad_meses ?? "") === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-          <label>Avisar con (días de anticipación) <input name="avisar_dias" type="number" min="0" max="365" step="1" value="${p.avisar_dias ?? 30}"></label>
         </div>
         <label>Notas <textarea name="notas" rows="2" placeholder="Requisitos, kilometraje del próximo mantenimiento, contacto del trámite…">${escapar(p.notas || "")}</textarea></label>
         ${nuevo ? `<label>Documento actual (opcional: PDF, foto o Word, máx. 10 MB) <input name="archivo" type="file" accept="${PERM_ACEPTA}"></label>` : ""}
@@ -259,12 +259,11 @@ function permValoresFicha() {
   const d = Object.fromEntries(new FormData($("permFicha")).entries());
   if (!d.nombre?.trim()) { avisar("Escribe el nombre del permiso.", "error"); return null; }
   if (!d.vence) { avisar("Indica la fecha de vencimiento.", "error"); return null; }
-  const avisarDias = Math.max(0, Math.min(365, Math.round(Number(d.avisar_dias) || 0)));
   return {
     datos: {
       nombre: d.nombre.trim(), categoria: d.categoria || "otro", empresa: d.empresa || "Ambas",
       referencia: d.referencia?.trim() || null, institucion: d.institucion?.trim() || null, responsable: d.responsable?.trim() || null,
-      vence: d.vence, periodicidad_meses: d.periodicidad_meses ? Number(d.periodicidad_meses) : null, avisar_dias: avisarDias,
+      vence: d.vence, periodicidad_meses: d.periodicidad_meses ? Number(d.periodicidad_meses) : null, avisar_dias: PERM_AVISO_DIAS,
       notas: d.notas?.trim() || null, actualizado_en: new Date().toISOString()
     },
     archivo: $("permFicha").querySelector('input[type="file"]')?.files[0] || null
@@ -463,7 +462,7 @@ $("permContenido").addEventListener("click", (e) => {
   const b = e.target.closest("[data-perm-accion]");
   if (!b) return;
   const a = b.dataset.permAccion;
-  if (a === "nuevo") return permAbrirModal(htmlPermFicha({ activo: true, categoria: "patente", empresa: "Ambas", avisar_dias: 30, periodicidad_meses: 12 }));
+  if (a === "nuevo") return permAbrirModal(htmlPermFicha({ activo: true, categoria: "patente", empresa: "Ambas", periodicidad_meses: 12 }));
   if (a === "abrir") return permAbrirFicha(b.dataset.id);
   if (a === "renovar") return permAbrirModal(htmlPermRenovar(permPorId(b.dataset.id)));
   if (a === "ver-pendientes") { perm.filtro.estado = "pendientes"; return permPintar(); }
