@@ -390,7 +390,135 @@ function htmlFicha(p) {
         <div class="fila">${conceptos.map((c) => `<label>${escapar(c.nombre)} (₡) <input name="rebajo_${escapar(c.clave)}" type="number" min="0" step="100" value="${Number(pr.rebajos_fijos?.[c.clave]) || 0}"></label>`).join("")}</div>` : ""}
         <label>Notas internas <textarea name="notas" rows="3" placeholder="Observaciones privadas">${escapar(pr.notas || "")}</textarea></label>
       </div>` : ""}
-    </form>`;
+    </form>
+    ${admin && !nuevo ? `<div class="det-seccion stf-privado" id="stfExpediente"><h3>Expediente y documentos <span class="stf-chip alerta">Solo administradores</span></h3><p class="nota">Cargando…</p></div>` : ""}`;
+}
+
+// =====================================================
+// EXPEDIENTE: cartas de amonestación y otros documentos (solo administradores)
+// =====================================================
+const STF_EXP_BUCKET = "staff-expediente";
+const TIPOS_DOC = {
+  amonestacion_verbal: "Amonestación verbal",
+  amonestacion_escrita: "Amonestación escrita",
+  llamada_atencion: "Llamada de atención",
+  suspension: "Suspensión",
+  reconocimiento: "Felicitación / reconocimiento",
+  contrato: "Contrato o adenda",
+  incapacidad: "Incapacidad / dictamen médico",
+  vacaciones: "Vacaciones / permisos",
+  renuncia_despido: "Renuncia / despido",
+  otro: "Otro documento"
+};
+const TIPOS_DOC_ALERTA = ["amonestacion_verbal", "amonestacion_escrita", "llamada_atencion", "suspension"];
+const STF_EXP_ACEPTA = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx";
+const STF_EXP_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
+  doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+const STF_EXP_MAX = 10 * 1024 * 1024;
+
+function pesoTxt(b) {
+  if (!b) return "";
+  return b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${String(Math.round(b / 104857.6) / 10).replace(".", ",")} MB`;
+}
+
+async function stfCargarExpediente(personaId) {
+  const caja = $("stfExpediente");
+  if (!caja) return;
+  const { data, error } = await db.from("staff_documentos").select("*").eq("persona_id", personaId)
+    .order("fecha", { ascending: false }).order("id", { ascending: false });
+  if (error) { caja.querySelector(".nota").textContent = "No se pudo cargar el expediente."; return fallo(error, "No se pudo cargar el expediente."); }
+  stf.expediente = { persona: personaId, docs: data || [] };
+  stfPintarExpediente();
+}
+
+function stfPintarExpediente() {
+  const caja = $("stfExpediente");
+  if (!caja || !stf.expediente) return;
+  const docs = stf.expediente.docs;
+  const llamadas = docs.filter((d) => TIPOS_DOC_ALERTA.includes(d.tipo)).length;
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Costa_Rica" });
+  const filas = docs.map((d) => `
+    <li class="stf-doc">
+      <span class="stf-doc-icono" aria-hidden="true">${/^image\//.test(d.tipo_mime || "") ? "🖼" : "📄"}</span>
+      <span class="stf-doc-info">
+        <strong>${escapar(TIPOS_DOC[d.tipo] || d.tipo)}</strong> <small>· ${fechaAnio(d.fecha)}</small>
+        ${d.descripcion ? `<span class="stf-doc-desc">${escapar(d.descripcion)}</span>` : ""}
+        <small class="stf-doc-archivo">${escapar(d.nombre_archivo)}${d.tamano ? ` · ${pesoTxt(d.tamano)}` : ""}</small>
+      </span>
+      <span class="stf-doc-acciones">
+        <button type="button" class="btn" data-stf-accion="ver-doc" data-doc="${d.id}">Ver</button>
+        <button type="button" class="btn" data-stf-accion="bajar-doc" data-doc="${d.id}">Descargar</button>
+        <button type="button" class="btn peligro" data-stf-accion="borrar-doc" data-doc="${d.id}" aria-label="Eliminar documento">Eliminar</button>
+      </span>
+    </li>`).join("");
+
+  caja.innerHTML = `
+    <h3>Expediente y documentos <span class="stf-chip alerta">Solo administradores</span>
+      ${llamadas ? `<span class="stf-chip aviso">${llamadas} ${llamadas === 1 ? "amonestación / llamada de atención" : "amonestaciones / llamadas de atención"}</span>` : ""}</h3>
+    ${docs.length ? `<ul class="stf-docs">${filas}</ul>` : `<p class="nota">Todavía no hay documentos en el expediente.</p>`}
+    <p class="stf-subtitulo">Agregar documento</p>
+    <div class="fila">
+      <label>Tipo <select id="stfDocTipo">${Object.entries(TIPOS_DOC).map(([k, t]) => `<option value="${k}">${t}</option>`).join("")}</select></label>
+      <label>Fecha del documento <input id="stfDocFecha" type="date" value="${hoy}" max="${hoy}"></label>
+    </div>
+    <label>Descripción o motivo <input id="stfDocDesc" maxlength="300" placeholder="Ej.: llegadas tardías reiteradas en octubre"></label>
+    <div class="fila stf-doc-subir">
+      <label>Archivo (PDF, foto o Word · máx. 10 MB) <input id="stfDocArchivo" type="file" accept="${STF_EXP_ACEPTA}"></label>
+      <button type="button" class="btn primario" data-stf-accion="subir-doc">Subir documento</button>
+    </div>
+    <p class="nota">Los documentos quedan guardados de forma privada: solo los administradores pueden verlos. El colaborador no tiene acceso a esta sección.</p>`;
+}
+
+async function stfSubirDocumento() {
+  const ex = stf.expediente;
+  if (!ex) return;
+  const archivo = $("stfDocArchivo").files[0];
+  const tipo = $("stfDocTipo").value;
+  const fechaDoc = $("stfDocFecha").value;
+  const descripcion = $("stfDocDesc").value.trim();
+  if (!archivo) return avisar("Elige el archivo de la carta o documento.", "error");
+  if (!fechaDoc) return avisar("Indica la fecha del documento.", "error");
+  if (archivo.size > STF_EXP_MAX) return avisar("El archivo pesa más de 10 MB. Si es una foto, tómala con menos resolución o conviértela a PDF.", "error");
+  const partes = archivo.name.split(".");
+  const ext = partes.length > 1 ? partes.pop().toLowerCase() : "";
+  const mime = STF_EXP_MIME[ext];
+  if (!mime) return avisar("Ese tipo de archivo no se acepta. Usa PDF, JPG, PNG, WEBP, HEIC o Word.", "error");
+  const ruta = `${ex.persona}/${Date.now()}_${nombreArchivo(partes.join(".")) || "documento"}.${ext}`;
+  const { error } = await db.storage.from(STF_EXP_BUCKET).upload(ruta, archivo, { contentType: mime, upsert: false });
+  if (error) return fallo(error, "No se pudo subir el archivo.");
+  const { error: e2 } = await db.from("staff_documentos").insert({
+    persona_id: ex.persona, tipo, fecha: fechaDoc, descripcion: descripcion || null,
+    archivo: ruta, nombre_archivo: archivo.name, tipo_mime: mime, tamano: archivo.size, subido_por: app.yo?.id || null
+  });
+  if (e2) {
+    await db.storage.from(STF_EXP_BUCKET).remove([ruta]);
+    return fallo(e2, "No se pudo registrar el documento.");
+  }
+  avisar("Documento agregado al expediente.");
+  await stfCargarExpediente(ex.persona);
+}
+
+async function stfAbrirDocumento(docId, descargar) {
+  const d = stf.expediente?.docs.find((x) => x.id === Number(docId));
+  if (!d) return;
+  // La pestaña se abre antes de pedir el enlace para que el navegador no la bloquee
+  const ventana = descargar ? null : window.open("", "_blank");
+  const { data, error } = await db.storage.from(STF_EXP_BUCKET).createSignedUrl(d.archivo, 300, descargar ? { download: d.nombre_archivo } : undefined);
+  if (error) { ventana?.close(); return fallo(error, "No se pudo abrir el documento."); }
+  if (ventana) ventana.location.href = data.signedUrl;
+  else window.location.assign(data.signedUrl);
+}
+
+async function stfEliminarDocumento(docId) {
+  const ex = stf.expediente;
+  const d = ex?.docs.find((x) => x.id === Number(docId));
+  if (!d) return;
+  if (!confirm(`¿Eliminar «${TIPOS_DOC[d.tipo] || d.tipo}» del ${fechaAnio(d.fecha)}? El archivo se borrará y no se puede recuperar.`)) return;
+  const { error } = await db.from("staff_documentos").delete().eq("id", d.id);
+  if (error) return fallo(error, "No se pudo eliminar el documento.");
+  await db.storage.from(STF_EXP_BUCKET).remove([d.archivo]);   // si falla, solo queda el archivo sin usar
+  avisar("Documento eliminado.");
+  await stfCargarExpediente(ex.persona);
 }
 
 async function stfGuardarPersona() {
@@ -1050,7 +1178,11 @@ $("staffContenido").addEventListener("click", (e) => {
   const accion = b.dataset.stfAccion;
   const id = b.dataset.id;
   const sincrono = {
-    "ficha": () => stfAbrirModal(htmlFicha(personaPorId(id))),
+    "ficha": () => {
+      stf.expediente = null;
+      stfAbrirModal(htmlFicha(personaPorId(id)));
+      if (stfEsAdmin()) stfCargarExpediente(Number(id));
+    },
     "nueva-persona": () => stfAbrirModal(htmlFicha({ activo: true, empresa: "THT", jornada: "completa" })),
     "nuevo-horario": () => stfIniciarNuevo(),
     "filtro-dep": () => { stf.filtroDep = b.dataset.dep; stfPintar(); },
@@ -1151,5 +1283,9 @@ $("staffModal").addEventListener("click", (e) => {
   if (accion === "cerrar-modal") return stfCerrarModal();
   if (accion === "guardar-persona") return conBoton(b, stfGuardarPersona);
   if (accion === "activar") return conBoton(b, () => stfCambiarActivo(Number(b.dataset.id)));
+  if (accion === "subir-doc") return conBoton(b, stfSubirDocumento);
+  if (accion === "ver-doc") return stfAbrirDocumento(b.dataset.doc, false);
+  if (accion === "bajar-doc") return conBoton(b, () => stfAbrirDocumento(b.dataset.doc, true));
+  if (accion === "borrar-doc") return conBoton(b, () => stfEliminarDocumento(b.dataset.doc));
   if (typeof plaModalClick === "function") plaModalClick(e, b);
 });

@@ -249,3 +249,18 @@ body.solo-horario [data-staff="planilla"] { display: none !important; }
 .stf-imp-tabla .stf-extra { display: block; border: 0; background: none; padding: 0; font-size: 7pt; color: #5B2E86; }
 .stf-imp-tabla td.excede { outline: 1.5pt solid #C0392B; outline-offset: -1.5pt; }
 .stf-imp-tabla td.excede .stf-extra { color: #C0392B; }
+
+/* Expediente del colaborador */
+.stf-docs { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+.stf-doc { display: flex; gap: 12px; align-items: flex-start; background: var(--blanco); border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px; }
+.stf-doc-icono { font-size: 1.4rem; line-height: 1; padding-top: 2px; }
+.stf-doc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.stf-doc-desc { color: var(--pizarra); }
+.stf-doc-archivo { color: var(--pizarra); overflow-wrap: anywhere; }
+.stf-doc-acciones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.stf-doc-subir { align-items: flex-end; }
+.stf-doc-subir input[type="file"] { padding: 8px; border: 1px dashed var(--linea); border-radius: 8px; background: var(--blanco); }
+@media (max-width: 640px) {
+  .stf-doc { flex-wrap: wrap; }
+  .stf-doc-acciones { width: 100%; justify-content: flex-start; }
+}
