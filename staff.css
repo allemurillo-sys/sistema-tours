@@ -299,3 +299,26 @@ body.solo-horario [data-staff="planilla"] { display: none !important; }
   .perm-acciones .btn { display: block; width: 100%; margin: 2px 0; }
   .stf-herramientas select, .stf-herramientas input[type="search"] { width: 100%; max-width: none; }
 }
+
+/* Alarma de permisos en la foto del administrador */
+.perm-alarma {
+  position: absolute; bottom: -4px; left: -6px; width: 21px; height: 21px; border-radius: 50%;
+  display: grid; place-items: center; font-size: .72rem; line-height: 1;
+  background: #F2C14E; box-shadow: 0 0 0 2px var(--pizarra); animation: perm-timbre 2.4s ease-in-out infinite;
+}
+.perm-alarma.vencido { background: var(--rojo); }
+.perm-alarma[hidden] { display: none; }
+@keyframes perm-timbre { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(-18deg); } 85% { transform: rotate(16deg); } 92% { transform: rotate(-8deg); } }
+@media (prefers-reduced-motion: reduce) { .perm-alarma { animation: none; } }
+.perm-mp { border-bottom: 1px solid var(--linea); padding-bottom: 6px; margin-bottom: 4px; cursor: pointer; }
+.perm-alarma-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.perm-alarma-lista.compacta { gap: 4px; padding: 0 12px 4px; }
+.perm-alarma-item { display: flex; gap: 10px; align-items: center; }
+.perm-alarma-item > span:last-child { display: grid; min-width: 0; }
+.perm-alarma-item small { color: var(--gris); font-size: .8rem; }
+.perm-alarma-lista.compacta .perm-alarma-item { font-size: .85rem; }
+.perm-alarma-lista.compacta .perm-estado { font-size: .7rem; padding: 1px 7px; }
+.perm-alarma-mas { color: var(--gris); font-size: .85rem; }
+.perm-alarma-cab { border-top: 6px solid #F2C14E; }
+.perm-alarma-cab.vencido { border-top-color: var(--rojo); }
+.perm-alarma-btns { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }

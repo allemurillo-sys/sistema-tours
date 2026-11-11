@@ -69,7 +69,7 @@ const permPorId = (id) => perm.lista.find((p) => p.id === Number(id));
 function permRevisarAcceso() {
   const admin = permEsAdmin();
   $("btnMenuPermisos").hidden = !admin;
-  if (!admin) { $("permMenuCuenta").hidden = true; if (!$("vistaPermisos").hidden) mostrarVista("reservas"); return; }
+  if (!admin) { $("permMenuCuenta").hidden = true; if ($("permAlarma")) $("permAlarma").hidden = true; if (!$("vistaPermisos").hidden) mostrarVista("reservas"); return; }
   if (!perm.cargado && !permRevisarAcceso.pidiendo) {
     permRevisarAcceso.pidiendo = true;
     permCargar().catch((e) => console.error("Permisos:", e)).finally(() => (permRevisarAcceso.pidiendo = false));
@@ -81,7 +81,90 @@ function permActualizarCuenta() {
   c.textContent = n;
   c.hidden = !n || !permEsAdmin();
   c.title = n ? `${n} ${n === 1 ? "permiso vencido o por vencer" : "permisos vencidos o por vencer"}` : "";
+  permPintarAlarma();
 }
+// ---------- Alarma en el perfil de los administradores ----------
+// Campana sobre la foto del usuario, aviso en su menú de perfil y una ventana de alarma
+// la primera vez que entra cada día mientras haya permisos vencidos o por vencer.
+const permPendientes = () => perm.lista
+  .map((p) => ({ p, e: permEstado(p) }))
+  .filter((x) => ["vencido", "por_vencer"].includes(x.e.clave))
+  .sort((a, b) => a.e.dias - b.e.dias);
+
+function permPintarAlarma() {
+  let campana = $("permAlarma");
+  if (!campana) {
+    campana = document.createElement("span");
+    campana.id = "permAlarma";
+    campana.className = "perm-alarma";
+    campana.setAttribute("aria-hidden", "true");
+    campana.textContent = "🔔";
+    $("chatAvatarBtn").appendChild(campana);
+  }
+  const pend = permEsAdmin() ? permPendientes() : [];
+  const vencidos = pend.filter((x) => x.e.clave === "vencido").length;
+  campana.hidden = !pend.length;
+  campana.classList.toggle("vencido", vencidos > 0);
+  campana.title = pend.length ? `${pend.length} ${pend.length === 1 ? "permiso vencido o por vencer" : "permisos vencidos o por vencer"}` : "";
+  const btn = $("chatAvatarBtn");
+  const base = (btn.getAttribute("aria-label") || "Mi perfil y mensajes").replace(/\. Alarma:.*$/, "");
+  btn.setAttribute("aria-label", pend.length ? `${base}. Alarma: ${campana.title}` : base);
+  permAlarmaDelDia(pend);
+}
+
+function htmlPermListaAlarma(pend, max = 6) {
+  return pend.slice(0, max).map(({ p, e }) => `
+    <li class="perm-alarma-item ${e.clave}">
+      <span class="perm-estado ${e.clase}">${e.texto}</span>
+      <span><strong>${escapar(p.nombre)}</strong><small>${permFecha(p.vence)} · ${permFalta(e.dias)}</small></span>
+    </li>`).join("") + (pend.length > max ? `<li class="perm-alarma-mas">y ${pend.length - max} más…</li>` : "");
+}
+
+// Ventana de alarma: una vez al día por administrador (se vuelve a mostrar si aparece uno nuevo)
+function permAlarmaDelDia(pend) {
+  if (!pend.length || !app.yo?.id || !$("permModal").hidden) return;
+  const firma = pend.map((x) => `${x.p.id}:${x.e.clave}`).join(",");
+  const clave = `permAlarma:${app.yo.id}:${permHoy()}`;
+  try { if (localStorage.getItem(clave) === firma) return; } catch (_) { if (permAlarmaDelDia.vista === firma) return; }
+  permAlarmaDelDia.vista = firma;
+  try { localStorage.setItem(clave, firma); } catch (_) {}
+  const vencidos = pend.filter((x) => x.e.clave === "vencido").length;
+  permAbrirModal(`
+    <div class="det-cabeza perm-alarma-cab ${vencidos ? "vencido" : ""}">
+      <div>
+        <p class="det-numero">🔔 Alarma de vencimientos</p>
+        <h2 id="permModalTitulo">${vencidos ? `${vencidos} ${vencidos === 1 ? "permiso vencido" : "permisos vencidos"}` : ""}${vencidos && pend.length > vencidos ? " y " : ""}${pend.length > vencidos ? `${pend.length - vencidos} por vencer` : ""}</h2>
+        <p class="perm-sub">Estos permisos vencen en las próximas dos semanas o ya vencieron.</p>
+      </div>
+    </div>
+    <div class="det-seccion"><ul class="perm-alarma-lista">${htmlPermListaAlarma(pend, 10)}</ul></div>
+    <div class="det-seccion perm-alarma-btns">
+      <button type="button" class="btn" data-perm-accion="cerrar">Recordarme mañana</button>
+      <button type="button" class="btn primario" data-perm-accion="ir-permisos" autofocus>Ver permisos</button>
+    </div>`);
+}
+
+// Al abrir el menú de la foto se agrega el aviso arriba (el menú lo arma chat.js)
+$("chatAvatarBtn").addEventListener("click", () => {
+  const menu = $("chatMenuPerfil");
+  if (menu.hidden || !permEsAdmin()) return;
+  const pend = permPendientes();
+  if (!pend.length) return;
+  const caja = document.createElement("div");
+  caja.className = "perm-mp";
+  caja.innerHTML = `
+    <button type="button" class="mp-opcion importante" data-perm-mp="1">🔔 Permisos por renovar <span class="mp-cuenta">${pend.length}</span></button>
+    <ul class="perm-alarma-lista compacta">${htmlPermListaAlarma(pend, 3)}</ul>`;
+  menu.querySelector(".mp-cabeza")?.after(caja);
+});
+$("chatMenuPerfil").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-perm-mp], .perm-mp")) return;
+  e.stopPropagation();
+  $("chatMenuPerfil").hidden = true;
+  perm.filtro.estado = "pendientes";
+  mostrarVista("permisos");
+}, true);
+
 new MutationObserver(permRevisarAcceso).observe($("usuarioNombre"), { childList: true, characterData: true, subtree: true });
 permRevisarAcceso();
 
@@ -490,6 +573,7 @@ $("permModal").addEventListener("click", (e) => {
   const a = b.dataset.permAccion;
   const id = Number(b.dataset.id);
   if (a === "cerrar") return permCerrarModal();
+  if (a === "ir-permisos") { permCerrarModal(); perm.filtro.estado = "pendientes"; return mostrarVista("permisos"); }
   if (a === "guardar") return conBoton(b, permGuardar);
   if (a === "abrir") return permAbrirFicha(id);
   if (a === "renovar") return permAbrirModal(htmlPermRenovar(permPorId(id)));
