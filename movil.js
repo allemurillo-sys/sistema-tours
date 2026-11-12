@@ -68,6 +68,37 @@
     refrescar();
   }
 
+
+  /* ---------- Barra del panel: Actualizar y Salir como íconos (en computadora) ---------- */
+  const ICONOS = {
+    btnActualizar: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+    btnSalir: '<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>'
+  };
+  function iconosBarra() {
+    Object.keys(ICONOS).forEach((id) => {
+      const b = document.getElementById(id);
+      if (!b || b.querySelector(".mv-ico")) return;
+      const texto = b.textContent.trim();
+      b.innerHTML = '<svg class="mv-ico" viewBox="0 0 24 24" aria-hidden="true">' + ICONOS[id] + '</svg><span class="mv-etq">' + texto + "</span>";
+      b.title = texto;
+    });
+    // El nombre del usuario se ve al pasar el mouse sobre el avatar
+    const nombre = document.getElementById("usuarioNombre");
+    const avatar = document.getElementById("chatAvatarBtn");
+    if (nombre && avatar) {
+      const poner = () => { const t = nombre.textContent.trim(); if (t) avatar.title = t; };
+      new MutationObserver(poner).observe(nombre, { childList: true, characterData: true, subtree: true });
+      poner();
+    }
+    // Hora de la última actualización junto al ícono
+    const hora = document.getElementById("ultimaActualizacion");
+    const act = document.getElementById("btnActualizar");
+    if (hora && act) {
+      const poner = () => { const t = hora.textContent.trim(); act.title = t ? "Actualizar · " + t : "Actualizar"; };
+      new MutationObserver(poner).observe(hora, { childList: true, characterData: true, subtree: true });
+    }
+  }
+
   /* ---------- Tablas como tarjetas ---------- */
   const EXCLUIR = ".permisos, .stf-tabla, .stf-imp-tabla, .pla-imp-tabla, .mv-no-tarjetas";
 
@@ -291,6 +322,7 @@
 
   function iniciar() {
     document.documentElement.classList.add("mv-activo");
+    iconosBarra();
     iniciarMenu();
     revisarTablas();
     new MutationObserver(revisarTablas).observe(document.body, { childList: true, subtree: true });

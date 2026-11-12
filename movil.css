@@ -75,6 +75,7 @@
     width: 100%; min-height: 46px; padding: 0 12px; text-align: left; font-size: 1rem;
   }
   .barra-panel.mv-abierto .menu-btn[hidden] { display: none; }
+  .barra-panel.mv-abierto #btnActualizar, .barra-panel.mv-abierto #btnSalir { justify-content: flex-start; }
   .barra-panel.mv-abierto .menu-btn[aria-current="page"] { border-color: transparent; }
   .barra-panel.mv-abierto .menu-btn.salir {
     border: 0; border-top: 1px solid rgba(255, 255, 255, .15); border-radius: 0;

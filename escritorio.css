@@ -1,0 +1,74 @@
+/* =====================================================
+   MODO COMPUTADORA (panel) — se carga antes de movil.css.
+   Solo actúa en pantallas de más de 900 px.
+   La impresión no cambia.
+   ===================================================== */
+
+/* Íconos de Actualizar y Salir (en celular se ven junto al texto) */
+.menu-btn .mv-ico {
+  width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -3px;
+}
+.menu-btn .mv-ico + .mv-etq { margin-left: 8px; }
+
+@media screen and (min-width: 901px) {
+
+  /* ---------- 1. Encabezado en una sola línea, fijo arriba ---------- */
+  .barra-panel {
+    position: sticky; top: 0; z-index: 9;
+    flex-wrap: nowrap; gap: 12px; min-height: 56px; padding: 6px 16px 6px 20px;
+  }
+  .barra-panel .marca { font-size: 1.02rem; gap: 8px; }
+  .barra-panel .brujula { width: 28px; height: 28px; }
+  .barra-panel .menu {
+    flex-wrap: nowrap; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none;
+    order: 0; flex-basis: auto;
+  }
+  .barra-panel .menu::-webkit-scrollbar { display: none; }
+  .barra-panel .menu-btn { padding: 6px 11px; white-space: nowrap; font-size: .93rem; }
+  .barra-panel #btnActualizar, .barra-panel #btnSalir {
+    width: 38px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: none;
+  }
+  .barra-panel #btnActualizar { margin-left: 8px; }
+  .barra-panel #btnActualizar .mv-etq, .barra-panel #btnSalir .mv-etq {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .barra-panel #btnActualizar:disabled .mv-ico { animation: escGirar 1s linear infinite; }
+  .barra-panel .usuario { display: none; }
+  .barra-panel .avatar-btn .avatar { width: 36px; height: 36px; }
+  .menu-perfil { top: calc(100% + 10px); }
+
+  /* ---------- 2. Más ancho útil en pantallas grandes ---------- */
+  .catalogo { max-width: 1600px; padding: 16px 24px 32px; }
+
+  /* ---------- 3. Título y pestañas en la misma fila ---------- */
+  .vista-titulo { font-size: 1.55rem; margin: 0 0 12px; }
+  .catalogo:has(> .pestanas) {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; column-gap: 28px;
+  }
+  .catalogo:has(> .pestanas) > * { grid-column: 1 / -1; min-width: 0; }
+  .catalogo:has(> .pestanas) > .vista-titulo { grid-column: 1; margin: 0 0 12px; }
+  .catalogo:has(> .pestanas) > .pestanas {
+    grid-column: 2; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap;
+  }
+  .catalogo:has(> .pestanas) > .pestanas::-webkit-scrollbar { display: none; }
+  .pestana { padding: 8px 14px; white-space: nowrap; flex: none; }
+
+  /* Herramientas de Reservas más compactas */
+  .herramientas { padding: 12px 24px; gap: 8px 12px; }
+  .herramientas .check-linea { margin: 0; }
+
+  /* ---------- 5. Tablas más densas y fáciles de leer ---------- */
+  .tabla { font-size: .92rem; }
+  .tabla th, .tabla td { padding: 6px 8px; }
+  .tabla thead th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; padding-top: 8px; padding-bottom: 8px; }
+  :where(.tabla > tbody > tr:nth-child(even)) > td { background: #F8FAF9; }
+  :where(.tabla > tbody > tr:hover) > td { background: #EEF4F0; }
+  .det-seccion { padding: 16px 20px; }
+  .det-seccion h3 { margin-bottom: 10px; }
+}
+
+@keyframes escGirar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .barra-panel #btnActualizar:disabled .mv-ico { animation: none; }
+}
