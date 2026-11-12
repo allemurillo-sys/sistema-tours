@@ -617,38 +617,55 @@ function pintarDetalle() {
       </div>
     </div>`;
 
-  if (typeof htmlAvanceDetalle === "function") h += htmlAvanceDetalle(c);
-  h += htmlCambiosCliente(c, bitacora);
-  if (c.alerta_proveedor && typeof htmlAlertaProveedor === "function") h += htmlAlertaProveedor(c);
-  if (c.estado === "cancelado") h += htmlCancelada(c);
-  h += htmlCliente(c);
-  h += htmlSolicitud(solicitudes);
+  // Cada parte va arriba (avisos), en la columna principal o en la lateral.
+  // En pantallas anchas se ven en dos columnas; en las demás, en el orden de siempre.
+  const partes = [];
+  const poner = (zona, html) => { if (html) partes.push([zona, html]); };
+  if (typeof htmlAvanceDetalle === "function") poner("arriba", htmlAvanceDetalle(c));
+  poner("arriba", htmlCambiosCliente(c, bitacora));
+  if (c.alerta_proveedor && typeof htmlAlertaProveedor === "function") poner("arriba", htmlAlertaProveedor(c));
+  if (c.estado === "cancelado") poner("arriba", htmlCancelada(c));
+  poner("lateral", htmlCliente(c));
+  poner("principal", htmlSolicitud(solicitudes));
 
   if (c.estado === "cotizacion") {
-    h += `
+    poner("principal", `
       <section class="det-seccion">
         <div class="llamado">
           <p>Esta solicitud todavía no tiene un colaborador asignado.</p>
           <button type="button" class="btn primario" data-accion="atender">Empezar a atender</button>
         </div>
-      </section>`;
+      </section>`);
   }
-  if (editable) h += htmlEditorActividades();
-  if (c.estado === "finalizado" || c.estado === "cancelado") h += htmlActividadesLectura();
-  if (c.estado !== "cotizacion") h += `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`;
-  if (c.estado === "proceso") h += htmlEnvio(c);
-  if (c.estado === "reserva" && typeof htmlSolicitudes === "function") h += htmlSolicitudes(c);
-  if (c.estado === "reserva") h += typeof htmlAvanceReserva === "function" ? htmlAvanceReserva(c) : htmlConfirmarReserva(c);
-  if (c.estado === "reserva" && c.reserva_confirmada_en) h += htmlTiquetes(c);
-  if (c.estado === "reserva") h += htmlCompartirReserva(c);
-  if (["proceso", "reserva", "finalizado"].includes(c.estado) && typeof htmlCorreo === "function") h += htmlCorreo(c);
+  if (editable) poner("principal", htmlEditorActividades());
+  if (c.estado === "finalizado" || c.estado === "cancelado") poner("principal", htmlActividadesLectura());
+  if (c.estado !== "cotizacion") poner("lateral", `<section class="det-seccion"><h3>Totales</h3><div id="totales"></div></section>`);
+  if (c.estado === "proceso") poner("principal", htmlEnvio(c));
+  if (c.estado === "reserva" && typeof htmlSolicitudes === "function") poner("principal", htmlSolicitudes(c));
+  if (c.estado === "reserva") poner("principal", typeof htmlAvanceReserva === "function" ? htmlAvanceReserva(c) : htmlConfirmarReserva(c));
+  if (c.estado === "reserva" && c.reserva_confirmada_en) poner("principal", htmlTiquetes(c));
+  if (c.estado === "reserva") poner("lateral", htmlCompartirReserva(c));
+  if (["proceso", "reserva", "finalizado"].includes(c.estado) && typeof htmlCorreo === "function") poner("principal", htmlCorreo(c));
   if (c.estado === "reserva" || c.estado === "finalizado" || (c.estado === "cancelado" && app.actual.pagos.length)) {
-    h += htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos"));
+    poner("lateral", htmlPagos(c, c.estado === "reserva" && puede("registrar_pagos")));
   }
-  if (c.estado === "finalizado") h += htmlReabrir();
-  if (["cotizacion", "proceso", "reserva"].includes(c.estado)) h += htmlCancelar(c);
-  h += htmlNotas(c, c.estado !== "finalizado");
-  h += htmlHistorial(bitacora);
+  if (c.estado === "finalizado") poner("principal", htmlReabrir());
+  if (["cotizacion", "proceso", "reserva"].includes(c.estado)) poner("principal", htmlCancelar(c));
+  poner("lateral", htmlNotas(c, c.estado !== "finalizado"));
+  poner("lateral", htmlHistorial(bitacora));
+
+  const ancho = window.matchMedia("(min-width: 1200px)").matches;
+  $("detalle").classList.toggle("det-ancho", ancho);
+  if (ancho) {
+    const de = (zona) => partes.filter((p) => p[0] === zona).map((p) => p[1]).join("");
+    h += de("arriba") + `
+      <div class="det-columnas">
+        <div class="det-col-principal">${de("principal")}</div>
+        <aside class="det-col-lateral" aria-label="Cliente, totales y pagos">${de("lateral")}</aside>
+      </div>`;
+  } else {
+    h += partes.map((p) => p[1]).join("");
+  }
 
   $("detalleContenido").innerHTML = h;
   pintarTotales();
