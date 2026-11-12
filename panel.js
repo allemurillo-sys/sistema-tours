@@ -293,6 +293,13 @@ async function recargarPerfil() {
   const admin = perfil.rol === "administrador";
   $("btnMenuPersonal").hidden = !(admin || app.permisos.has("ver_perfiles_staff"));
   $("btnMenuChat").hidden = !(admin || app.permisos.has("chat"));
+  // Ama de llaves (sección limpieza/ del mismo sitio, misma sesión)
+  const hv = typeof CONFIG !== "undefined" && CONFIG.moduloAmaLlaves;
+  const hvTiene = (k) => admin || app.permisos.has(k);
+  $("lnkHvReportes").hidden = !(hv && (hvTiene("crear_reportes") || hvTiene("panel")));
+  $("lnkHvLimpieza").hidden = !(hv && hvTiene("ocupacion_ver"));
+  $("lnkHvClaves").hidden = !(hv && hvTiene("claves_cambiar"));
+  $("grupoAmaLlaves").hidden = !hv || [$("lnkHvReportes"), $("lnkHvLimpieza"), $("lnkHvClaves")].every((x) => x.hidden);
   return true;
 }
 
@@ -323,8 +330,20 @@ async function entrar() {
   $("vistaLogin").hidden = true;
   $("vistaApp").hidden = false;
 
+  // El personal de Ama de llaves trabaja en la sección Limpieza; aquí solo viene a ver su horario
+  if (app.soloHorario && CONFIG.moduloAmaLlaves && location.hash !== "#horarios") {
+    location.href = "limpieza/";
+    return;
+  }
+  if (location.hash === "#horarios" && typeof stf !== "undefined") stf.pestana = "horarios";
+
   if (app.soloHorario) {
     mostrarVista("staff");
+  } else if (location.hash === "#horarios") {
+    mostrarVista("staff", $("btnMenuHorarios"));
+    await db.rpc("finalizar_vencidas");
+    await cargarCatalogos();
+    await cargarTablero();
   } else {
   await db.rpc("finalizar_vencidas");
   await cargarCatalogos();

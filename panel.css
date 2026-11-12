@@ -654,3 +654,4 @@ label.en-linea select { width: auto; }
 .menu-desp .menu-btn[aria-current="page"] { background: var(--verde-suave); border-color: transparent; color: var(--verde-hondo); }
 @media (prefers-reduced-motion: reduce) { .menu-flecha { transition: none; } }
 @media print { .menu-desp { display: none !important; } }
+a.menu-btn { text-decoration: none; display: inline-flex; align-items: center; }

@@ -8,10 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="estilos.css?v=16">
-  <link rel="stylesheet" href="panel.css?v=24">
+  <link rel="stylesheet" href="panel.css?v=25">
   <link rel="stylesheet" href="tarifario.css?v=27">
   <link rel="stylesheet" href="chat.css?v=1">
-  <link rel="stylesheet" href="staff.css?v=8">
+  <link rel="stylesheet" href="staff.css?v=9">
   <link rel="stylesheet" href="reserva-vista.css?v=1">
   <link rel="stylesheet" href="escritorio.css?v=5">
   <link rel="stylesheet" href="movil.css?v=5">
@@ -52,6 +52,14 @@
         <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
         <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
+        <div class="menu-grupo" id="grupoAmaLlaves" hidden>
+          <button type="button" class="menu-btn menu-grupo-btn" aria-expanded="false" aria-controls="despAmaLlaves">Ama de llaves <svg class="menu-flecha" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="menu-desp" id="despAmaLlaves">
+            <a class="menu-btn" href="limpieza/" id="lnkHvReportes" hidden>Reportes</a>
+            <a class="menu-btn" href="limpieza/#ocupacion" id="lnkHvLimpieza" hidden>Limpieza</a>
+            <a class="menu-btn" href="limpieza/#claves" id="lnkHvClaves" hidden>Claves de caja</a>
+          </div>
+        </div>
         <button type="button" class="menu-btn" data-vista="staff" data-staff-tab="horarios" id="btnMenuHorarios">Horarios</button>
         <button type="button" class="menu-btn" data-vista="chat" id="btnMenuChat">Chat <span id="chatMenuCuenta" class="menu-cuenta" hidden></span></button>
         <div class="menu-grupo" id="grupoAdmin">
@@ -197,8 +205,8 @@
   <div id="aviso" class="toast" role="status" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=14"></script>
-  <script src="panel.js?v=31"></script>
+  <script src="config.js?v=15"></script>
+  <script src="panel.js?v=32"></script>
   <script src="mantenimiento.js?v=26"></script>
   <script src="calendario.js?v=14"></script>
   <script src="finanzas.js?v=2"></script>

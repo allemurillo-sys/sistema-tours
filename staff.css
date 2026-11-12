@@ -221,7 +221,8 @@ tr.stf-yo th.stf-nombre { box-shadow: inset 4px 0 0 var(--verde); }
 body.solo-horario .menu-btn[data-vista]:not([data-vista="staff"]),
 body.solo-horario #chatBurbuja,
 body.solo-horario #chatMenuPerfil,
-body.solo-horario [data-staff="planilla"] { display: none !important; }
+body.solo-horario [data-staff="planilla"],
+body.solo-horario #grupoAdmin { display: none !important; }
 
 /* Recepción: fila de ingresos previstos */
 .stf-ingresos th, .stf-ingresos td { background: #fdf0ee; color: #c0392b; text-align: center; font-weight: 700; }
