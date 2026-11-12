@@ -116,18 +116,175 @@
     t.dataset.mvListo = "1";
   }
 
+  /* ---------- Reservas: columnas como pestañas ---------- */
+  const NOMBRE_COL = { cotizacion: "Cotiz.", proceso: "Proceso", reserva: "Reserva", finalizado: "Final.", cancelado: "Cancel." };
+  let colElegida = leer("mvColReservas") || "";
+
+  function pestanasReservas() {
+    const tablero = document.getElementById("tablero");
+    if (!tablero) return;
+    const cols = [...tablero.querySelectorAll(":scope > .columna")];
+    let barra = document.getElementById("mvPestanasTablero");
+    if (!cols.length) { if (barra) barra.hidden = true; return; }
+    if (!barra) {
+      barra = document.createElement("div");
+      barra.id = "mvPestanasTablero";
+      barra.className = "mv-pestanas-tablero";
+      barra.setAttribute("role", "tablist");
+      barra.setAttribute("aria-label", "Etapas de las reservas");
+      tablero.parentNode.insertBefore(barra, tablero);
+      barra.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-col]");
+        if (!b) return;
+        colElegida = b.dataset.col;
+        guardar("mvColReservas", colElegida);
+        pestanasReservas();
+      });
+    }
+    barra.hidden = false;
+    const ids = cols.map((c) => (c.className.match(/col-([a-z]+)/) || [])[1] || "");
+    if (!ids.includes(colElegida)) colElegida = ids[0];
+    const firma = cols.map((c, i) => ids[i] + ":" + (c.querySelector(".col-cuenta")?.textContent || "")).join("|") + "|" + colElegida;
+    if (barra.dataset.firma !== firma) {
+      barra.dataset.firma = firma;
+      barra.innerHTML = cols.map((c, i) => {
+        const nombre = c.querySelector(".col-titulo span:first-child")?.textContent.trim() || ids[i];
+        const cuenta = c.querySelector(".col-cuenta")?.textContent.trim() || "0";
+        const on = ids[i] === colElegida;
+        return `<button type="button" role="tab" class="col-${ids[i]}" data-col="${ids[i]}" aria-selected="${on}" aria-label="${nombre}: ${cuenta}">` +
+          `<span class="mv-pt-nombre">${NOMBRE_COL[ids[i]] || nombre}</span><span class="mv-pt-cuenta">${cuenta}</span></button>`;
+      }).join("");
+    }
+    cols.forEach((c, i) => c.classList.toggle("mv-col-oculta", ids[i] !== colElegida));
+  }
+
+  /* ---------- Horarios: un día a la vez ---------- */
+  let diaElegido = "";
+  const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
+
+  function horarioPorDia(t) {
+    const cab = t.tHead && t.tHead.rows[0];
+    if (!cab) return;
+    const dias = [...cab.cells].slice(1, -1); // sin "Colaborador" ni "Total"
+    if (!dias.length) return;
+    const claves = dias.map((th) => textoCelda(th));
+    const ingresos = t.tHead.querySelector(".stf-ingresos");
+    const conIngreso = dias.map((_, i) => {
+      const c = ingresos && ingresos.cells[i + 1];
+      if (!c) return false;
+      const inp = c.querySelector("input");
+      return Number(inp ? inp.value : textoCelda(c)) > 0;
+    });
+
+    if (!claves.includes(diaElegido)) {
+      const hoy = new Date();
+      const hoyTxt = hoy.getDate() + " " + MESES[hoy.getMonth()];
+      const i = dias.findIndex((th) => {
+        const s = (th.querySelector("small")?.textContent || "").toLowerCase().replace(/\./g, "");
+        return s.startsWith(hoyTxt) || s === hoyTxt;
+      });
+      diaElegido = claves[i >= 0 ? i : 0];
+    }
+    const k = claves.indexOf(diaElegido);
+
+    const caja = t.closest(".stf-tabla-caja") || t;
+    let tira = caja.previousElementSibling;
+    if (!tira || !tira.classList.contains("mv-dias")) {
+      tira = document.createElement("div");
+      tira.className = "mv-dias";
+      tira.setAttribute("role", "tablist");
+      tira.setAttribute("aria-label", "Días del horario");
+      caja.parentNode.insertBefore(tira, caja);
+      tira.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-dia]");
+        if (!b) return;
+        diaElegido = b.dataset.dia;
+        const tabla = tira.nextElementSibling && tira.nextElementSibling.querySelector("table.stf-tabla");
+        if (tabla) horarioPorDia(tabla);
+      });
+    }
+    tira.innerHTML = dias.map((th, i) => {
+      const small = th.querySelector("small");
+      const fecha = small ? small.textContent.trim() : "";
+      const dia = textoCelda(th).replace(fecha, "").trim();
+      const num = (fecha.match(/\d+/) || [""])[0];
+      return `<button type="button" role="tab" data-dia="${claves[i].replace(/"/g, "&quot;")}" aria-selected="${i === k}" aria-label="${claves[i]}${conIngreso[i] ? ", con ingresos" : ""}"${th.classList.contains("dom") ? ' class="dom"' : ""}>` +
+        `<span>${dia}</span><b>${num}</b><i${conIngreso[i] ? "" : " hidden"}></i></button>`;
+    }).join("");
+
+    // Muestra solo la columna del día elegido (más el nombre)
+    [...t.rows].forEach((fila) => {
+      const celdas = [...fila.cells];
+      if (celdas.length === 1) return;
+      celdas.forEach((c, i) => c.classList.toggle("mv-col-oculta", i !== 0 && i !== k + 1));
+    });
+    t.classList.add("mv-un-dia");
+  }
+
+  /* ---------- Tarifario final: servicios plegables ---------- */
+  const abiertos = new Set();
+
+  function tarifarioPlegable(t) {
+    const filas = [...t.tBodies[0]?.rows || []];
+    let grupo = null, lista = [];
+    const cerrar = () => {
+      if (!grupo) return;
+      const clave = grupo.dataset.mvClave || textoCelda(grupo.cells[0]).slice(0, 80);
+      const abierto = abiertos.has(clave);
+      grupo.classList.add("mv-plegable");
+      grupo.classList.toggle("mv-abierto", abierto);
+      grupo.setAttribute("aria-expanded", abierto ? "true" : "false");
+      grupo.dataset.mvClave = clave;
+      lista.forEach((f) => f.classList.toggle("mv-plegada", !abierto));
+      // Resumen: cuántas tarifas y el precio TC de la primera (la tarifa base)
+      let base = "";
+      for (const f of lista) {
+        const celda = [...f.cells].find((c) => /^TC$/i.test(c.getAttribute("data-label") || ""));
+        const txt = celda ? textoCelda(celda) : "";
+        if (/\d/.test(txt)) { base = txt; break; }
+      }
+      let res = grupo.cells[0].querySelector(".mv-resumen");
+      if (!res) { res = document.createElement("span"); res.className = "mv-resumen"; grupo.cells[0].appendChild(res); }
+      res.textContent = lista.length + (lista.length === 1 ? " tarifa" : " tarifas") + (base ? " · TC " + base : "");
+    };
+    filas.forEach((f) => {
+      if (f.classList.contains("fila-grupo")) { cerrar(); grupo = f; lista = []; }
+      else if (grupo) lista.push(f);
+    });
+    cerrar();
+    if (!t.dataset.mvPlegable) {
+      t.dataset.mvPlegable = "1";
+      t.addEventListener("click", (e) => {
+        const g = e.target.closest("tr.mv-plegable");
+        if (!g || e.target.closest("button, a, input, select") || !esCelular()) return;
+        const clave = g.dataset.mvClave;
+        abiertos.has(clave) ? abiertos.delete(clave) : abiertos.add(clave);
+        tarifarioPlegable(t);
+      });
+    }
+  }
+
+  function esCelular() { return window.matchMedia("(max-width: 640px)").matches; }
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } }
+
   let pendiente = false;
   function revisarTablas() {
     if (pendiente) return;
     pendiente = true;
     requestAnimationFrame(() => {
       pendiente = false;
+      pestanasReservas();
+      document.querySelectorAll("table.stf-tabla").forEach((t) => {
+        if (!t.classList.contains("mv-un-dia") || !(t.closest(".stf-tabla-caja") || t).previousElementSibling?.classList.contains("mv-dias")) horarioPorDia(t);
+      });
       document.querySelectorAll("table.tabla, table.part, table.participantes").forEach((t) => {
         // Se vuelve a preparar si su contenido cambió
         const firma = t.rows.length + ":" + (t.tHead ? t.tHead.textContent.length : 0);
         if (t.dataset.mvFirma === firma && t.dataset.mvListo) return;
         t.dataset.mvFirma = firma;
         prepararTabla(t);
+        if (t.classList.contains("tar-final")) tarifarioPlegable(t);
       });
     });
   }

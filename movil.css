@@ -4,7 +4,8 @@
    La computadora y la impresión no cambian.
    ===================================================== */
 
-.mv-menu-btn, .mv-menu-fondo, .mv-seccion { display: none; }
+.mv-menu-btn, .mv-menu-fondo, .mv-seccion,
+.mv-pestanas-tablero, .mv-dias, .mv-resumen { display: none; }
 
 @media screen and (max-width: 640px) {
 
@@ -147,6 +148,105 @@
   table.mv-tarjetas .acciones-fila { justify-content: flex-end; flex-wrap: wrap; white-space: normal; }
   table.mv-tarjetas .acciones-fila::before { display: none; }
   .tabla-scroll:has(> table.mv-tarjetas) { overflow-x: visible; }
+
+  /* ---------- Reservas: pestañas por etapa ---------- */
+  .mv-pestanas-tablero {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px;
+    margin: 0 12px 8px; background: #E1E7E5; border-radius: 12px; padding: 4px;
+  }
+  .mv-pestanas-tablero[hidden] { display: none; }
+  .mv-pestanas-tablero button {
+    font: inherit; cursor: pointer; border: 0; border-radius: 9px; background: transparent; color: var(--gris);
+    min-height: 44px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  }
+  .mv-pestanas-tablero .mv-pt-nombre { font-size: .76rem; font-weight: 500; white-space: nowrap; }
+  .mv-pestanas-tablero .mv-pt-cuenta { font-size: 1.05rem; font-weight: 700; color: var(--c); line-height: 1.1; }
+  .mv-pestanas-tablero button[aria-selected="true"] { background: var(--blanco); color: var(--pizarra); box-shadow: inset 0 -3px 0 var(--c), 0 1px 3px rgba(0, 0, 0, .08); }
+  .mv-pestanas-tablero button[aria-selected="true"] .mv-pt-nombre { font-weight: 700; }
+  .mv-pestanas-tablero button:focus-visible { outline: 3px solid var(--verde); outline-offset: 1px; }
+  .tablero .columna.mv-col-oculta { display: none; }
+  .tablero .columna { border-top: 0; background: transparent; }
+  .tablero .col-titulo { display: none; }
+  .tablero .col-lista { padding: 0; }
+  .tablero .item { background: var(--blanco); border-color: var(--linea); border-left-color: var(--c); padding: 9px 11px; }
+  .tablero .item-meta { font-size: .8rem; }
+  .tablero .col-vacia, .tablero .col-nota { padding: 14px 4px; text-align: center; }
+
+  /* ---------- Horarios: un día a la vez ---------- */
+  .mv-dias {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(42px, 1fr); gap: 4px;
+    overflow-x: auto; margin: 0 0 8px; padding-bottom: 2px; scrollbar-width: none;
+  }
+  .mv-dias::-webkit-scrollbar { display: none; }
+  .mv-dias button {
+    font: inherit; cursor: pointer; min-height: 54px; border-radius: 10px; padding: 2px 0;
+    border: 1px solid var(--linea); background: var(--blanco); color: var(--pizarra);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  }
+  .mv-dias button span { font-size: .7rem; text-transform: capitalize; }
+  .mv-dias button b { font-size: 1.05rem; line-height: 1.1; }
+  .mv-dias button i { width: 6px; height: 6px; border-radius: 50%; background: #C0392B; margin-top: 2px; }
+  .mv-dias button i[hidden] { display: block; visibility: hidden; }
+  .mv-dias button.dom span { color: var(--alerta); }
+  .mv-dias button[aria-selected="true"] { background: var(--pizarra); border-color: var(--pizarra); color: #fff; }
+  .mv-dias button[aria-selected="true"] span { color: #fff; }
+
+  .stf-tabla.mv-un-dia { min-width: 0; }
+  .stf-tabla.mv-un-dia .mv-col-oculta { display: none; }
+  .stf-tabla.mv-un-dia .stf-nombre { min-width: 0; width: 52%; padding-left: 10px; position: static; }
+  .stf-tabla.mv-un-dia tbody th.stf-nombre { min-height: 0; display: table-cell; }
+  .stf-tabla.mv-un-dia tbody th.stf-nombre > button, .stf-tabla.mv-un-dia tbody th.stf-nombre > span { display: inline-block; }
+  .stf-tabla.mv-un-dia th, .stf-tabla.mv-un-dia td { padding: 4px 6px; }
+  .stf-tabla.mv-un-dia .stf-celda { min-width: 0; min-height: 44px; flex-direction: row; flex-wrap: wrap; gap: 2px 6px; }
+  .stf-tabla.mv-un-dia .stf-celda small::before { content: "– "; }
+  .stf-tabla.mv-un-dia .stf-celda.t-libre small::before, .stf-tabla.mv-un-dia .stf-celda small:empty::before { content: none; }
+  .stf-horario-cab { gap: 8px; margin-bottom: 8px; }
+  .stf-horario-cab .nota { font-size: .78rem; }
+  .stf-botones .btn { padding: 7px 10px; min-height: 38px; font-size: .88rem; }
+  .stf-turnos { gap: 6px; }
+  .stf-turno { padding: 5px 10px; font-size: .84rem; }
+  .stf-leyenda { font-size: .75rem; gap: 4px !important; }
+  .stf-leyenda span { padding: 1px 8px !important; }
+
+  /* ---------- Tarifario final: servicios plegables ---------- */
+  .tar-filtros { gap: 8px !important; }
+  .tar-op-final h3 { font-size: 1.05rem; margin-bottom: 6px; }
+  table.tar-final tr.mv-plegable { cursor: pointer; position: relative; }
+  table.tar-final tr.mv-plegable > th { padding-right: 38px !important; }
+  table.tar-final tr.mv-plegable > th::after {
+    content: ""; position: absolute; right: 14px; top: 16px; width: 9px; height: 9px;
+    border-right: 2px solid var(--verde-hondo); border-bottom: 2px solid var(--verde-hondo); transform: rotate(45deg);
+  }
+  table.tar-final tr.mv-plegable.mv-abierto > th::after { transform: rotate(-135deg); top: 20px; }
+  .mv-resumen {
+    display: block; font-family: var(--texto); font-weight: 500; font-size: .8rem; color: var(--gris); margin-top: 2px;
+  }
+  table.tar-final tr.mv-plegada, table.tar-final.mv-tarjetas tr.mv-plegada:not(.fila-grupo) { display: none; }
+  /* Cada tarifa en un renglón compacto: categoría arriba y precios en una línea */
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-bottom: 6px; padding: 8px 10px;
+  }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td { border: 0; padding: 0; }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td:nth-child(1) {
+    flex: 1 1 100%; font-size: .8rem; font-weight: 700; color: var(--gris); padding: 0;
+  }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td:nth-child(1) br { display: none; }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td:nth-child(1) .nota { font-weight: 400; margin-left: 6px; }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td:nth-child(2) {
+    flex: 1 1 100%; display: block; text-align: left; font-weight: 600; font-size: .93rem;
+  }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td:nth-child(2)::before { display: none; }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td.num { flex: none; gap: 5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td.num::before { max-width: none; }
+  table.tar-final.mv-tarjetas tr:not(.fila-grupo) > td.acciones-fila { margin-left: auto; font-size: .85rem; }
+
+  /* ---------- Calendario ---------- */
+  .cal-barra { gap: 8px; }
+  .cal-resumen { font-size: .78rem; }
+  .cal-leyenda { gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: .75rem; }
+  .cal-celda { min-height: 46px; }
+  .cal-detalle { margin-top: 10px; padding: 12px; }
+  .cal-fila { padding: 8px 10px; gap: 4px 10px; }
 
   /* ---------- Avisos flotantes ---------- */
   .toast { left: 12px !important; right: 12px !important; max-width: none; transform: none !important; }
