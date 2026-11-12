@@ -76,6 +76,20 @@
   }
   .barra-panel.mv-abierto .menu-btn[hidden] { display: none; }
   .barra-panel.mv-abierto #btnActualizar, .barra-panel.mv-abierto #btnSalir { justify-content: flex-start; }
+  /* En el menú ☰ los grupos se ven como un título con sus opciones debajo */
+  .barra-panel.mv-abierto .menu-grupo { display: block; }
+  .barra-panel.mv-abierto .menu-grupo[hidden] { display: none; }
+  .barra-panel.mv-abierto .menu-grupo-btn {
+    min-height: 34px; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: #9FB7AC;
+    font-weight: 700; background: none !important; border: 0 !important; pointer-events: none; margin-top: 6px;
+  }
+  .barra-panel.mv-abierto .menu-grupo-btn .menu-flecha, .barra-panel.mv-abierto .menu-grupo-btn .menu-cuenta { display: none; }
+  .barra-panel.mv-abierto .menu-desp {
+    display: grid; position: static; background: none; border: 0; box-shadow: none; padding: 0 0 0 10px; min-width: 0;
+    border-left: 2px solid rgba(255, 255, 255, .15); margin-left: 12px; border-radius: 0;
+  }
+  .barra-panel.mv-abierto .menu-desp .menu-btn { color: #fff; }
+  .barra-panel.mv-abierto .menu-desp .menu-btn[aria-current="page"] { background: rgba(255, 255, 255, .16); color: #fff; }
   .barra-panel.mv-abierto .menu-btn[aria-current="page"] { border-color: transparent; }
   .barra-panel.mv-abierto .menu-btn.salir {
     border: 0; border-top: 1px solid rgba(255, 255, 255, .15); border-radius: 0;

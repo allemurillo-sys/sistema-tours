@@ -139,7 +139,7 @@ function htmlCorreo(c) {
   if (!est) {
     cuerpo = `<p class="nota">Consultando la cuenta de correo…</p>`;
   } else if (!est.configurado) {
-    cuerpo = `<p class="aviso">${est.error ? "No se pudo consultar la cuenta de correo." : "El correo todavía no está configurado."} ${app.yo?.rol === "administrador" ? "Configúralo en Mantenimiento › Correo." : "Pídele al administrador que lo configure en Mantenimiento › Correo."}</p>`;
+    cuerpo = `<p class="aviso">${est.error ? "No se pudo consultar la cuenta de correo." : "El correo todavía no está configurado."} ${app.yo?.rol === "administrador" ? "Configúralo en Administración › Configuración › Correo." : "Pídele al administrador que lo configure en Configuración › Correo."}</p>`;
   } else if (!c.correo) {
     cuerpo = `<p class="aviso">El cliente no tiene correo registrado. Agrégalo en Datos del cliente.</p>`;
   } else if (r) {

@@ -281,13 +281,18 @@ async function recargarPerfil() {
     return false;
   }
 
-  const { data: permisos } = await db.from("permisos_rol").select("permiso, permitido").eq("rol", perfil.rol);
+  // Permisos efectivos (rol + excepciones de la persona), calculados en la base de datos
+  const { data: permisos } = await db.rpc("mis_permisos");
   app.yo = perfil;
-  app.permisos = new Set((permisos || []).filter((p) => p.permitido).map((p) => p.permiso));
-  // Usuarios «Solo Staff» (rol personal): únicamente entran a la sección Staff
-  app.soloHorario = perfil.rol === "personal";
+  app.permisos = new Set(permisos || []);
+  // Sin acceso a reservas (personal de Ama de llaves): por ahora solo entra a Staff › Horarios
+  app.soloHorario = perfil.rol !== "administrador" && !app.permisos.has("reservas_ver");
   document.body.classList.toggle("solo-horario", app.soloHorario);
-  $("usuarioNombre").textContent = `${perfil.nombre} (${app.soloHorario ? "Staff" : perfil.rol})`;
+  const NOMBRES_ROL = { mucama: "Mucama", supervisora: "Supervisora", ama_llaves: "Ama de llaves", operaciones: "Operaciones", administrador: "Administrador" };
+  $("usuarioNombre").textContent = `${perfil.nombre} (${NOMBRES_ROL[perfil.rol] ?? perfil.rol})`;
+  const admin = perfil.rol === "administrador";
+  $("btnMenuPersonal").hidden = !(admin || app.permisos.has("ver_perfiles_staff"));
+  $("btnMenuChat").hidden = !(admin || app.permisos.has("chat"));
   return true;
 }
 
@@ -465,17 +470,22 @@ $("btnActualizar").addEventListener("click", (e) => conBoton(e.currentTarget, as
 
 // ---------- Menú de secciones ----------
 const VISTAS = { reservas: "vistaReservas", calendario: "vistaCalendario", mantenimiento: "vistaMantenimiento" };
-function mostrarVista(nombre) {
+function mostrarVista(nombre, boton = null) {
   if (app.soloHorario && nombre !== "staff") nombre = "staff";
   Object.entries(VISTAS).forEach(([k, id]) => ($(id).hidden = k !== nombre));
+  // Horarios y «Personal y planilla» abren la misma sección (Staff) en distinta pestaña
+  const actual = boton || document.querySelector(`.menu-btn[data-vista="${nombre}"]${nombre === "staff" ? '[data-staff-tab="horarios"]' : ""}`);
   document.querySelectorAll(".menu-btn[data-vista]").forEach((b) => {
-    if (b.dataset.vista === nombre) b.setAttribute("aria-current", "page");
+    if (b === actual) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
   document.dispatchEvent(new CustomEvent("vista-abierta", { detail: nombre }));
 }
 document.querySelectorAll(".menu-btn[data-vista]").forEach((b) =>
-  b.addEventListener("click", () => mostrarVista(b.dataset.vista)));
+  b.addEventListener("click", () => {
+    if (b.dataset.staffTab && typeof stf !== "undefined") { stf.pestana = b.dataset.staffTab; stf.horario = null; stf.nuevo = null; }
+    mostrarVista(b.dataset.vista, b);
+  }));
 $("btnImprimirTablero").addEventListener("click", () => window.print());
 
 // =====================================================

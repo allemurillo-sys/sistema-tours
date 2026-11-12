@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="estilos.css?v=16">
-  <link rel="stylesheet" href="panel.css?v=23">
+  <link rel="stylesheet" href="panel.css?v=24">
   <link rel="stylesheet" href="tarifario.css?v=27">
   <link rel="stylesheet" href="chat.css?v=1">
   <link rel="stylesheet" href="staff.css?v=8">
   <link rel="stylesheet" href="reserva-vista.css?v=1">
-  <link rel="stylesheet" href="escritorio.css?v=4">
-  <link rel="stylesheet" href="movil.css?v=4">
+  <link rel="stylesheet" href="escritorio.css?v=5">
+  <link rel="stylesheet" href="movil.css?v=5">
 </head>
 <body class="panel">
 
@@ -51,12 +51,18 @@
       <nav class="menu" aria-label="Secciones del panel">
         <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
         <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
-        <button type="button" class="menu-btn" data-vista="chat">Chat <span id="chatMenuCuenta" class="menu-cuenta" hidden></span></button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
-        <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
-        <button type="button" class="menu-btn" data-vista="staff">Staff</button>
-        <button type="button" class="menu-btn" data-vista="permisos" id="btnMenuPermisos" hidden>Permisos <span id="permMenuCuenta" class="menu-cuenta" hidden></span></button>
-        <button type="button" class="menu-btn" data-vista="mantenimiento">Mantenimiento</button>
+        <button type="button" class="menu-btn" data-vista="staff" data-staff-tab="horarios" id="btnMenuHorarios">Horarios</button>
+        <button type="button" class="menu-btn" data-vista="chat" id="btnMenuChat">Chat <span id="chatMenuCuenta" class="menu-cuenta" hidden></span></button>
+        <div class="menu-grupo" id="grupoAdmin">
+          <button type="button" class="menu-btn menu-grupo-btn" aria-expanded="false" aria-controls="despAdmin">Administración <span id="grupoAdminCuenta" class="menu-cuenta" hidden></span><svg class="menu-flecha" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="menu-desp" id="despAdmin">
+            <button type="button" class="menu-btn" data-vista="finanzas" id="btnMenuFinanzas" hidden>Ventas</button>
+            <button type="button" class="menu-btn" data-vista="staff" data-staff-tab="perfiles" id="btnMenuPersonal" hidden>Personal y planilla</button>
+            <button type="button" class="menu-btn" data-vista="permisos" id="btnMenuPermisos" hidden>Vencimientos <span id="permMenuCuenta" class="menu-cuenta" hidden></span></button>
+            <button type="button" class="menu-btn" data-vista="mantenimiento">Configuración</button>
+          </div>
+        </div>
         <button type="button" class="menu-btn" id="btnActualizar">Actualizar</button>
         <button type="button" class="menu-btn salir" id="btnSalir">Salir</button>
       </nav>
@@ -98,11 +104,11 @@
     <!-- Mantenimiento -->
     <section id="vistaMantenimiento" class="vista" hidden>
       <div class="catalogo">
-        <h1 class="vista-titulo">Mantenimiento</h1>
+        <h1 class="vista-titulo">Configuración</h1>
         <div class="pestanas" role="tablist" aria-label="Mantenimiento">
           <button type="button" role="tab" class="pestana" data-mant="cuenta">Mi cuenta</button>
           <button type="button" role="tab" class="pestana" data-mant="usuarios" data-solo="admin">Usuarios</button>
-          <button type="button" role="tab" class="pestana" data-mant="autorizaciones" data-solo="admin">Autorizaciones</button>
+          <button type="button" role="tab" class="pestana" data-mant="autorizaciones" data-solo="admin">Accesos por rol</button>
           <button type="button" role="tab" class="pestana" data-mant="empresa" data-solo="admin">Datos de la empresa</button>
           <button type="button" role="tab" class="pestana" data-mant="correo" data-solo="admin">Correo</button>
           <button type="button" role="tab" class="pestana" data-mant="propiedades">Propiedades</button>
@@ -115,7 +121,7 @@
     <!-- Staff: perfiles, horarios y planilla -->
     <section id="vistaStaff" class="vista" hidden>
       <div class="catalogo">
-        <h1 class="vista-titulo">Staff</h1>
+        <h1 class="vista-titulo">Personal y horarios</h1>
         <div class="pestanas no-imprimir" role="tablist" aria-label="Staff">
           <button type="button" role="tab" class="pestana" data-staff="perfiles">Perfiles de colaboradores</button>
           <button type="button" role="tab" class="pestana" data-staff="horarios">Horarios</button>
@@ -128,7 +134,7 @@
     <!-- Permisos y vencimientos (solo administradores) -->
     <section id="vistaPermisos" class="vista" hidden>
       <div class="catalogo">
-        <h1 class="vista-titulo">Permisos y vencimientos</h1>
+        <h1 class="vista-titulo">Vencimientos</h1>
         <div id="permContenido"></div>
       </div>
     </section>
@@ -192,11 +198,11 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=14"></script>
-  <script src="panel.js?v=30"></script>
-  <script src="mantenimiento.js?v=24"></script>
+  <script src="panel.js?v=31"></script>
+  <script src="mantenimiento.js?v=25"></script>
   <script src="calendario.js?v=14"></script>
   <script src="finanzas.js?v=2"></script>
-  <script src="correo.js?v=1"></script>
+  <script src="correo.js?v=2"></script>
   <script src="proveedores.js?v=3"></script>
   <script src="reserva-vista.js?v=1"></script>
   <script src="tarifario.js?v=29"></script>
@@ -204,10 +210,10 @@
   <script src="tarifario-servicios.js?v=4"></script>
   <script src="tarifario-catalogo.js?v=4"></script>
   <script src="reserva-manual.js?v=3"></script>
-  <script src="chat.js?v=2"></script>
-  <script src="staff.js?v=8"></script>
+  <script src="chat.js?v=3"></script>
+  <script src="staff.js?v=9"></script>
   <script src="planilla.js?v=2"></script>
   <script src="permisos.js?v=3"></script>
-  <script src="movil.js?v=6"></script>
+  <script src="movil.js?v=7"></script>
 </body>
 </html>

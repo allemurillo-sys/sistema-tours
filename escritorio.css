@@ -21,7 +21,7 @@
   .barra-panel .marca { font-size: 1.02rem; gap: 8px; }
   .barra-panel .brujula { width: 28px; height: 28px; }
   .barra-panel .menu {
-    flex-wrap: nowrap; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none;
+    flex-wrap: nowrap; gap: 2px; min-width: 0; overflow: visible;
     order: 0; flex-basis: auto;
   }
   .barra-panel .menu::-webkit-scrollbar { display: none; }

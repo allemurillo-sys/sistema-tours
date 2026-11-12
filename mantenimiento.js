@@ -3,22 +3,26 @@
 // (usa las utilidades y datos de panel.js)
 // =====================================================
 
-const mant = { pestana: "cuenta", usuarios: [], permisos: [], editando: null, reporte: null, mensaje: "", empresa: null };
+const mant = { pestana: "cuenta", usuarios: [], permisos: [], catalogo: [], excepciones: [], rolSel: "operaciones", editando: null, reporte: null, mensaje: "", empresa: null };
 
-const ROLES = ["personal", "colaborador", "jefatura", "gerente", "administrador"];
-const ROLES_PERMISOS = ["colaborador", "jefatura", "gerente", "administrador"];
-const NOMBRE_ROL = { personal: "Solo Staff", colaborador: "Colaborador", jefatura: "Jefatura", gerente: "Gerente", administrador: "Administrador" };
-const PERMISOS = [
-  { id: "ver_utilidad", nombre: "Ver costos netos y utilidad", detalle: "Muestra el neto y la utilidad en cotizaciones, servicios y reportes." },
-  { id: "editar_catalogo", nombre: "Modificar las propiedades", detalle: "Agregar, renombrar, ocultar y eliminar las propiedades (hospedajes) que ve el cliente en el formulario, en Mantenimiento › Propiedades. Las actividades, precios y operadores se administran en el Tarifario." },
-  { id: "registrar_pagos", nombre: "Registrar pagos", detalle: "Definir el prepago, registrar y eliminar pagos de las reservas." },
-  { id: "reabrir_finalizadas", nombre: "Reabrir reservas finalizadas", detalle: "Devolver una reserva finalizada a la columna Reserva para revisarla." },
-  { id: "ver_reportes", nombre: "Ver reportes", detalle: "Reportes de ventas por colaborador y cuentas por pagar a operadores." },
-  { id: "ver_tarifario", nombre: "Consultar el tarifario final", detalle: "Ver, buscar, imprimir y descargar en Excel las tarifas aprobadas del Tarifario, sin poder editarlas ni revertirlas. Incluye el neto con IVA y sin IVA." },
-  { id: "cancelar_reservas", nombre: "Cancelar reservas confirmadas", detalle: "Cancelar o reactivar reservas que el cliente ya confirmó. Cualquier usuario puede cancelar cotizaciones sin confirmar." },
-  { id: "ver_perfiles_staff", nombre: "Ver perfiles de colaboradores", detalle: "Abrir Staff › Perfiles y consultar las fichas del personal, sin editarlas. Crear, modificar o inactivar perfiles es exclusivo del administrador; los salarios y notas internas solo los ve el administrador." },
-  { id: "gestionar_horarios", nombre: "Crear y editar horarios", detalle: "Armar, modificar, publicar, imprimir y descargar horarios, y ver todos los horarios (también los borradores). Sin este permiso, cada persona ve solo los horarios publicados en los que está incluida." }
+// Roles del sistema unificado (Tours + Ama de llaves)
+const ROLES = ["mucama", "supervisora", "ama_llaves", "operaciones", "administrador"];
+const NOMBRE_ROL = { mucama: "Mucama", supervisora: "Supervisora", ama_llaves: "Ama de llaves", operaciones: "Operaciones", administrador: "Administrador" };
+const DESC_ROL = {
+  mucama: "Ama de llaves · acceso más limitado",
+  supervisora: "Ama de llaves",
+  ama_llaves: "Jefatura de Ama de llaves",
+  operaciones: "Tours y Ama de llaves",
+  administrador: "Todo el sistema"
+};
+const ROL_HV = (r) => ["mucama", "supervisora", "ama_llaves"].includes(r);
+const MODULOS = [
+  { id: "tours", nombre: "Tours" },
+  { id: "ama_llaves", nombre: "Ama de llaves" },
+  { id: "equipo", nombre: "Equipo" },
+  { id: "configuracion", nombre: "Configuración" }
 ];
+const TIPOS_PERMISO = { permiso: "Qué puede hacer", destino: "A quién puede dirigir reportes", aviso: "Avisos que recibe" };
 
 const esAdmin = () => app.yo?.rol === "administrador";
 const pestanaPermitida = (p) =>
@@ -42,8 +46,7 @@ async function abrirMantenimiento() {
   });
   if (!pestanaPermitida(mant.pestana)) mant.pestana = "cuenta";
 
-  if (mant.pestana === "usuarios") await cargarUsuarios();
-  if (mant.pestana === "autorizaciones") await cargarPermisos();
+  if (mant.pestana === "usuarios" || mant.pestana === "autorizaciones") await Promise.all([cargarUsuarios(), cargarPermisos()]);
   if (mant.pestana === "empresa") await cargarEmpresa();
   if (mant.pestana === "correo") mant.correo = await correoEstado(true);
   pintarMantenimiento();
@@ -282,7 +285,7 @@ function htmlFormUsuario(ed) {
           <label>Correo <input id="nuCorreo" type="email" autocomplete="off"></label>
         </div>
         <div class="fila">
-          <label>Tipo de usuario <select id="nuRol">${opcionesRol("colaborador")}</select></label>
+          <label>Tipo de usuario <select id="nuRol">${opcionesRol("operaciones")}</select></label>
           <label>Clave inicial
             <span class="clave-linea">
               <input id="nuClave" type="text" autocomplete="off" value="${claveAleatoria()}">
@@ -290,7 +293,7 @@ function htmlFormUsuario(ed) {
             </span>
           </label>
         </div>
-        <p class="nota">Anota la clave y entrégasela a la persona. Luego podrá cambiarla en Mantenimiento, Mi cuenta.</p>
+        <p class="nota">Anota la clave y entrégasela a la persona. Luego podrá cambiarla en Configuración › Mi cuenta.</p>
         <div class="sec-botones">
           <button type="button" class="btn primario" data-mant-accion="crear-usuario">Crear usuario</button>
           <button type="button" class="btn" data-mant-accion="cancelar">Cancelar</button>
@@ -335,6 +338,11 @@ function htmlFormUsuario(ed) {
         <button type="button" class="btn primario" data-mant-accion="guardar-usuario">Guardar cambios</button>
         <button type="button" class="btn" data-mant-accion="cancelar">Cancelar</button>
       </div>
+    </div>
+    <div class="det-seccion sin-margen">
+      <h3>Excepciones de ${escapar(u.nombre)}</h3>
+      <p class="nota">Normalmente cada persona tiene lo de su rol (<strong>${NOMBRE_ROL[u.rol] ?? u.rol}</strong>). Aquí puedes darle o quitarle algo solo a ella. Se guarda al instante. Lo bloqueado para su rol no aparece.</p>
+      ${htmlExcepciones(u)}
     </div>`;
 }
 
@@ -342,38 +350,109 @@ function htmlFormUsuario(ed) {
 // AUTORIZACIONES
 // ---------------------------------------------------------
 async function cargarPermisos() {
-  const { data, error } = await db.from("permisos_rol").select("*");
-  if (error) return fallo(error, "No se pudieron cargar las autorizaciones.");
-  mant.permisos = data;
+  const [cat, rol, exc] = await Promise.all([
+    db.from("permisos_catalogo").select("*").order("modulo").order("orden"),
+    db.from("permisos_rol").select("*"),
+    db.from("permisos_usuario").select("*")
+  ]);
+  const error = cat.error || rol.error || exc.error;
+  if (error) return fallo(error, "No se pudieron cargar los accesos.");
+  mant.catalogo = cat.data;
+  mant.permisos = rol.data;
+  mant.excepciones = exc.data;
+}
+
+// ¿El rol tiene el permiso? (sin excepciones personales)
+function rolTiene(rol, clave) {
+  const c = mant.catalogo.find((x) => x.clave === clave);
+  if (rol === "administrador") return true;
+  if (c?.solo_admin) return false;
+  if (ROL_HV(rol) && c?.bloqueado_hv) return false;
+  return mant.permisos.some((p) => p.rol === rol && p.permiso === clave && p.permitido);
+}
+// Motivo por el que un permiso no se puede cambiar para ese rol
+function permisoFijo(rol, c) {
+  if (rol === "administrador") return "El administrador siempre lo tiene";
+  if (c.solo_admin) return "Solo el administrador";
+  if (ROL_HV(rol) && c.bloqueado_hv) return "Bloqueado para el personal de Ama de llaves";
+  return "";
+}
+
+function htmlInterruptor(c, marcado, fijo, datos) {
+  return `<label class="acc-perm ${fijo ? "fijo" : ""}">
+      <span class="acc-perm-txt"><b>${escapar(c.nombre)}</b>${c.detalle ? `<small>${escapar(c.detalle)}</small>` : ""}${fijo ? `<small class="acc-fijo">🔒 ${fijo}</small>` : ""}</span>
+      <input type="checkbox" class="acc-switch" role="switch" ${datos} ${marcado ? "checked" : ""} ${fijo ? "disabled" : ""}>
+    </label>`;
 }
 
 function htmlAutorizaciones() {
-  const permitido = (rol, permiso) =>
-    rol === "administrador" || mant.permisos.some((p) => p.rol === rol && p.permiso === permiso && p.permitido);
+  if (!mant.catalogo.length) return `<p class="nota">Cargando…</p>`;
+  const rol = mant.rolSel;
+  const cuenta = (r) => mant.usuarios.filter((u) => u.rol === r && u.activo).length;
+  const personas = mant.usuarios.filter((u) => u.rol === rol);
 
-  const filas = PERMISOS.map((p) => `
-    <tr>
-      <th scope="row"><strong>${p.nombre}</strong><br><span class="nota">${p.detalle}</span></th>
-      ${ROLES_PERMISOS.map((r) => `
-        <td class="centro">
-          <input type="checkbox" class="permiso" data-rol="${r}" data-permiso="${p.id}"
-            ${permitido(r, p.id) ? "checked" : ""} ${r === "administrador" ? "disabled" : ""}
-            aria-label="${p.nombre} para ${NOMBRE_ROL[r]}">
-        </td>`).join("")}
-    </tr>`).join("");
+  const listaRoles = ROLES.map((r) => `
+    <button type="button" class="acc-rol ${r === rol ? "on" : ""}" data-mant-accion="rol-acceso" data-rol="${r}" aria-pressed="${r === rol}">
+      <span><b>${NOMBRE_ROL[r]}</b><small>${DESC_ROL[r]}</small></span><span class="acc-n">${cuenta(r)}</span>
+    </button>`).join("");
+
+  const modulos = MODULOS.map((m) => {
+    const items = mant.catalogo.filter((c) => c.modulo === m.id);
+    if (!items.length) return "";
+    const pendiente = items.some((c) => !c.disponible);
+    const grupos = Object.keys(TIPOS_PERMISO).map((t) => {
+      const lista = items.filter((c) => c.tipo === t);
+      if (!lista.length) return "";
+      return `${Object.keys(TIPOS_PERMISO).filter((x) => items.some((c) => c.tipo === x)).length > 1 ? `<p class="acc-sub">${TIPOS_PERMISO[t]}</p>` : ""}
+        ${lista.map((c) => htmlInterruptor(c, rolTiene(rol, c.clave), permisoFijo(rol, c), `data-rol="${rol}" data-permiso="${c.clave}"`)).join("")}`;
+    }).join("");
+    return `<section class="acc-modulo">
+        <h3>${m.nombre}${pendiente ? ` <span class="chip claro">se activa al integrar Ama de llaves</span>` : ""}</h3>
+        ${grupos}
+      </section>`;
+  }).join("");
 
   return `
-    <div class="det-seccion sin-margen">
-      <h3>Autorizaciones por tipo de usuario</h3>
-      <p class="nota">Marca lo que puede hacer cada tipo de usuario. Los cambios se guardan al instante y llegan al panel de cada persona en menos de un minuto (o de inmediato si presiona Actualizar); se notan al abrir la siguiente pantalla. El administrador siempre tiene todos los permisos, y es el único que puede gestionar usuarios y autorizaciones.</p>
-      <div class="tabla-scroll">
-        <table class="tabla permisos">
-          <thead><tr><th>Permiso</th>${ROLES_PERMISOS.map((r) => `<th class="centro">${NOMBRE_ROL[r]}</th>`).join("")}</tr></thead>
-          <tbody>${filas}</tbody>
-        </table>
+    <div class="acc">
+      <aside class="acc-roles">
+        <p class="acc-sub">Roles</p>
+        ${listaRoles}
+        <p class="acc-sub">Personas con este rol</p>
+        ${personas.length ? personas.map((u) => {
+          const n = mant.excepciones.filter((x) => x.perfil_id === u.id).length;
+          return `<button type="button" class="acc-persona" data-mant-accion="editar-usuario" data-id="${u.id}">
+            <span>${escapar(u.nombre)}${u.activo ? "" : " <small>(desactivado)</small>"}</span>${n ? `<small>${n} excepción${n === 1 ? "" : "es"}</small>` : ""}</button>`;
+        }).join("") : `<p class="nota acc-vacio">Nadie todavía.</p>`}
+      </aside>
+      <div class="acc-detalle">
+        <p class="nota">Lo que marques aquí aplica a todas las personas con el rol <strong>${NOMBRE_ROL[rol]}</strong>. Para darle o quitarle algo a una sola persona, ábrela en la lista de la izquierda (excepciones). Los cambios se guardan al instante.</p>
+        <div class="acc-modulos">${modulos}</div>
       </div>
-      <p class="nota">Todos los usuarios activos pueden ver el tablero de reservas, atender cotizaciones, armar itinerarios y consultar el catálogo. Los usuarios «Solo Staff» (mucamas, supervisoras, ama de llaves) únicamente entran a Staff; lo que ven ahí depende del «Nivel en Staff» de su ficha.</p>
     </div>`;
+}
+
+// Excepciones de una persona (en Editar usuario)
+function htmlExcepciones(u) {
+  if (u.rol === "administrador") return `<p class="nota">El administrador tiene todos los permisos.</p>`;
+  return MODULOS.map((m) => {
+    const items = mant.catalogo.filter((c) => c.modulo === m.id && !c.solo_admin && !(ROL_HV(u.rol) && c.bloqueado_hv));
+    if (!items.length) return "";
+    const conExc = items.filter((c) => mant.excepciones.some((x) => x.perfil_id === u.id && x.permiso === c.clave)).length;
+    return `<details class="acc-exc" ${conExc ? "open" : ""}>
+      <summary>${m.nombre}${conExc ? ` · ${conExc} excepción${conExc === 1 ? "" : "es"}` : ""}</summary>
+      ${items.map((c) => {
+        const e = mant.excepciones.find((x) => x.perfil_id === u.id && x.permiso === c.clave);
+        const base = rolTiene(u.rol, c.clave);
+        const val = e ? (e.permitido ? "si" : "no") : "";
+        return `<label class="acc-exc-fila ${e ? "con" : ""}"><span>${escapar(c.nombre)}</span>
+          <select data-excepcion="${c.clave}" data-perfil="${u.id}">
+            <option value="" ${val === "" ? "selected" : ""}>Según su rol (${base ? "sí" : "no"})</option>
+            <option value="si" ${val === "si" ? "selected" : ""}>Sí, a esta persona</option>
+            <option value="no" ${val === "no" ? "selected" : ""}>No, a esta persona</option>
+          </select></label>`;
+      }).join("")}
+    </details>`;
+  }).join("");
 }
 
 // ---------------------------------------------------------
@@ -551,19 +630,32 @@ function htmlResultadoReporte(r) {
 // EVENTOS
 // ---------------------------------------------------------
 $("mantContenido").addEventListener("change", async (e) => {
-  const chk = e.target.closest("input.permiso");
-  if (!chk) return;
-  chk.disabled = true;
-  const { error } = await db.from("permisos_rol")
-    .update({ permitido: chk.checked })
-    .eq("rol", chk.dataset.rol).eq("permiso", chk.dataset.permiso);
-  chk.disabled = false;
-  if (error) {
-    chk.checked = !chk.checked;
-    return fallo(error, "No se pudo guardar la autorización.");
+  const chk = e.target.closest("input.acc-switch");
+  if (chk) {
+    chk.disabled = true;
+    const { error } = await db.from("permisos_rol")
+      .upsert({ rol: chk.dataset.rol, permiso: chk.dataset.permiso, permitido: chk.checked }, { onConflict: "rol,permiso" });
+    chk.disabled = false;
+    if (error) {
+      chk.checked = !chk.checked;
+      return fallo(error, "No se pudo guardar el acceso.");
+    }
+    await cargarPermisos();
+    return avisar("Acceso guardado.");
   }
-  await cargarPermisos();
-  avisar("Autorización guardada.");
+  const sel = e.target.closest("select[data-excepcion]");
+  if (sel) {
+    sel.disabled = true;
+    const q = sel.value === ""
+      ? db.from("permisos_usuario").delete().eq("perfil_id", sel.dataset.perfil).eq("permiso", sel.dataset.excepcion)
+      : db.from("permisos_usuario").upsert({ perfil_id: sel.dataset.perfil, permiso: sel.dataset.excepcion, permitido: sel.value === "si" }, { onConflict: "perfil_id,permiso" });
+    const { error } = await q;
+    sel.disabled = false;
+    if (error) return fallo(error, "No se pudo guardar la excepción.");
+    await cargarPermisos();
+    sel.closest(".acc-exc-fila")?.classList.toggle("con", sel.value !== "");
+    avisar("Excepción guardada.");
+  }
 });
 
 $("mantContenido").addEventListener("click", async (e) => {
@@ -619,6 +711,7 @@ $("mantContenido").addEventListener("click", async (e) => {
       pintarMantenimiento();
       break;
     case "editar-usuario":
+      mant.pestana = "usuarios";
       mant.editando = { modo: "editar", id };
       pintarMantenimiento();
       break;
@@ -633,6 +726,11 @@ $("mantContenido").addEventListener("click", async (e) => {
     case "generar-clave":
       $("nuClave").value = claveAleatoria();
       break;
+    case "rol-acceso":
+      mant.rolSel = btn.dataset.rol;
+      pintarMantenimiento();
+      break;
+
     case "generar-clave-u":
       $("ucClave").value = claveAleatoria();
       break;
@@ -693,7 +791,7 @@ $("mantContenido").addEventListener("click", async (e) => {
         if (error) return fallo(error);
         if (u.id === app.yo.id) {
           app.yo.nombre = datos.nombre;
-          $("usuarioNombre").textContent = `${app.yo.nombre} (${app.yo.rol})`;
+          $("usuarioNombre").textContent = `${app.yo.nombre} (${NOMBRE_ROL[app.yo.rol] ?? app.yo.rol})`;
         }
         mant.editando = null;
         await cargarUsuarios();

@@ -7,9 +7,9 @@ VISTAS.staff = "vistaStaff";
 
 const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const DIAS_CORTO = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-const DEPARTAMENTOS = ["Recepción", "Ama de llaves", "Administración", "Operaciones"];
+const DEPARTAMENTOS = ["Operaciones", "Ama de llaves", "Administración"];
 // Departamentos con su propia tabla de horario (cada persona ve solo la de su departamento)
-const DEP_HORARIO = ["Recepción", "Ama de llaves"];
+const DEP_HORARIO = ["Operaciones", "Ama de llaves"];
 const EMPRESAS = { HV: "Home Vacations", THT: "The House of Tours", Ambas: "Ambas empresas" };
 const TIPOS_CELDA = {
   trabajo: { nombre: "Trabaja", clase: "t-trabajo" },
@@ -34,11 +34,11 @@ const stf = {
 
 const stfEsAdmin = () => app.yo?.rol === "administrador";
 // Nivel de la persona dentro de Staff (se asigna en su ficha):
-//  recepcion   → ve horarios de Recepción y Ama de llaves
-//  ama_llaves  → crea/edita horarios de Ama de llaves, ve los de Recepción y las fichas de su departamento
+//  recepcion   → (rol Operaciones) ve horarios de Operaciones y Ama de llaves
+//  ama_llaves  → crea/edita horarios de Ama de llaves, ve los de Operaciones y las fichas de su departamento
 //  supervisora → crea/edita horarios de Ama de llaves, solo ve esos horarios
 //  mucama      → ve horarios de Ama de llaves
-const NIVELES_STAFF = { recepcion: "Recepción", ama_llaves: "Ama de llaves (jefatura)", supervisora: "Supervisora", mucama: "Mucama" };
+const NIVELES_STAFF = { recepcion: "Operaciones", ama_llaves: "Ama de llaves (jefatura)", supervisora: "Supervisora", mucama: "Mucama" };
 const stfMiNivel = () => stf.personas.find((p) => p.perfil_id && p.perfil_id === app.yo?.id && p.activo)?.nivel_staff || null;
 const stfVePerfiles = () => puede("ver_perfiles_staff") || stfMiNivel() === "ama_llaves";
 // Gestión global de horarios (administrador o permiso «Crear y editar horarios»)
@@ -90,8 +90,8 @@ const EXTRAS_RAPIDAS = [1, 2, 3, 4];
 const MAX_HORAS_DIA = 12;
 const extraDe = (c) => (c?.tipo === "trabajo" ? Number(c.horas_extra) || 0 : 0);
 const horasTxt = (n) => String(Math.round(n * 100) / 100).replace(".", ",");
-// Recepción lleva la fila «Ingresos previstos» (casas que ingresan cada día), escrita a mano
-const conIngresos = (h) => h?.departamento === "Recepción";
+// Operaciones lleva la fila «Ingresos previstos» (casas que ingresan cada día), escrita a mano
+const conIngresos = (h) => h?.departamento === "Operaciones";
 const ingresoDe = (h, f) => { const v = h?.ingresos?.[f]; return v === undefined || v === null || v === "" ? "" : v; };
 const chipDep = (d) => d ? `<span class="stf-chip dep">${escapar(d)}</span>` : "";
 
@@ -668,7 +668,7 @@ function htmlNuevoHorario() {
         <div class="det-seccion sin-margen">
           <h3><span class="stf-paso">1</span> Departamento</h3>
           <div class="stf-pills">${stfDepsCreables().map((d) => depPill(d, d)).join("")}</div>
-          <p class="nota">${n.departamento === "Recepción" ? "Al publicarlo lo ven Recepción y la ama de llaves." : n.departamento === "Ama de llaves" ? "Al publicarlo lo ven mucamas, supervisoras, ama de llaves y Recepción." : "Elige el departamento."}</p>
+          <p class="nota">${n.departamento === "Operaciones" ? "Al publicarlo lo ven Operaciones y la ama de llaves." : n.departamento === "Ama de llaves" ? "Al publicarlo lo ven mucamas, supervisoras, ama de llaves y Operaciones." : "Elige el departamento."}</p>
         </div>
         <div class="det-seccion sin-margen">
           <h3><span class="stf-paso">2</span> Periodo del horario</h3>
@@ -1107,7 +1107,7 @@ async function stfExcelHorario() {
   cab.eachCell((c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF23343D" } }; c.border = excelBorde; });
   cab.height = 30;
 
-  // Fila de ingresos previstos (solo Recepción)
+  // Fila de ingresos previstos (solo Operaciones)
   const ini = conIngresos(h) ? 6 : 5;
   if (conIngresos(h)) {
     const fi = ws.getRow(5);

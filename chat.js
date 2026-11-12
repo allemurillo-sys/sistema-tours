@@ -165,7 +165,7 @@ function chatNotificar(m) {
 // ARRANQUE Y CIERRE
 // =====================================================
 async function chatIniciar() {
-  if (chat.iniciado || !app.yo || app.soloHorario) return;
+  if (chat.iniciado || !app.yo || app.soloHorario || !puede("chat")) return;
   chat.iniciado = true;
   chat.primeraCarga = true;
   chatCargarPrefs();

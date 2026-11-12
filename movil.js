@@ -48,7 +48,7 @@
       if (e.key === "Escape" && barra.classList.contains("mv-abierto")) { abrir(false); boton.focus(); }
     });
     menu.addEventListener("click", (e) => {
-      if (e.target.closest(".menu-btn") && e.target.closest("#btnActualizar") === null) abrir(false);
+      if (e.target.closest(".menu-btn") && !e.target.closest("#btnActualizar, .menu-grupo-btn")) abrir(false);
     });
 
     // Nombre de la sección actual y aviso de mensajes/alarmas en el botón ☰
@@ -127,6 +127,37 @@
       aplicar(nueva);
       b.innerHTML = etiqueta();
     }, true);
+  }
+
+
+  /* ---------- Grupos desplegables del menú (Administración, y luego Ama de llaves) ---------- */
+  function iniciarGrupos() {
+    document.querySelectorAll(".menu-grupo").forEach((g) => {
+      if (g.dataset.listo) return;
+      g.dataset.listo = "1";
+      const boton = g.querySelector(".menu-grupo-btn");
+      const desp = g.querySelector(".menu-desp");
+      const cuentaGrupo = boton.querySelector(".menu-cuenta");
+      const abrir = (si) => { g.classList.toggle("abierto", si); boton.setAttribute("aria-expanded", si ? "true" : "false"); };
+      boton.addEventListener("click", (e) => { e.stopPropagation(); abrir(!g.classList.contains("abierto")); });
+      desp.addEventListener("click", (e) => { if (e.target.closest(".menu-btn")) abrir(false); });
+      document.addEventListener("click", (e) => { if (!g.contains(e.target)) abrir(false); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && g.classList.contains("abierto")) { abrir(false); boton.focus(); } });
+      // Se esconde si no tiene opciones visibles; muestra la suma de pendientes y si contiene la sección actual
+      const revisar = () => {
+        const visibles = [...desp.querySelectorAll(":scope > .menu-btn")].filter((b) => !b.hidden);
+        g.hidden = !visibles.length;
+        g.classList.toggle("contiene-actual", visibles.some((b) => b.getAttribute("aria-current") === "page"));
+        if (cuentaGrupo) {
+          const n = [...desp.querySelectorAll(".menu-cuenta")].filter((c) => !c.hidden)
+            .reduce((t, c) => t + (parseInt(c.textContent, 10) || 0), 0);
+          cuentaGrupo.hidden = !n;
+          if (n) cuentaGrupo.textContent = String(n);
+        }
+      };
+      new MutationObserver(revisar).observe(desp, { attributes: true, childList: true, subtree: true, characterData: true });
+      revisar();
+    });
   }
 
   /* ---------- Tablas como tarjetas ---------- */
@@ -356,6 +387,7 @@
   function iniciar() {
     document.documentElement.classList.add("mv-activo");
     iconosBarra();
+    iniciarGrupos();
     iniciarDensidad();
     iniciarMenu();
     revisarTablas();
