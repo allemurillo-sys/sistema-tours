@@ -250,4 +250,96 @@
 
   /* ---------- Avisos flotantes ---------- */
   .toast { left: 12px !important; right: 12px !important; max-width: none; transform: none !important; }
+
+  /* =====================================================
+     PÁGINAS DEL CLIENTE (formulario y cotización)
+     ===================================================== */
+
+  /* Encabezado con selector de idioma más pequeño */
+  .selector-idioma select { padding: 6px 8px; font-size: 14px; }
+
+  /* Campos en dos columnas cuando caben */
+  .fila { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .fila:has(#propiedad), .fila:has(> .telefono) { grid-template-columns: 1fr; }
+  .fila.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .fila.tres label { gap: 2px; }
+  .fila.tres .nota { font-size: .72rem; line-height: 1.25; margin: 0 0 2px; min-height: 2.5em; }
+  .telefono { grid-template-columns: minmax(0, .9fr) minmax(0, 1.5fr); gap: 8px; }
+  input, select { padding: 9px 10px; }
+  input[type="date"] { min-height: 42px; }
+  .ayuda { font-size: .85rem; margin-bottom: 10px; }
+  .total-personas { font-size: .92rem; margin-top: 4px; }
+
+  /* Días del itinerario */
+  .dias { grid-template-columns: 1fr; gap: 8px; }
+  .dia { padding: 10px 12px; gap: 8px; border-radius: 10px; }
+  .dia-lista { gap: 4px; }
+  .dia-lista li { font-size: .9rem; padding: 4px 4px 4px 8px; }
+  .abrir-selector { padding: 8px 10px; font-size: .9rem; }
+
+  /* Selector de actividades */
+  .sel-cabeza { padding: 12px 14px 8px; }
+  .sel-cabeza h2 { font-size: 1.2rem; }
+  .sel-cerrar { width: 40px; height: 40px; }
+  .sel-filtros { padding: 0 14px 10px; gap: 8px; }
+  .sel-tipo { padding: 6px 10px; font-size: .85rem; }
+  .sel-lista { padding: 10px 12px 6px; }
+  .sel-grupo { margin-bottom: 12px; }
+  .sel-grupo-titulo { font-size: .98rem; margin-bottom: 6px; }
+  .sel-items { gap: 6px; }
+  .sel-item { padding: 10px 12px 34px; gap: 10px; }
+  .sel-item.con-foto { grid-template-columns: 60px 1fr auto; }
+  .sel-item-foto { width: 60px; height: 45px; }
+  .sel-item-desc { -webkit-line-clamp: 2; font-size: .82rem; margin-top: 2px; }
+  .sel-detalle { left: 12px; bottom: 6px; font-size: .82rem; }
+  .sel-marca { width: 24px; height: 24px; }
+  .sel-item[aria-pressed="true"] .sel-marca::after { left: 7px; top: 3px; }
+  .sel-pie { padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Ventana de detalle de una actividad */
+  .det-galeria img { aspect-ratio: 16 / 10; }
+  .det-cuerpo > :not(.det-galeria) { margin-left: 14px; margin-right: 14px; }
+  .det-datos { gap: 6px 18px; margin-top: 12px; }
+  .det-sub { font-size: 1rem; margin-top: 14px; }
+  .det-incluye { columns: 1; }
+  .det-precios li { padding: 7px 0; }
+
+  /* Boleta de confirmación */
+  .boleta { padding: 18px 16px; }
+  .boleta-cabeza { padding-bottom: 14px; margin-bottom: 14px; }
+  .boleta-cabeza::before { left: -26px; }
+  .boleta-cabeza::after { right: -26px; }
+  .boleta-marca { margin-bottom: 8px; }
+  .linea { padding: 7px 0; }
+  .resumen-grupo { margin: 14px 0 4px; }
+  .acciones { margin-top: 16px; gap: 8px; }
+
+  /* Cotización y reserva del cliente */
+  .dia-bloque { margin-top: 14px; }
+  .dia-titulo { font-size: 1rem; margin-bottom: 6px; }
+  .act { padding: 10px 12px; margin-bottom: 8px; border-radius: 9px; }
+  .act-cab { gap: 8px; }
+  .act-hora { margin: 0 0 4px; font-size: .9rem; }
+  .act-lugar, .act-part { font-size: .85rem; }
+  .caja { padding: 14px; margin-top: 12px; }
+  .caja h2 { font-size: 1.08rem; margin-bottom: 6px; }
+  .caja-total { padding: 12px 14px; margin-top: 14px; gap: 4px; }
+  .caja-total .grande strong { font-size: 1.55rem; }
+  .exito { padding: 12px 14px; margin-top: 12px; }
+  .exito strong { font-size: 1.1rem; }
+  .check { font-size: .98rem; margin: 8px 0 10px; }
+  textarea { min-height: 80px; }
+  .pregunta, .pregunta-agente { padding: 8px 12px; }
+  .sv-estado { font-size: .82rem; gap: 4px 8px; }
+
+  /* Vouchers */
+  .vch-lista { gap: 10px; margin-top: 10px; }
+  .vch { padding: 12px; }
+  .vch-cab { gap: 8px; padding-bottom: 8px; }
+  .vch-titulo { text-align: left; }
+  .vch-logo { max-height: 40px; }
+  .vch-codigo strong { font-size: 1.1rem; }
+  .vch-servicio { font-size: 1.05rem; margin: 8px 0 6px; }
+  .vch-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+  .vch-fila dd { font-size: .9rem; overflow-wrap: anywhere; }
 }
