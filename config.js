@@ -4,6 +4,6 @@
 const CONFIG = {
   supabaseUrl: "https://qbfjauehzzwqtlumxudn.supabase.co",
   // Módulo Ama de llaves dentro de THOT: se enciende el día del cambio (cuando los datos ya estén pasados)
-  moduloAmaLlaves: false,
+  moduloAmaLlaves: true,
   supabaseKey: "sb_publishable_jGwfB6WtYYTn7bVPB-RHpw_147Gu9vN"
 };
