@@ -365,14 +365,15 @@ async function cargarPermisos() {
 // ¿El rol tiene el permiso? (sin excepciones personales)
 function rolTiene(rol, clave) {
   const c = mant.catalogo.find((x) => x.clave === clave);
-  if (rol === "administrador") return true;
+  // El administrador tiene todo, salvo los avisos, que se configuran como en cualquier rol
+  if (rol === "administrador" && c?.tipo !== "aviso") return true;
   if (c?.solo_admin) return false;
   if (ROL_HV(rol) && c?.bloqueado_hv) return false;
   return mant.permisos.some((p) => p.rol === rol && p.permiso === clave && p.permitido);
 }
 // Motivo por el que un permiso no se puede cambiar para ese rol
 function permisoFijo(rol, c) {
-  if (rol === "administrador") return "El administrador siempre lo tiene";
+  if (rol === "administrador" && c.tipo !== "aviso") return "El administrador siempre lo tiene";
   if (c.solo_admin) return "Solo el administrador";
   if (ROL_HV(rol) && c.bloqueado_hv) return "Bloqueado para el personal de Ama de llaves";
   return "";
@@ -433,9 +434,9 @@ function htmlAutorizaciones() {
 
 // Excepciones de una persona (en Editar usuario)
 function htmlExcepciones(u) {
-  if (u.rol === "administrador") return `<p class="nota">El administrador tiene todos los permisos.</p>`;
-  return MODULOS.map((m) => {
-    const items = mant.catalogo.filter((c) => c.modulo === m.id && !c.solo_admin && !(ROL_HV(u.rol) && c.bloqueado_hv));
+  const admin = u.rol === "administrador";
+  return (admin ? `<p class="nota">El administrador tiene todos los permisos; aquí solo se ajustan los avisos que recibe.</p>` : "") + MODULOS.map((m) => {
+    const items = mant.catalogo.filter((c) => c.modulo === m.id && (admin ? c.tipo === "aviso" : !c.solo_admin && !(ROL_HV(u.rol) && c.bloqueado_hv)));
     if (!items.length) return "";
     const conExc = items.filter((c) => mant.excepciones.some((x) => x.perfil_id === u.id && x.permiso === c.clave)).length;
     return `<details class="acc-exc" ${conExc ? "open" : ""}>
