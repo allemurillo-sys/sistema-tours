@@ -1,0 +1,153 @@
+/* =====================================================
+   MODO CELULAR (todo el sistema) — se carga de último.
+   Solo actúa en pantalla de 640 px o menos.
+   La computadora y la impresión no cambian.
+   ===================================================== */
+
+.mv-menu-btn, .mv-menu-fondo, .mv-seccion { display: none; }
+
+@media screen and (max-width: 640px) {
+
+  /* ---------- Base más compacta ---------- */
+  body { font-size: 15px; line-height: 1.45; }
+  h1 { font-size: 1.6rem; margin-bottom: 8px; }
+  .intro { margin-bottom: 20px; }
+  fieldset { margin-bottom: 22px; }
+  legend { font-size: 1.05rem; margin-bottom: 8px; }
+  label { font-size: .9rem; gap: 4px; }
+  input, select, textarea { font-size: 16px; } /* 16 px evita que el iPhone haga zoom */
+  .btn { padding: 9px 14px; border-radius: 9px; min-height: 42px; }
+  .btn.grande { padding: 12px; font-size: 1rem; }
+  .btn.chico { padding: 6px 10px; min-height: 34px; font-size: .85rem; }
+  .aviso { padding: 10px 12px; margin-bottom: 14px; font-size: .9rem; }
+  .nota { font-size: .8rem; }
+
+  /* ---------- Encabezado ---------- */
+  .barra { padding: 8px 12px; }
+  .marca { font-size: 1rem; gap: 8px; }
+  .brujula { width: 26px; height: 26px; }
+  .pagina { padding: 20px 14px 48px; }
+
+  /* ---------- Encabezado del panel con menú ☰ ---------- */
+  .barra-panel {
+    position: sticky; top: 0; z-index: 60;
+    flex-wrap: nowrap; gap: 8px; min-height: 56px; padding: 6px 6px 6px 12px;
+  }
+  .barra-panel .marca { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; }
+  .barra-panel .marca .brujula { grid-row: span 2; }
+  .barra-panel .marca > span:not(.mv-seccion) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+  .mv-seccion {
+    display: block; font-family: var(--texto); font-weight: 400; font-size: .8rem;
+    opacity: .75; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .barra-panel .usuario { display: none; }
+  .barra-panel .barra-usuario { gap: 0; }
+  .barra-panel .avatar-btn .avatar { width: 34px; height: 34px; font-size: .8rem; }
+
+  .mv-menu-btn {
+    display: inline-flex; align-items: center; justify-content: center; position: relative;
+    width: 44px; height: 44px; flex: none; padding: 0; cursor: pointer;
+    background: transparent; border: 1px solid transparent; border-radius: 10px; color: #fff;
+  }
+  .mv-menu-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .mv-menu-btn .mv-ico-cerrar { display: none; }
+  .mv-abierto .mv-menu-btn { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .3); }
+  .mv-abierto .mv-menu-btn .mv-ico-abrir { display: none; }
+  .mv-abierto .mv-menu-btn .mv-ico-cerrar { display: block; }
+  .mv-menu-btn:focus-visible { outline: 3px solid #5FAF84; outline-offset: 2px; }
+  .mv-menu-aviso {
+    position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%;
+    background: #E5533F; box-shadow: 0 0 0 2px var(--pizarra);
+  }
+
+  /* El menú se esconde y se despliega como lista */
+  .barra-panel .menu { display: none; }
+  .barra-panel.mv-abierto .menu {
+    display: flex; flex-direction: column; gap: 2px; flex-wrap: nowrap;
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--pizarra); padding: 6px 10px 12px;
+    border-radius: 0 0 16px 16px; box-shadow: 0 14px 28px rgba(0, 0, 0, .28);
+    max-height: calc(100vh - 70px); overflow-y: auto;
+  }
+  .barra-panel.mv-abierto .menu-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; min-height: 46px; padding: 0 12px; text-align: left; font-size: 1rem;
+  }
+  .barra-panel.mv-abierto .menu-btn[hidden] { display: none; }
+  .barra-panel.mv-abierto .menu-btn[aria-current="page"] { border-color: transparent; }
+  .barra-panel.mv-abierto .menu-btn.salir {
+    border: 0; border-top: 1px solid rgba(255, 255, 255, .15); border-radius: 0;
+    margin-top: 6px; padding-top: 4px; color: #FFB4A8;
+  }
+  .mv-menu-fondo {
+    display: none; position: fixed; inset: 0; z-index: 55; background: rgba(15, 22, 26, .5);
+  }
+  body.mv-menu-abierto .mv-menu-fondo { display: block; }
+
+  /* ---------- Secciones del panel ---------- */
+  .catalogo { padding: 12px; }
+  .vista-titulo { font-size: 1.3rem; margin: 2px 0 10px; }
+  .pestanas {
+    overflow-x: auto; flex-wrap: nowrap; gap: 0; margin-bottom: 12px;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .pestanas::-webkit-scrollbar { display: none; }
+  .pestana { padding: 8px 12px; white-space: nowrap; flex: none; font-size: .92rem; }
+
+  .herramientas { padding: 10px 12px; gap: 8px; }
+  .herramientas input[type="search"] { max-width: none; width: 100%; flex: 1 1 100%; }
+  .herramientas .check-linea { margin: 0; }
+  .herramientas .btn { padding: 8px 12px; min-height: 40px; }
+
+  /* Tablero de reservas: una columna, sin altura mínima */
+  .tablero { grid-template-columns: 1fr !important; padding: 0 12px 32px; gap: 10px; overflow-x: visible; }
+  .columna { min-height: 0; border-top-width: 4px; }
+  .col-titulo { padding: 10px 12px 8px; font-size: 1.02rem; }
+  .col-lista { padding: 0 6px 8px; gap: 5px; }
+
+  /* Ventanas de detalle */
+  .det-cabeza { padding: 10px 12px; }
+  .det-cabeza h2 { font-size: 1.3rem; }
+  .det-seccion { margin: 8px; padding: 12px; border-radius: 10px; }
+  .det-seccion h3 { font-size: 1.05rem; margin-bottom: 8px; }
+  .det-seccion h4 { margin: 14px 0 6px; }
+  .det-seccion p { margin-bottom: 8px; }
+  .det-seccion .btn { padding: 8px 12px; }
+  .det-seccion.sin-margen { margin: 0 0 10px; }
+
+  /* ---------- Tablas convertidas en tarjetas ---------- */
+  table.mv-tarjetas, table.mv-tarjetas tbody, table.mv-tarjetas tfoot { display: block; width: 100%; }
+  table.mv-tarjetas thead, table.mv-tarjetas tr.mv-cab-interna { display: none; }
+  table.mv-tarjetas tr {
+    display: block; background: var(--blanco); border: 1px solid var(--linea);
+    border-radius: 10px; padding: 6px 10px; margin: 0 0 8px;
+  }
+  table.mv-tarjetas tr.mv-fila-titulo { background: var(--verde-suave); border-color: transparent; padding: 0; margin-top: 12px; }
+  table.mv-tarjetas tr.mv-fila-titulo > * {
+    display: block; padding: 8px 10px; border: 0; font-family: var(--titulos);
+    font-weight: 700; font-size: .98rem; color: var(--verde-hondo); text-align: left;
+  }
+  table.mv-tarjetas td, table.mv-tarjetas tbody th, table.mv-tarjetas tfoot th {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 5px 0; border: 0; border-bottom: 1px solid #EEF2F1; text-align: right; font-size: .92rem;
+  }
+  table.mv-tarjetas tr > *:last-child { border-bottom: 0; }
+  table.mv-tarjetas td[data-label]::before,
+  table.mv-tarjetas th[data-label]::before {
+    content: attr(data-label); flex: none; max-width: 48%;
+    text-align: left; color: var(--gris); font-size: .8rem; font-weight: 500;
+  }
+  /* La primera celda funciona como título de la tarjeta */
+  table.mv-tarjetas tr:not(.mv-fila-titulo) > *:first-child {
+    display: block; text-align: left; font-weight: 700; font-size: .98rem; padding-top: 4px;
+  }
+  table.mv-tarjetas tr:not(.mv-fila-titulo) > *:first-child::before { display: none; }
+  table.mv-tarjetas .mv-vacia { display: none; }
+  table.mv-tarjetas td > input, table.mv-tarjetas td > select { max-width: 60%; }
+  table.mv-tarjetas .acciones-fila { justify-content: flex-end; flex-wrap: wrap; white-space: normal; }
+  table.mv-tarjetas .acciones-fila::before { display: none; }
+  .tabla-scroll:has(> table.mv-tarjetas) { overflow-x: visible; }
+
+  /* ---------- Avisos flotantes ---------- */
+  .toast { left: 12px !important; right: 12px !important; max-width: none; transform: none !important; }
+}
