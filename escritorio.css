@@ -129,3 +129,56 @@
 @media (prefers-reduced-motion: reduce) {
   .barra-panel #btnActualizar:disabled .mv-ico { animation: none; }
 }
+
+@media screen and (min-width: 901px) {
+
+  /* ---------- 7. Horarios más compactos ---------- */
+  .stf-tabla-caja { max-height: calc(100vh - 230px); overflow: auto; padding: 0 !important; }
+  .stf-tabla thead th { z-index: 2; }
+  .stf-tabla-caja .stf-tabla thead tr.stf-ingresos th,
+  .stf-tabla-caja .stf-tabla thead tr.stf-ingresos td { position: sticky; top: var(--stf-cab, 46px); z-index: 2; }
+  .stf-tabla-caja .stf-tabla thead tr.stf-ingresos th.stf-nombre { left: 0; z-index: 3; }
+  .stf-tabla thead tr:first-child > .stf-nombre { z-index: 3; }
+  .stf-tabla tfoot th, .stf-tabla tfoot td { position: sticky; bottom: 0; z-index: 1; }
+  .stf-tabla th, .stf-tabla td { padding: 3px 4px; }
+  .stf-tabla tbody th.stf-nombre { min-height: 44px; }
+  .stf-celda { min-height: 40px; padding: 2px 4px; }
+  .stf-celda b { font-size: .88rem; }
+  .stf-celda small { font-size: .74rem; }
+  .stf-turnos { gap: 6px; padding: 10px 14px; }
+  .stf-turno { padding: 4px 10px; font-size: .85rem; }
+  .stf-turnos .nota { font-size: .8rem; }
+  .stf-horario-cab { margin-bottom: 10px; }
+
+  /* ---------- 8. Calendario: el mes completo en pantalla ---------- */
+  .cal-celda { min-height: clamp(76px, calc((100vh - 300px) / 6), 118px); }
+  .cal-barra { margin-bottom: 4px; }
+  .cal-resumen { margin: 2px 0 4px; font-size: .8rem; }
+  .cal-leyenda { margin-bottom: 8px; font-size: .8rem; }
+  .cal-cab { padding: 6px 10px; }
+
+  /* ---------- 9. Filtros fijos al bajar ---------- */
+  #vistaReservas .herramientas,
+  .tar-filtros:not(.tar-opciones) {
+    position: sticky; top: 56px; z-index: 6; background: var(--fondo);
+  }
+  .tar-filtros:not(.tar-opciones) { padding: 8px 0; margin-bottom: 4px; }
+  .tar-filtros label { font-size: .88rem; }
+}
+
+/* ---------- 10. Vista cómoda: más espacio y letra más grande ---------- */
+@media screen and (min-width: 901px) {
+  .vista-comoda .tabla { font-size: 1rem; }
+  .vista-comoda .tabla th, .vista-comoda .tabla td { padding: 10px 10px; }
+  .vista-comoda .tabla thead th { font-size: .85rem; text-transform: none; letter-spacing: 0; }
+  .vista-comoda .item { padding: 12px 14px; gap: 3px; }
+  .vista-comoda .item-meta { font-size: .88rem; }
+  .vista-comoda .det-seccion { padding: 20px 24px; }
+  .vista-comoda .stf-celda { min-height: 52px; padding: 4px; }
+  .vista-comoda .stf-tabla th, .vista-comoda .stf-tabla td { padding: 5px; }
+  .vista-comoda .cal-celda { min-height: 118px; }
+  .vista-comoda .barra-panel .menu-btn { font-size: .98rem; }
+  .vista-comoda .catalogo { max-width: 1400px; }
+}
+.esc-vista .nota { margin-left: 6px; font-size: .78rem; }
+@media screen and (max-width: 900px) { .esc-vista { display: none !important; } }
