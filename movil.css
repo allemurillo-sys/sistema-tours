@@ -39,7 +39,7 @@
   .barra-panel .marca > span:not(.mv-seccion) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
   .barra-panel .marca-texto > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* En celular: segunda línea = "Home Vacations CR · sección actual" */
-  .barra-panel .marca-hv .mv-seccion { display: inline; font-size: inherit; opacity: 1; }
+  .barra-panel .marca-hv .mv-seccion { display: inline; font-family: var(--texto); font-weight: 400; font-size: .85em; opacity: .75; }
   .barra-panel .marca-hv .mv-seccion:not(:empty)::before { content: " · "; }
   .mv-seccion {
     display: block; font-family: var(--texto); font-weight: 400; font-size: .8rem;
