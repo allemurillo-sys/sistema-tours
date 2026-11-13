@@ -986,7 +986,7 @@ async function enlacesTHOT(){
   const admin = S.perfil && S.perfil.rol === 'admin';
   const links = [];
   // [enlace, ícono, texto en computadora, texto corto en celular]
-  if (admin || p.includes('reservas_ver')) links.push(['../panel.html', '🧭', 'Tours y reservas', 'Tours']);
+  if (admin || p.includes('reservas_ver')) links.push(['../panel.html', '🧭', 'Tours y reservas', null]);  // en celular no se muestra
   links.push(['../panel.html#horarios', '🗓️', 'Horarios', 'Horarios']);
   S.thotLinks = links;
   caja.innerHTML = links.map(([h, ic, t]) => `<a href="${h}"><span class="ic">${ic}</span>${t}</a>`).join('');
@@ -996,7 +996,7 @@ async function enlacesTHOT(){
 function ponerEnlacesMovil(){
   const m = $('#menu'); if (!m) return;
   m.querySelectorAll('a.thot-movil').forEach(a => a.remove());
-  m.insertAdjacentHTML('beforeend', (S.thotLinks || []).map(([h, ic, , c]) => `<a class="thot-movil" href="${h}"><span class="ic">${ic}</span>${c}</a>`).join(''));
+  m.insertAdjacentHTML('beforeend', (S.thotLinks || []).filter(l => l[3]).map(([h, ic, , c]) => `<a class="thot-movil" href="${h}"><span class="ic">${ic}</span>${c}</a>`).join(''));
 }
 function armarMenu(){
   $('#menu').innerHTML = menuItems().map(([v, ic, t]) => `<button data-vista="${v}"><span class="ic">${ic}</span>${t}</button>`).join('');
