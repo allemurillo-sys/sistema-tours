@@ -400,6 +400,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
   .thot-enlaces{border-left:1px solid rgba(255,255,255,.18);padding-left:8px}
   .thot-enlaces a{display:inline-flex;align-items:center;gap:6px;color:inherit;text-decoration:none;padding:8px 10px;border-radius:10px;font-size:.9rem;opacity:.85}
   .thot-enlaces a:hover{background:rgba(255,255,255,.12);opacity:1}
+  nav.menu a.thot-movil{display:none}
+  @media (max-width:760px){
+    nav.thot-enlaces{display:none}
+    nav.menu a.thot-movil{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;font-size:11px;font-weight:600;padding:6px 4px;border-radius:9px;color:rgba(255,255,255,.75);text-decoration:none;white-space:nowrap}
+    nav.menu a.thot-movil .ic{font-size:20px}
+    nav.menu a.thot-movil:first-of-type{border-left:1px solid rgba(255,255,255,.18);border-radius:0 9px 9px 0}
+    nav.menu button,nav.menu a.thot-movil{min-width:0;padding-left:2px;padding-right:2px}
+  }
 </style>
 </head>
 <body>
@@ -977,12 +985,22 @@ async function enlacesTHOT(){
   try { const r = await sb.schema('public').rpc('mis_permisos'); p = r.data || []; } catch (e) {}
   const admin = S.perfil && S.perfil.rol === 'admin';
   const links = [];
-  if (admin || p.includes('reservas_ver')) links.push(['../panel.html', '🧭', 'Tours y reservas']);
-  links.push(['../panel.html#horarios', '🗓️', 'Horarios']);
+  // [enlace, ícono, texto en computadora, texto corto en celular]
+  if (admin || p.includes('reservas_ver')) links.push(['../panel.html', '🧭', 'Tours y reservas', 'Tours']);
+  links.push(['../panel.html#horarios', '🗓️', 'Horarios', 'Horarios']);
+  S.thotLinks = links;
   caja.innerHTML = links.map(([h, ic, t]) => `<a href="${h}"><span class="ic">${ic}</span>${t}</a>`).join('');
+  ponerEnlacesMovil();
+}
+// En celular los enlaces a THOT van dentro de la misma barra inferior (no en una barra aparte)
+function ponerEnlacesMovil(){
+  const m = $('#menu'); if (!m) return;
+  m.querySelectorAll('a.thot-movil').forEach(a => a.remove());
+  m.insertAdjacentHTML('beforeend', (S.thotLinks || []).map(([h, ic, , c]) => `<a class="thot-movil" href="${h}"><span class="ic">${ic}</span>${c}</a>`).join(''));
 }
 function armarMenu(){
   $('#menu').innerHTML = menuItems().map(([v, ic, t]) => `<button data-vista="${v}"><span class="ic">${ic}</span>${t}</button>`).join('');
+  ponerEnlacesMovil();
 }
 $('#menu').addEventListener('click', e => { const b = e.target.closest('[data-vista]'); if (b) irA(b.dataset.vista); });
 
