@@ -37,6 +37,10 @@
   .barra-panel .marca { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; }
   .barra-panel .marca .brujula { grid-row: span 2; }
   .barra-panel .marca > span:not(.mv-seccion) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+  .barra-panel .marca-texto > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* En celular: segunda línea = "Home Vacations CR · sección actual" */
+  .barra-panel .marca-hv .mv-seccion { display: inline; font-size: inherit; opacity: 1; }
+  .barra-panel .marca-hv .mv-seccion:not(:empty)::before { content: " · "; }
   .mv-seccion {
     display: block; font-family: var(--texto); font-weight: 400; font-size: .8rem;
     opacity: .75; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

@@ -655,3 +655,7 @@ label.en-linea select { width: auto; }
 @media (prefers-reduced-motion: reduce) { .menu-flecha { transition: none; } }
 @media print { .menu-desp { display: none !important; } }
 a.menu-btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Marca en dos líneas: The House of Tours / Home Vacations CR */
+.marca-texto { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.marca-hv { font-family: var(--texto); font-weight: 400; font-size: .78em; opacity: .8; letter-spacing: .02em; }

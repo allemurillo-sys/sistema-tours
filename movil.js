@@ -17,7 +17,9 @@
     const marca = barra.querySelector(".marca");
     const seccion = document.createElement("span");
     seccion.className = "mv-seccion";
-    if (marca) marca.appendChild(seccion);
+    const lineaHv = marca && marca.querySelector(".marca-hv");
+    if (lineaHv) lineaHv.appendChild(seccion);
+    else if (marca) marca.appendChild(seccion);
 
     const boton = document.createElement("button");
     boton.type = "button";
