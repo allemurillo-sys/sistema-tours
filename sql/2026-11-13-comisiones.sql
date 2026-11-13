@@ -175,3 +175,14 @@ create policy com_comprob_admin on storage.objects for all to authenticated
 create policy com_comprob_propio on storage.objects for select to authenticated
   using (bucket_id = 'comisiones-comprobantes'
          and (storage.foldername(name))[2] in (select id::text from public.staff_personas where perfil_id = auth.uid()));
+
+-- ---------- Cambio: solo administradores (13-nov-2026) ----------
+drop policy if exists com_comprob_propio on storage.objects;
+drop function if exists public.com_confirmar_pago(bigint);
+drop function if exists public.com_mis_datos();
+drop function if exists public.com_mis_personas();
+delete from public.permisos_usuario where permiso = 'comisiones_propias';
+delete from public.permisos_rol where permiso = 'comisiones_propias';
+delete from public.permisos_catalogo where clave = 'comisiones_propias';
+update public.permisos_catalogo set nombre = 'Comisiones por ventas', detalle = 'Reporte mensual de ventas y comisiones, pagos a vendedores y utilidad de la empresa. Solo administradores.' where clave = 'comisiones';
+alter table public.com_pagos drop column if exists confirmado_en, drop column if exists confirmado_por;

@@ -2,8 +2,7 @@
 // STAFF › COMISIONES POR VENTAS
 //  · Administración: un reporte por mes (importar Excel o agregar a mano),
 //    ventas por revisar, resumen por vendedor, pagos y comprobantes.
-//  · Vendedores: "Mis comisiones" (sin costos ni utilidad de la empresa)
-//    y confirmación de cada pago recibido.
+//  · Solo administradores (el reporte incluye la utilidad de la empresa).
 //  · Todos los montos los calcula la base de datos (vista com_ventas_calc):
 //    IVA incluido en el precio (total − total ÷ 1,13), datáfono solo en TC,
 //    vendedor = % de la ganancia.
@@ -24,12 +23,11 @@ const com = {
   anio: null,
   actual: null,        // id del mes abierto
   filtroVend: "",
-  importe: null,       // vista previa de importación
-  mio: null            // datos del vendedor (vista "Mis comisiones")
+  importe: null        // vista previa de importación
 };
 
 const comAdmin = () => puede("comisiones");
-const comVe = () => comAdmin() || puede("comisiones_propias");
+const comVe = () => comAdmin();
 const usd = (n) => colones(n, 2).replace("₡", "$");
 const comNorm = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 const comMes = (id) => com.meses.find((m) => m.id === Number(id));
@@ -40,11 +38,11 @@ const comEditable = (m) => m && m.estado === "abierto" && !m.historico;
 const n2 = (x) => Number(x) || 0;
 
 // Ventana con el formato del sistema: título arriba con sus botones, contenido abajo
-function comModal(sub, titulo, cuerpo, botones, ancho = "") {
+function comModal(sub, titulo, cuerpo, botones, ancho = "", cerrar = "") {
   stfAbrirModal(`
     <div class="det-cabeza" style="--c: var(--verde)">
       <div><p class="det-numero">${sub}</p><h2 id="stfModalTitulo">${titulo}</h2></div>
-      <div class="det-acciones"><button type="button" class="btn" data-stf-accion="cerrar-modal">${botones ? "Cancelar" : "Cerrar"}</button>${botones}</div>
+      <div class="det-acciones"><button type="button" class="btn" data-stf-accion="cerrar-modal">${cerrar || (botones ? "Cancelar" : "Cerrar")}</button>${botones}</div>
     </div>
     <div class="det-seccion">${cuerpo}</div>`, ancho);
 }
@@ -64,13 +62,6 @@ async function comAbrir(recargar = false) {
 
 async function comCargar() {
   if (!stf.cargado) await stfCargar();
-  if (!comAdmin()) {
-    const { data, error } = await db.rpc("com_mis_datos");
-    if (error) throw error;
-    com.mio = data;
-    com.cargado = true;
-    return;
-  }
   const [m, v, p, a, al] = await Promise.all([
     db.from("com_meses").select("*").order("anio", { ascending: false }).order("mes", { ascending: false }),
     plaTodo(() => db.from("com_ventas_calc").select("*").order("fecha").order("id")),
@@ -118,7 +109,6 @@ const comPago = (mesId, personaId, forma) => com.pagos.find((p) => p.mes_id === 
 // PINTAR
 // =====================================================
 function comPintar() {
-  if (!comAdmin()) return stfRedibujar(htmlMisComisiones(), "comisiones-mias");
   const m = comMes(com.actual);
   stfRedibujar(m ? htmlComMes(m) : htmlComLista(), `comisiones-${com.actual || "lista"}`);
 }
@@ -207,7 +197,7 @@ function htmlComMes(m) {
       const monto = g.t[forma];
       if (!g.persona_id) return `<td class="centro"><small>Asigne el vendedor</small></td>`;
       const pg = comPago(m.id, g.persona_id, forma);
-      if (pg) return `<td class="centro">${pg.confirmado_en ? `<span class="stf-chip ok">✓ Recibido</span>` : `<span class="stf-chip aviso">Pagado · falta confirmar</span>`}<br><button type="button" class="enlace" data-com-accion="ver-pago" data-id="${pg.id}">Ver pago</button></td>`;
+      if (pg) return `<td class="centro"><span class="stf-chip ok">✓ Pagado ${fechaCorta(pg.fecha)}</span><br><button type="button" class="enlace" data-com-accion="ver-pago" data-id="${pg.id}">Ver pago</button></td>`;
       if (Math.abs(monto) < 0.005) return `<td class="centro"><small>Nada que pagar</small></td>`;
       return `<td class="centro"><button type="button" class="btn chico" data-com-accion="pagar" data-forma="${forma}" data-persona="${g.persona_id}">Registrar pago</button></td>`;
     };
@@ -300,56 +290,6 @@ function htmlComMes(m) {
       <div class="tabla-scroll"><table class="tabla pla-tabla com-ventas">
         <thead><tr><th>Fecha</th><th>Orden</th><th>Actividad</th><th>Cliente</th><th>Vendedor</th><th>Tipo</th><th class="num">Pax</th><th class="num">Total</th><th class="num">IVA</th><th class="num">Datáfono</th><th class="num">Costo</th><th class="num">Ganancia</th><th class="num">Vendedor</th><th class="num">Empresa</th>${ed ? "<th></th>" : ""}</tr></thead>
         <tbody>${filasVentas || `<tr><td colspan="15" class="nota">Sin ventas.</td></tr>`}</tbody>
-      </table></div>
-    </div>`;
-}
-
-// ---------- Mis comisiones (vendedor) ----------
-function htmlMisComisiones() {
-  const d = com.mio || { meses: [], ventas: [], pagos: [] };
-  if (!d.meses.length) return `<div class="det-seccion sin-margen"><h3>Mis comisiones</h3><p class="nota">Todavía no tiene ventas registradas.</p></div>`;
-  if (!com.actual || !d.meses.some((m) => m.id === com.actual)) com.actual = d.meses[0].id;
-  const m = d.meses.find((x) => x.id === com.actual);
-  const ventas = d.ventas.filter((v) => v.mes_id === m.id).map((v) => ({ ...v, total_rack: n2(v.total_rack), com_vendedor: n2(v.com_vendedor) }));
-  const t = { efectivo: 0, deposito: 0, total: 0, vendido: 0 };
-  ventas.filter((v) => v.estado === "valida").forEach((v) => { t[v.forma] += v.com_vendedor; t.total += v.com_vendedor; t.vendido += v.total_rack; });
-  const pagos = d.pagos.filter((p) => p.mes_id === m.id);
-  const tarjeta = (forma) => {
-    const pg = pagos.find((p) => p.forma === forma);
-    let estado = "";
-    if (m.historico) estado = `<small>Pagado antes del sistema</small>`;
-    else if (!pg) estado = t[forma] ? `<span class="stf-chip gris">Pendiente de pago</span>` : `<small>Nada que pagar</small>`;
-    else if (pg.confirmado_en) estado = `<span class="stf-chip ok">✓ Recibido el ${fechaHora(pg.confirmado_en)}</span>`;
-    else estado = `<button type="button" class="btn primario" data-com-accion="confirmar" data-id="${pg.id}">Recibí conforme</button>`;
-    return `
-      <div class="com-tarjeta">
-        <span>${COM_FORMA[forma]}</span>
-        <b>${usd(pg ? pg.monto : t[forma])}</b>
-        ${pg ? `<small>Pagado el ${fechaAnio(pg.fecha)}${pg.referencia ? ` · Ref. ${escapar(pg.referencia)}` : ""}${pg.banco ? ` · ${escapar(pg.banco)}` : ""}</small>` : ""}
-        ${pg?.archivo ? `<button type="button" class="enlace" data-com-accion="ver-archivo" data-ruta="${escapar(pg.archivo)}">Ver comprobante</button>` : ""}
-        ${estado}
-      </div>`;
-  };
-  return `
-    <div class="pla-nav">
-      <h3 class="com-titulo">Mis comisiones</h3>
-      <label class="stf-inline">Mes <select id="comMiMes">${d.meses.map((x) => `<option value="${x.id}" ${x.id === m.id ? "selected" : ""}>${comNombreMes(x)}</option>`).join("")}</select></label>
-      ${comChipEstado(m)}
-    </div>
-    <div class="pla-kpis">
-      <div><span>Vendido en el mes</span><b>${usd(t.vendido)}</b></div>
-      <div class="destacado"><span>Mi comisión</span><b>${usd(t.total)}</b></div>
-    </div>
-    <div class="com-tarjetas">${tarjeta("efectivo")}${tarjeta("deposito")}</div>
-    <p class="nota">Cuando la administración registra un pago, toque <strong>Recibí conforme</strong> para confirmar que lo recibió.</p>
-    <div class="det-seccion sin-margen">
-      <h3>Mis ventas (${ventas.length})</h3>
-      <div class="tabla-scroll"><table class="tabla pla-tabla">
-        <thead><tr><th>Fecha</th><th>Orden</th><th>Actividad</th><th>Cliente</th><th>Tipo</th><th class="num">Pax</th><th class="num">Total</th><th class="num">Mi comisión</th></tr></thead>
-        <tbody>${ventas.map((v) => `
-          <tr class="${v.estado !== "valida" ? "inactivo" : ""}"><td>${v.fecha ? fechaCorta(v.fecha) : "—"}</td><td>${escapar(v.orden || "")}</td><td>${escapar(v.actividad || "")}</td><td>${escapar(v.cliente || "")}</td>
-          <td>${v.estado === "revisar" ? `<span class="stf-chip aviso">En revisión</span>` : v.estado === "no_pagar" ? `<span class="stf-chip gris">No aplica</span>` : COM_TIPOS[v.tipo]}</td>
-          <td class="num">${horasTxt(v.pax)}</td><td class="num">${usd(v.total_rack)}</td><td class="num"><strong>${usd(v.com_vendedor)}</strong></td></tr>`).join("")}</tbody>
       </table></div>
     </div>`;
 }
@@ -470,7 +410,7 @@ function comFormPago(forma, personaId) {
       <label>Banco <input id="cpBanco" placeholder="BAC, BN, BCR…"></label>
       <label>Número de comprobante <input id="cpRef"></label>
       <label class="ancho">Comprobante de la transferencia (foto o PDF) <input id="cpArchivo" type="file" accept="image/*,application/pdf"></label>` : `
-      <p class="nota ancho">Al guardar se abre el comprobante para imprimir y firmar. Además, ${escapar(comNombrePersona(personaId).split(" ")[0])} debe tocar <strong>Recibí conforme</strong> en su usuario.</p>`}
+      <p class="nota ancho">Al guardar se abre el comprobante para imprimir y firmar.</p>`}
       <label class="ancho">Nota <input id="cpNota"></label>
     </div>`,
     `<button type="button" class="btn primario" data-com-modal="guardar-pago" data-forma="${forma}" data-persona="${personaId}">Guardar pago</button>`);
@@ -495,7 +435,7 @@ async function comGuardarPago(forma, personaId) {
   const { error } = await db.from("com_pagos").insert(fila);
   if (error) return fallo(error);
   stfCerrarModal();
-  avisar("Pago registrado. El vendedor debe confirmarlo en su usuario.");
+  avisar("Pago registrado.");
   await comCargar(); comPintar();
   if (forma === "efectivo") comImprimirComprobante(personaId, "efectivo");
 }
@@ -511,11 +451,10 @@ function comVerPago(id) {
       ${pg.referencia ? `<dt>Comprobante</dt><dd>${escapar(pg.referencia)}</dd>` : ""}
       ${pg.nota ? `<dt>Nota</dt><dd>${escapar(pg.nota)}</dd>` : ""}
       <dt>Registrado</dt><dd>${fechaHora(pg.registrado_en)}</dd>
-      <dt>Vendedor</dt><dd>${pg.confirmado_en ? `<span class="stf-chip ok">✓ Confirmó que lo recibió el ${fechaHora(pg.confirmado_en)}</span>` : `<span class="stf-chip aviso">Todavía no ha confirmado</span>`}</dd>
     </dl>`, `
       ${pg.archivo ? `<button type="button" class="btn" data-com-modal="ver-archivo" data-ruta="${escapar(pg.archivo)}">Ver comprobante</button>` : ""}
       <button type="button" class="btn" data-com-modal="imprimir-pago" data-persona="${pg.persona_id}" data-forma="${pg.forma}">Imprimir</button>
-      ${pg.confirmado_en ? "" : `<button type="button" class="btn peligro" data-com-modal="anular-pago" data-id="${pg.id}">Anular pago</button>`}`);
+      <button type="button" class="btn peligro" data-com-modal="anular-pago" data-id="${pg.id}">Anular pago</button>`, "", "Cerrar");
 }
 async function comAnularPago(id) {
   if (!confirm("¿Anular este pago? Use esto solo si se registró por error.")) return;
@@ -549,7 +488,7 @@ function comImprimirComprobante(personaId, soloForma = null) {
         <table class="com-recibo-tabla"><thead><tr><th>Fecha</th><th>Orden</th><th>Actividad</th><th>Cliente</th><th>Tipo</th><th class="num">Comisión</th></tr></thead>
           <tbody>${vs.map((v) => `<tr><td>${v.fecha ? fechaCorta(v.fecha) : ""}</td><td>${escapar(v.orden || "")}</td><td>${escapar(v.actividad || "")}</td><td>${escapar(v.cliente || "")}</td><td>${COM_TIPOS[v.tipo]}</td><td class="num">${usd(v.com_vendedor)}</td></tr>`).join("")}</tbody></table>
         <p class="pla-recibo-neto"><span>Total ${forma === "efectivo" ? "entregado en efectivo" : "depositado"}</span><strong>${usd(pg ? pg.monto : total)}</strong></p>
-        ${pg ? `<p>Fecha de pago: ${fechaAnio(pg.fecha)}${pg.banco ? ` · Banco: ${escapar(pg.banco)}` : ""}${pg.referencia ? ` · Comprobante: ${escapar(pg.referencia)}` : ""}${pg.confirmado_en ? ` · Confirmado por el vendedor en el sistema el ${fechaHora(pg.confirmado_en)}` : ""}</p>` : ""}
+        ${pg ? `<p>Fecha de pago: ${fechaAnio(pg.fecha)}${pg.banco ? ` · Banco: ${escapar(pg.banco)}` : ""}${pg.referencia ? ` · Comprobante: ${escapar(pg.referencia)}` : ""}</p>` : ""}
         <div class="pla-firmas"><span>Entregado por</span><span>Recibido conforme</span></div>
       </div>`;
     return `<div class="pla-hoja">${copia("Copia empresa")}${copia("Copia vendedor")}</div>`;
@@ -782,13 +721,6 @@ $("staffContenido").addEventListener("click", (e) => {
     "comprobante": () => comImprimirComprobante(b.dataset.persona),
     "imprimir": () => comImprimirReporte(),
     "excel": () => comExcel().catch((err) => fallo(err, "No se pudo generar el Excel.")),
-    "confirmar": async () => {
-      if (!confirm("¿Confirma que recibió este pago?")) return;
-      const { error } = await db.rpc("com_confirmar_pago", { p_id: Number(b.dataset.id) });
-      if (error) return fallo(error);
-      avisar("¡Gracias! Pago confirmado.");
-      await comCargar(); comPintar();
-    },
     "ver-archivo": () => comVerArchivo(b.dataset.ruta)
   };
   if (acciones[b.dataset.comAccion]) conBoton(b, async () => { await acciones[b.dataset.comAccion](); });
@@ -797,7 +729,6 @@ $("staffContenido").addEventListener("change", (e) => {
   if (stf.pestana !== "comisiones") return;
   const t = e.target;
   if (t.id === "comAnio") { com.anio = Number(t.value); return comPintar(); }
-  if (t.id === "comMiMes") { com.actual = Number(t.value); return comPintar(); }
   if (t.id === "comArchivo" && t.files[0]) {
     const f = t.files[0]; t.value = "";
     return comLeerArchivo(f).catch((err) => fallo(err, "No se pudo leer el archivo."));
