@@ -323,3 +323,26 @@ body.solo-horario #grupoAdmin { display: none !important; }
 .perm-alarma-cab { border-top: 6px solid #F2C14E; }
 .perm-alarma-cab.vencido { border-top-color: var(--rojo); }
 .perm-alarma-btns { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- Comisiones ---------- */
+.com-titulo { margin: 0 4px 0 6px; }
+.com-botones { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.com-botones label.btn { cursor: pointer; }
+.pla-kpis small { color: var(--gris); margin-top: 2px; }
+.com-revisar { border: 1px solid #E8C873; background: #FFFBF0; }
+.com-decidir { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.com-decidir select { width: auto; }
+.com-ventas td small { display: block; }
+.com-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 14px; }
+.com-form .ancho { grid-column: 1 / -1; }
+.com-dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; }
+.com-dl dt { color: var(--gris); }
+.com-dl dd { margin: 0; }
+.com-tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.com-tarjeta { background: var(--blanco); border: 1px solid var(--linea); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.com-tarjeta > span { color: var(--gris); }
+.com-tarjeta > b { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.com-recibo-tabla { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 6px 0; }
+.com-recibo-tabla th, .com-recibo-tabla td { border-bottom: 1px solid #CCD5D9; padding: 3px 4px; text-align: left; }
+.com-recibo-tabla .num { text-align: right; white-space: nowrap; }
+.com-reporte h1 { font-size: 16pt; margin: 0 0 4px; }

@@ -48,7 +48,8 @@ const stfEditaDep = (dep) => stfGestiona() || (dep === "Ama de llaves" && ["ama_
 const stfPuedeCrear = () => stfGestiona() || ["ama_llaves", "supervisora"].includes(stfMiNivel());
 const stfDepsCreables = () => stfGestiona() ? [...DEP_HORARIO] : stfPuedeCrear() ? ["Ama de llaves"] : [];
 const stfPestanaPermitida = (p) =>
-  p === "horarios" || (p === "perfiles" && stfVePerfiles()) || (p === "planilla" && stfEsAdmin());
+  p === "horarios" || (p === "perfiles" && stfVePerfiles()) || (p === "planilla" && stfEsAdmin()) ||
+  (p === "comisiones" && typeof comVe === "function" && comVe());
 
 // ---------- Utilidades compartidas con planilla.js ----------
 function colones(n, decimales = 0) {
@@ -155,6 +156,7 @@ document.addEventListener("datos-actualizados", () => {
 document.querySelectorAll(".pestana[data-staff]").forEach((b) => b.addEventListener("click", () => {
   stf.pestana = b.dataset.staff;
   stf.horario = null; stf.nuevo = null;
+  if (typeof com !== "undefined") { com.actual = null; com.filtroVend = ""; }
   stfAbrir(false);
 }));
 
@@ -176,6 +178,7 @@ async function stfAbrir(recargar = false) {
     b.setAttribute("aria-selected", activa);
   });
   if (stf.pestana === "planilla") return plaAbrir(recargar);
+  if (stf.pestana === "comisiones") return comAbrir(recargar);
   if (recargar || !stf.cargado) {
     $("staffContenido").innerHTML = `<p class="nota">Cargando…</p>`;
     try { await stfCargar(); } catch (error) {
