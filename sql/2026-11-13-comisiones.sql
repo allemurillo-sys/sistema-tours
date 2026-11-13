@@ -186,3 +186,7 @@ delete from public.permisos_rol where permiso = 'comisiones_propias';
 delete from public.permisos_catalogo where clave = 'comisiones_propias';
 update public.permisos_catalogo set nombre = 'Comisiones por ventas', detalle = 'Reporte mensual de ventas y comisiones, pagos a vendedores y utilidad de la empresa. Solo administradores.' where clave = 'comisiones';
 alter table public.com_pagos drop column if exists confirmado_en, drop column if exists confirmado_por;
+
+-- ---------- Revisión de cada línea contra el sistema de ventas (13-nov-2026) ----------
+-- alter table public.com_ventas add column revisada_en timestamptz, add column revisada_por uuid references auth.users(id);
+-- (la vista com_ventas_calc se volvió a crear para incluir estas columnas)

@@ -346,3 +346,11 @@ body.solo-horario #grupoAdmin { display: none !important; }
 .com-recibo-tabla th, .com-recibo-tabla td { border-bottom: 1px solid #CCD5D9; padding: 3px 4px; text-align: left; }
 .com-recibo-tabla .num { text-align: right; white-space: nowrap; }
 .com-reporte h1 { font-size: 16pt; margin: 0 0 4px; }
+.com-check { width: 34px; text-align: center !important; }
+.com-check input { width: 20px; height: 20px; cursor: pointer; accent-color: var(--verde); }
+.com-ventas tr.com-ok td { background: #F1F8F3; }
+.com-progreso { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 6px 0 12px; }
+.com-barra { flex: 1 1 160px; max-width: 280px; height: 10px; border-radius: 99px; background: #E6EBEA; overflow: hidden; }
+.com-barra span { display: block; height: 100%; background: var(--verde); border-radius: 99px; transition: width .2s; }
+.com-progreso label.stf-inline { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; margin: 0; }
+.com-progreso input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--verde); }

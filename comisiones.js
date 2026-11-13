@@ -23,6 +23,7 @@ const com = {
   anio: null,
   actual: null,        // id del mes abierto
   filtroVend: "",
+  soloPendientes: false, // ver solo líneas sin revisar contra el sistema de ventas
   importe: null        // vista previa de importación
 };
 
@@ -103,6 +104,8 @@ function comPorVendedor(mesId) {
   return [...grupos.entries()].map(([k, vs]) => ({ persona_id: typeof k === "number" ? k : null, texto: vs[0].vendedor_texto, ventas: vs, t: comTotales(vs) }))
     .sort((a, b) => b.t.vendedor - a.t.vendedor);
 }
+const comRevision = (ventas) => ({ total: ventas.length, listas: ventas.filter((v) => v.revisada_en).length });
+const comNombreUsuario = (uid) => stf.personas.find((p) => p.perfil_id === uid)?.nombre || (uid === app.yo?.id ? app.yo?.nombre : "") || "";
 const comPago = (mesId, personaId, forma) => com.pagos.find((p) => p.mes_id === Number(mesId) && p.persona_id === Number(personaId) && p.forma === forma);
 
 // =====================================================
@@ -120,12 +123,13 @@ function htmlComLista() {
   const anual = comTotales(com.ventas.filter((v) => meses.some((m) => m.id === v.mes_id)));
   const filas = meses.map((m) => {
     const t = comTotales(comVentasMes(m.id));
+    const rv = comRevision(comVentasMes(m.id));
     const grupos = comPorVendedor(m.id).filter((g) => g.persona_id);
     const pend = m.historico ? null : grupos.reduce((s, g) => s + ["efectivo", "deposito"].filter((f) => g.t[f] > 0 && !comPago(m.id, g.persona_id, f)).length, 0);
     return `
       <tr>
         <td><button type="button" class="enlace" data-com-accion="abrir" data-id="${m.id}"><strong>${comNombreMes(m)}</strong></button>${m.historico ? `<small>Del Excel</small>` : ""}</td>
-        <td>${comChipEstado(m)}${t.revisar ? ` <span class="stf-chip aviso">${t.revisar} por revisar</span>` : ""}</td>
+        <td>${comChipEstado(m)}${t.revisar ? ` <span class="stf-chip aviso">${t.revisar} por revisar</span>` : ""}${!m.historico && rv.total ? ` <span class="stf-chip ${rv.listas === rv.total ? "ok" : "gris"}">✔ ${rv.listas}/${rv.total}</span>` : ""}</td>
         <td class="num">${t.filas}</td>
         <td class="num">${usd(t.ventas)}</td>
         <td class="num">${usd(t.efectivo)}</td>
@@ -216,9 +220,18 @@ function htmlComMes(m) {
   }).join("");
 
   const filtro = com.filtroVend;
-  const lista = ventas.filter((v) => !filtro || String(v.persona_id ?? `?${v.vendedor_texto}`) === filtro);
+  const revisable = !m.historico;
+  const delVend = ventas.filter((v) => !filtro || String(v.persona_id ?? `?${v.vendedor_texto}`) === filtro);
+  const lista = delVend.filter((v) => !(revisable && com.soloPendientes && v.revisada_en));
+  const rev = comRevision(ventas), revVend = comRevision(delVend);
+  const checkRev = (v) => {
+    if (!revisable) return "";
+    const quien = v.revisada_en ? `Revisada el ${fechaHora(v.revisada_en)}${v.revisada_por ? ` por ${escapar(comNombreUsuario(v.revisada_por))}` : ""}` : "Sin revisar contra el sistema";
+    return `<td class="com-check"><label title="${quien}"><input type="checkbox" data-com-rev="${v.id}" ${v.revisada_en ? "checked" : ""} ${ed ? "" : "disabled"} aria-label="Línea ${escapar(v.orden || "")} revisada"></label></td>`;
+  };
   const filasVentas = lista.map((v) => `
-    <tr class="${v.estado !== "valida" ? "inactivo" : ""}">
+    <tr class="${v.estado !== "valida" ? "inactivo" : ""} ${revisable && v.revisada_en ? "com-ok" : ""}">
+      ${checkRev(v)}
       <td>${v.fecha ? fechaCorta(v.fecha) : "—"}</td>
       <td>${escapar(v.orden || "")}</td>
       <td>${escapar(v.actividad || "")}<small>${escapar(v.proveedor || "")}</small></td>
@@ -241,6 +254,7 @@ function htmlComMes(m) {
     <div class="pla-nav no-imprimir">
       <button type="button" class="stf-pill" data-com-accion="volver">← Todos los meses</button>
       <h3 class="com-titulo">${comNombreMes(m)}</h3> ${comChipEstado(m)}
+      ${revisable && rev.total ? `<span class="stf-chip ${rev.listas === rev.total ? "ok" : "aviso"}">✔ ${rev.listas} de ${rev.total} líneas revisadas</span>` : ""}
       ${m.historico ? `<span class="stf-chip gris">Histórico: montos del Excel</span>` : ""}
       <span class="com-botones">
         ${ed ? `<label class="btn">📥 Importar Excel<input type="file" id="comArchivo" accept=".xlsx" hidden></label>
@@ -286,10 +300,17 @@ function htmlComMes(m) {
         <h3>Ventas${nombreFiltro ? ` de ${escapar(nombreFiltro)}` : ""} (${lista.length})</h3>
         ${filtro ? `<button type="button" class="stf-pill" data-com-accion="filtrar" data-persona="" data-texto="">Ver todas</button>` : ""}
       </div>
+      ${revisable && revVend.total ? `
+      <div class="com-progreso">
+        <div class="com-barra" role="progressbar" aria-valuemin="0" aria-valuemax="${revVend.total}" aria-valuenow="${revVend.listas}"><span style="width:${Math.round(revVend.listas / revVend.total * 100)}%"></span></div>
+        <span><strong>${revVend.listas} de ${revVend.total}</strong> líneas revisadas contra el sistema de ventas</span>
+        <label class="stf-inline"><input type="checkbox" id="comSoloPend" ${com.soloPendientes ? "checked" : ""}> Ver solo las que faltan</label>
+        ${ed && revVend.listas < revVend.total ? `<button type="button" class="btn chico" data-com-accion="revisar-todas">Marcar ${filtro ? "las de este vendedor" : "todas"} como revisadas</button>` : ""}
+      </div>` : ""}
       ${noPagar.length && !filtro ? `<p class="nota">${noPagar.length} venta${noPagar.length > 1 ? "s" : ""} marcada${noPagar.length > 1 ? "s" : ""} “No se paga” (aparecen en gris).</p>` : ""}
       <div class="tabla-scroll"><table class="tabla pla-tabla com-ventas">
-        <thead><tr><th>Fecha</th><th>Orden</th><th>Actividad</th><th>Cliente</th><th>Vendedor</th><th>Tipo</th><th class="num">Pax</th><th class="num">Total</th><th class="num">IVA</th><th class="num">Datáfono</th><th class="num">Costo</th><th class="num">Ganancia</th><th class="num">Vendedor</th><th class="num">Empresa</th>${ed ? "<th></th>" : ""}</tr></thead>
-        <tbody>${filasVentas || `<tr><td colspan="15" class="nota">Sin ventas.</td></tr>`}</tbody>
+        <thead><tr>${revisable ? `<th class="com-check" title="Revisada contra el sistema de ventas">✔</th>` : ""}<th>Fecha</th><th>Orden</th><th>Actividad</th><th>Cliente</th><th>Vendedor</th><th>Tipo</th><th class="num">Pax</th><th class="num">Total</th><th class="num">IVA</th><th class="num">Datáfono</th><th class="num">Costo</th><th class="num">Ganancia</th><th class="num">Vendedor</th><th class="num">Empresa</th>${ed ? "<th></th>" : ""}</tr></thead>
+        <tbody>${filasVentas || `<tr><td colspan="16" class="nota">${com.soloPendientes && delVend.length ? "✔ Todas las líneas están revisadas." : "Sin ventas."}</td></tr>`}</tbody>
       </table></div>
     </div>`;
 }
@@ -322,6 +343,8 @@ async function comCerrar(m) {
   const t = comTotales(comVentasMes(m.id));
   if (t.revisar) return avisar(`Hay ${t.revisar} venta(s) por revisar. Decida qué pasó con cada una antes de cerrar.`, "error");
   if (comPorVendedor(m.id).some((g) => !g.persona_id)) return avisar("Hay ventas sin vendedor asignado. Edítelas antes de cerrar.", "error");
+  const rv = comRevision(comVentasMes(m.id));
+  if (rv.listas < rv.total && !confirm(`Faltan ${rv.total - rv.listas} de ${rv.total} líneas por revisar contra el sistema de ventas. ¿Cerrar el mes de todos modos?`)) return;
   if (!confirm(`¿Cerrar ${comNombreMes(m)}? Ya no se podrán cambiar las ventas. Los pagos sí se pueden registrar.`)) return;
   const { error } = await db.from("com_meses").update({ estado: "cerrado", cerrado_en: new Date().toISOString(), cerrado_por: app.yo.id }).eq("id", m.id);
   if (error) return fallo(error);
@@ -377,6 +400,7 @@ async function comGuardarVenta(id) {
   if (!fila.persona_id) return avisar("Elija el vendedor.", "error");
   if (!fila.actividad) return avisar("Escriba la actividad.", "error");
   fila.vendedor_texto = comNombrePersona(fila.persona_id);
+  if (id) { fila.revisada_en = null; fila.revisada_por = null; }   // si cambió, hay que volver a revisarla
   const r = id ? await db.from("com_ventas").update(fila).eq("id", id)
     : await db.from("com_ventas").insert({ ...fila, mes_id: com.actual, creado_por: app.yo.id });
   if (r.error) return fallo(r.error);
@@ -389,6 +413,16 @@ async function comBorrarVenta(id) {
   const { error } = await db.from("com_ventas").delete().eq("id", id);
   if (error) return fallo(error);
   await comCargar(); comPintar();
+}
+// Marca o desmarca líneas como revisadas contra el sistema de ventas (sin recargar todo)
+async function comMarcarRevisadas(ids, marcar) {
+  const cambios = marcar ? { revisada_en: new Date().toISOString(), revisada_por: app.yo.id } : { revisada_en: null, revisada_por: null };
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await db.from("com_ventas").update(cambios).in("id", ids.slice(i, i + 200));
+    if (error) { fallo(error); return comPintar(); }
+  }
+  com.ventas.forEach((v) => { if (ids.includes(v.id)) Object.assign(v, cambios); });
+  comPintar();
 }
 async function comDecidir(id, cambios) {
   const { error } = await db.from("com_ventas").update(cambios).eq("id", id);
@@ -516,13 +550,13 @@ async function comExcel() {
   const ws = wb.addWorksheet(comNombreMes(m));
   ws.columns = [
     ["Fecha", 12], ["Orden", 10], ["Proveedor", 24], ["Actividad", 32], ["Cliente", 22], ["Vendedor", 26], ["Tipo", 14], ["Estado", 12], ["Pax", 6],
-    ["Rack", 10], ["Neto", 10], ["Total", 11], ["Costo", 11], ["IVA", 10], ["Datáfono", 10], ["Sin impuestos", 13], ["Ganancia", 11], ["Com. vendedor", 13], ["Utilidad empresa", 15], ["Forma de pago", 13]
+    ["Rack", 10], ["Neto", 10], ["Total", 11], ["Costo", 11], ["IVA", 10], ["Datáfono", 10], ["Sin impuestos", 13], ["Ganancia", 11], ["Com. vendedor", 13], ["Utilidad empresa", 15], ["Forma de pago", 13], ["Revisada", 18]
   ].map(([header, width]) => ({ header, width }));
   ws.getRow(1).font = { bold: true };
   for (const v of comVentasMes(m.id)) {
     ws.addRow([v.fecha ? new Date(v.fecha + "T12:00:00") : null, v.orden, v.proveedor, v.actividad, v.cliente, v.persona_id ? comNombrePersona(v.persona_id) : v.vendedor_texto,
       COM_TIPOS[v.tipo] || v.estado_original || "", { valida: "Válida", revisar: "Por revisar", no_pagar: "No se paga" }[v.estado], n2(v.pax), n2(v.rack), n2(v.neto),
-      v.total_rack, v.total_neto, v.iva, v.datafono, v.sin_iva, v.ganancia, v.com_vendedor, v.com_empresa, v.forma === "efectivo" ? "Efectivo" : v.forma === "deposito" ? "Depósito" : ""]);
+      v.total_rack, v.total_neto, v.iva, v.datafono, v.sin_iva, v.ganancia, v.com_vendedor, v.com_empresa, v.forma === "efectivo" ? "Efectivo" : v.forma === "deposito" ? "Depósito" : "", v.revisada_en ? fechaHora(v.revisada_en) : ""]);
   }
   ws.getColumn(1).numFmt = "dd/mm/yyyy";
   for (let c = 10; c <= 19; c++) ws.getColumn(c).numFmt = "#,##0.00";
@@ -715,6 +749,12 @@ $("staffContenido").addEventListener("click", (e) => {
     "editar-venta": () => comFormVenta(com.ventas.find((v) => v.id === Number(b.dataset.id))),
     "borrar-venta": () => comBorrarVenta(b.dataset.id),
     "no-pagar": () => comDecidir(b.dataset.id, { estado: "no_pagar" }),
+    "revisar-todas": async () => {
+      const f = com.filtroVend;
+      const ids = comVentasMes(com.actual).filter((v) => !v.revisada_en && (!f || String(v.persona_id ?? `?${v.vendedor_texto}`) === f)).map((v) => v.id);
+      if (!ids.length || !confirm(`¿Marcar ${ids.length} línea(s) como revisadas contra el sistema de ventas?`)) return;
+      await comMarcarRevisadas(ids, true);
+    },
     "filtrar": () => { com.filtroVend = b.dataset.persona || (b.dataset.texto ? `?${b.dataset.texto}` : ""); comPintar(); },
     "pagar": () => comFormPago(b.dataset.forma, b.dataset.persona),
     "ver-pago": () => comVerPago(b.dataset.id),
@@ -729,6 +769,8 @@ $("staffContenido").addEventListener("change", (e) => {
   if (stf.pestana !== "comisiones") return;
   const t = e.target;
   if (t.id === "comAnio") { com.anio = Number(t.value); return comPintar(); }
+  if (t.id === "comSoloPend") { com.soloPendientes = t.checked; return comPintar(); }
+  if (t.dataset.comRev) return comMarcarRevisadas([Number(t.dataset.comRev)], t.checked).catch((err) => fallo(err));
   if (t.id === "comArchivo" && t.files[0]) {
     const f = t.files[0]; t.value = "";
     return comLeerArchivo(f).catch((err) => fallo(err, "No se pudo leer el archivo."));
