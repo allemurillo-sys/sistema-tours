@@ -368,3 +368,22 @@ body.solo-horario #grupoAdmin { display: none !important; }
 .rel-dias { font-size: .88rem; }
 .rel-dias tr.rel-una td { background: #FFF6E5; }
 .aviso-caja { background: #FFF6E5; border: 1px solid #E8C873; border-radius: 10px; padding: 10px 12px; }
+.rel-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 10px; }
+.rel-filtros label.stf-inline { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin-left: 8px; }
+.rel-filtros input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+.rel-scroll { max-height: 60vh; overflow: auto; border: 1px solid var(--linea); border-radius: 10px; }
+.rel-marcas { font-size: .9rem; margin: 0; }
+.rel-marcas thead th { position: sticky; top: 0; background: var(--blanco); z-index: 2; }
+.rel-marcas tr.rel-persona th { background: var(--oscuro, #22343C); color: #fff; text-align: left; }
+.rel-marcas tr.rel-persona th small { color: rgba(255,255,255,.75); margin-left: 6px; }
+.rel-marcas tr.rel-dia-ini td { border-top: 2px solid #D5DDDA; }
+.rel-marcas input.rel-hora { width: 130px; padding: 4px 6px; }
+.rel-marcas tr.editada td { background: #FFF6E5; }
+.rel-marcas tr.agregada td { background: #EAF4FB; }
+.rel-marcas tr.borrada td { background: #F3F3F3; color: #8A9595; text-decoration: line-through; }
+.rel-marcas tr.borrada td .stf-chip, .rel-marcas tr.borrada td button { text-decoration: none; }
+.rel-dia-total { vertical-align: top; background: #FAFBFB; min-width: 170px; }
+.rel-dia-total small { display: block; }
+.rel-nuevo-dia td { background: #F7F9F8; }
+.rel-nuevo-dia label, .rel-nuevo-dia input { display: inline-flex; width: auto; margin-right: 8px; }
+.rel-tabla tr.rel-actual th, .rel-tabla tr.rel-actual td { background: #EEF6F1; }

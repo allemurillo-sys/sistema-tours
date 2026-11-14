@@ -8,7 +8,10 @@
 //       de la PRIMERA a la ÚLTIMA marca. No se rebaja almuerzo.
 //     - Marcas repetidas con menos de 2 minutos de diferencia cuentan una vez.
 //     - Día con una sola marca: se cuenta la jornada (8 h; 4 h medio tiempo),
-//       y el operador puede corregirlo.
+//       salvo que el operador agregue la marca que falta.
+//  · Paso intermedio: las marcas se muestran tal como vienen del archivo y el
+//    operador puede cambiar horas, agregar o eliminar marcas antes de cargar.
+//    Al cargar se pide confirmación; si dice que no, sigue editando.
 //     - Los minutos se acumulan exactos.
 //     - Horas extra: por SEMANA (lunes a domingo). Cada día suma o resta lo
 //       que pasa o le falta para su jornada; lo que sobra en la semana es extra.
@@ -23,10 +26,13 @@ const rel = {
   desde: "", hasta: "",
   sel: new Set(),    // persona_id elegidos
   mapa: new Map(),   // persona_id → codigo del reloj
-  editados: new Map(), // `${persona}|${fecha}` → horas escritas por el operador
-  abiertos: new Set(), // personas con el detalle desplegado
+  trabajo: new Map(),  // persona_id → Map(fecha → [{ id, min, orig, borrada }])  (copia editable)
+  trabajoClave: "",    // rango con el que se armó la copia
+  ver: null,           // persona que se está revisando en el paso 2 (null = todas)
+  soloAvisos: false,
   resultado: null,
-  paso: 1
+  paso: 1,
+  sec: 0
 };
 
 const relLimpio = (v) => String(comValorCeldaRel(v) ?? "").replace(/^'+/, "").trim();
@@ -120,7 +126,43 @@ function relSugerirCodigo(p) {
   return cand.length === 1 ? cand[0].codigo : "";
 }
 
-// ---------- Calcular ----------
+// ---------- Copia editable de las marcas ----------
+// Se arma al pasar al paso 2 con las marcas del rango, tal como vienen del archivo.
+function relArmarTrabajo() {
+  const clave = `${rel.desde}|${rel.hasta}|${rel.archivo}`;
+  if (rel.trabajoClave !== clave) { rel.trabajo = new Map(); rel.trabajoClave = clave; }
+  for (const pid of [...rel.trabajo.keys()]) if (!rel.sel.has(pid)) rel.trabajo.delete(pid);
+  for (const pid of rel.sel) {
+    const cod = rel.mapa.get(pid) || "";
+    const previo = rel.trabajo.get(pid);
+    if (previo && previo.codigo === cod) continue;            // conserva lo ya editado
+    const dias = new Map();
+    const m = cod ? rel.marcas.get(cod) : null;
+    if (m) for (const [fecha, lista] of [...m.dias.entries()].sort()) {
+      if (fecha < rel.desde || fecha > rel.hasta) continue;
+      dias.set(fecha, [...lista].sort((a, b) => a - b).map((min) => ({ id: ++rel.sec, min, orig: min, borrada: false })));
+    }
+    dias.codigo = cod;
+    rel.trabajo.set(pid, dias);
+  }
+}
+const relDiaVivas = (lista) => lista.filter((x) => !x.borrada).map((x) => x.min).sort((a, b) => a - b);
+function relEstadoMarca(x) {
+  if (x.borrada) return "borrada";
+  if (x.orig === null) return "agregada";
+  if (Math.abs(x.min - x.orig) >= 1 / 60) return "editada";
+  return "original";
+}
+function relCambios(pid) {
+  const out = [];
+  for (const [fecha, lista] of rel.trabajo.get(pid) || []) for (const x of lista) {
+    const e = relEstadoMarca(x);
+    if (e !== "original") out.push({ fecha, estado: e, antes: x.orig === null ? null : horaTxt(x.orig), despues: x.borrada ? null : horaTxt(x.min) });
+  }
+  return out;
+}
+
+// ---------- Calcular (con la copia editada) ----------
 function relCalcular() {
   const res = [];
   for (const pid of rel.sel) {
@@ -129,20 +171,14 @@ function relCalcular() {
     const codigo = rel.mapa.get(pid);
     const jornada = relJornada(pid);
     const porHora = pr?.bloque === "HORA";
-    const m = codigo ? rel.marcas.get(codigo) : null;
     const dias = [];
-    if (m) {
-      for (const [fecha, lista] of [...m.dias.entries()].sort()) {
-        if (fecha < rel.desde || fecha > rel.hasta) continue;
-        const ord = [...lista].sort((a, b) => a - b);
-        const unicas = ord.filter((x, i) => i === 0 || x - ord[i - 1] >= 2);   // repetidas < 2 min
-        const una = unicas.length === 1;
-        let horas = una ? jornada : (unicas[unicas.length - 1] - unicas[0]) / 60;
-        const clave = `${pid}|${fecha}`;
-        const editado = rel.editados.has(clave);
-        if (editado) horas = rel.editados.get(clave);
-        dias.push({ fecha, entrada: unicas[0], salida: una ? null : unicas[unicas.length - 1], marcas: unicas.length, una, editado, horas });
-      }
+    for (const [fecha, lista] of [...(rel.trabajo.get(pid) || new Map()).entries()].sort()) {
+      const ord = relDiaVivas(lista);
+      if (!ord.length) continue;                                   // todas eliminadas: no trabajó
+      const unicas = ord.filter((x, i) => i === 0 || x - ord[i - 1] >= 2);   // repetidas < 2 min
+      const una = unicas.length === 1;
+      const horas = una ? jornada : (unicas[unicas.length - 1] - unicas[0]) / 60;
+      dias.push({ fecha, entrada: unicas[0], salida: una ? null : unicas[unicas.length - 1], marcas: unicas.length, repetidas: ord.length - unicas.length, una, horas });
     }
     const semanas = new Map();
     for (const d of dias) {
@@ -155,8 +191,8 @@ function relCalcular() {
     const total = dias.reduce((s, d) => s + d.horas, 0);
     const extra = sem.reduce((s, w) => s + Math.max(0, w.diferencia), 0);
     const faltante = sem.reduce((s, w) => s + Math.min(0, w.diferencia), 0);
-    res.push({ pid, nombre: p.nombre, bloque: pr?.bloque, porHora, jornada, codigo, sinCodigo: !m, dias, semanas: sem, total, extra, faltante,
-      incompletos: dias.filter((d) => d.una && !d.editado).length });
+    res.push({ pid, nombre: p.nombre, bloque: pr?.bloque, porHora, jornada, codigo, sinCodigo: !codigo || !rel.marcas.get(codigo),
+      dias, semanas: sem, total, extra, faltante, incompletos: dias.filter((d) => d.una).length, cambios: relCambios(pid).length });
   }
   rel.resultado = res.sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
@@ -164,27 +200,31 @@ function relCalcular() {
 // ---------- Ventana ----------
 function relAbrir() {
   const q = plaQ(pla.actual);
-  rel.desde = rel.desde && rel.archivo ? rel.desde : q.desde;
-  rel.hasta = rel.hasta && rel.archivo ? rel.hasta : q.hasta;
+  if (!rel.archivo) { rel.desde = q.desde; rel.hasta = q.hasta; }
   if (!rel.sel.size) {
     const enQ = new Set(plaLineasDe(q.id).map((l) => l.persona_id));
     relCandidatos().forEach((p) => { if (enQ.has(p.id)) rel.sel.add(p.id); });
   }
-  rel.paso = rel.marcas ? rel.paso : 1;
+  if (!rel.marcas) rel.paso = 1;
   relPintar();
 }
 function relPintar() {
   const q = plaQ(pla.actual);
-  const cuerpo = rel.paso === 2 && rel.resultado ? htmlRelResultado(q) : htmlRelElegir(q);
-  const botones = rel.paso === 2
-    ? `<button type="button" class="btn" data-rel="volver">‹ Cambiar selección</button><button type="button" class="btn primario" data-rel="aplicar">Pasar a la planilla</button>`
-    : `<button type="button" class="btn primario" data-rel="calcular" ${rel.marcas ? "" : "disabled"}>Calcular horas</button>`;
+  const caja = document.querySelector("#staffModal .rel-scroll");
+  const scroll = caja ? caja.scrollTop : 0;
+  const enRevision = rel.paso === 2 && rel.resultado;
+  const cuerpo = enRevision ? htmlRelRevision(q) : htmlRelElegir(q);
+  const botones = enRevision
+    ? `<button type="button" class="btn" data-rel="volver">‹ Cambiar selección</button><button type="button" class="btn primario" data-rel="cargar">Cargar a la planilla</button>`
+    : `<button type="button" class="btn primario" data-rel="siguiente" ${rel.marcas ? "" : "disabled"}>Ver marcas ›</button>`;
   stfAbrirModal(`
     <div class="det-cabeza" style="--c: var(--verde)">
-      <div><p class="det-numero">${escapar(q.nombre)} · Reloj marcador</p><h2 id="stfModalTitulo">${rel.paso === 2 ? "Horas del reloj" : "Importar reloj marcador"}</h2></div>
-      <div class="det-acciones"><button type="button" class="btn" data-stf-accion="cerrar-modal">Cerrar</button>${botones}</div>
+      <div><p class="det-numero">${escapar(q.nombre)} · Reloj marcador · paso ${enRevision ? 2 : 1} de 2</p><h2 id="stfModalTitulo">${enRevision ? "Revisar y ajustar marcas" : "Importar reloj marcador"}</h2></div>
+      <div class="det-acciones"><button type="button" class="btn" data-rel="cerrar">Cerrar</button>${botones}</div>
     </div>
     <div class="det-seccion">${cuerpo}</div>`, "ancho");
+  const nueva = document.querySelector("#staffModal .rel-scroll");
+  if (nueva) nueva.scrollTop = scroll;
 }
 
 function htmlRelElegir(q) {
@@ -224,66 +264,104 @@ function htmlRelElegir(q) {
     </table></div>`;
 }
 
-function htmlRelResultado(q) {
+
+// ---------- Paso 2: marcas tal como vienen del archivo, editables ----------
+function htmlRelRevision(q) {
   const lineas = plaLineasDe(q.id);
-  const fila = (r) => {
-    const tieneLinea = lineas.some((l) => l.persona_id === r.pid);
-    const abierto = rel.abiertos.has(r.pid);
-    const semanas = r.semanas.map((w) => `<span class="rel-sem ${w.diferencia > 0.005 ? "mas" : w.diferencia < -0.005 ? "menos" : ""}" title="Semana del ${fechaCorta(w.lunes)}: ${hm(w.horas)} trabajadas de ${hm(w.esperado)}">${fechaCorta(w.lunes)} ${w.diferencia >= 0 ? "+" : ""}${hm(w.diferencia)}</span>`).join(" ");
-    return `
-      <tr>
-        <th scope="row"><button type="button" class="enlace" data-rel="detalle" data-p="${r.pid}">${abierto ? "▾" : "▸"} ${escapar(r.nombre)}</button>
-          <small>${r.porHora ? "Por horas" : `Jornada ${r.jornada} h`}${r.codigo ? ` · reloj n.º ${r.codigo}` : ""}${tieneLinea ? "" : " · no está en esta quincena"}</small></th>
-        <td class="num">${r.dias.length}</td>
-        <td class="num"><strong>${hm(r.total)}</strong><small>${horasTxt(Math.round(r.total * 100) / 100)} h</small></td>
-        <td>${r.porHora ? `<small>Se pagan todas las horas</small>` : semanas || "—"}</td>
-        <td class="num">${r.porHora ? "—" : `<strong>${hm(r.extra)}</strong>`}</td>
-        <td class="num ${r.faltante < 0 ? "pla-neg" : ""}">${r.porHora || !r.faltante ? "—" : hm(r.faltante)}</td>
-        <td class="centro">${r.sinCodigo ? `<span class="stf-chip alerta">Sin número de reloj</span>` : r.incompletos ? `<span class="stf-chip aviso">${r.incompletos} día${r.incompletos > 1 ? "s" : ""} con una marca</span>` : `<span class="stf-chip ok">Completo</span>`}</td>
-      </tr>
-      ${abierto ? `<tr class="rel-detalle"><td colspan="7">${htmlRelDias(r)}</td></tr>` : ""}`;
-  };
-  const conProblema = rel.resultado.filter((r) => r.incompletos).length;
-  return `
-    <p class="nota">Del ${fechaLarga(rel.desde)} al ${fechaLarga(rel.hasta)} · archivo ${escapar(rel.archivo)}.
-      Horas del día = de la primera a la última marca, sin rebajar almuerzo. Extra por semana (lunes a domingo).</p>
-    ${conProblema ? `<p class="aviso-caja">⚠️ ${conProblema} colaborador${conProblema > 1 ? "es tienen" : " tiene"} días con una sola marca: se contó la jornada completa. Abra el detalle para corregir la hora si hace falta.</p>` : ""}
+  const res = rel.resultado;
+  const totales = `
     <div class="tabla-scroll"><table class="tabla pla-tabla rel-tabla">
-      <thead><tr><th>Colaborador</th><th class="num">Días</th><th class="num">Horas trabajadas</th><th>Semanas (diferencia con la jornada)</th><th class="num">Extra a pagar</th><th class="num">Faltantes</th><th class="centro">Marcas</th></tr></thead>
-      <tbody>${rel.resultado.map(fila).join("")}</tbody>
-    </table></div>
-    <p class="nota">Al pasar a la planilla: a quienes tienen CCSS se les escriben las <strong>horas extra</strong> (si todas sus semanas quedaron en negativo, se anotan las faltantes, que no se rebajan); a los trabajadores por hora, el <strong>total de horas</strong>. Los días laborados no se cambian.</p>`;
-}
-function htmlRelDias(r) {
-  if (!r.dias.length) return `<p class="nota">Sin marcas en el rango.</p>`;
-  const filas = r.dias.map((d) => `
-    <tr class="${d.una ? "rel-una" : ""}">
-      <td>${fechaCorta(d.fecha)} <small>${DIAS_CORTO[new Date(d.fecha + "T12:00:00").getDay()]}</small></td>
-      <td>${horaTxt(d.entrada)}</td>
-      <td>${d.salida === null ? `<span class="stf-chip aviso">Falta marca</span>` : horaTxt(d.salida)}</td>
-      <td class="num">${d.marcas}</td>
-      <td class="num"><input class="pla-input corto" type="number" step="0.25" min="0" max="24" value="${Math.round(d.horas * 100) / 100}" data-rel-horas="${r.pid}|${d.fecha}" aria-label="Horas del ${d.fecha}"> <small>${hm(d.horas)}</small>${d.editado ? ` <small>(corregido)</small>` : ""}</td>
-      <td class="num ${!r.porHora && d.horas - r.jornada < 0 ? "pla-neg" : ""}">${r.porHora ? "" : `${d.horas - r.jornada >= 0 ? "+" : ""}${hm(d.horas - r.jornada)}`}</td>
-    </tr>`).join("");
-  return `
-    <table class="tabla rel-dias">
-      <thead><tr><th>Día</th><th>Primera marca</th><th>Última marca</th><th class="num">Marcas</th><th class="num">Horas</th><th class="num">${r.porHora ? "" : "± jornada"}</th></tr></thead>
+      <thead><tr><th>Colaborador</th><th class="num">Días</th><th class="num">Horas trabajadas</th><th>Semanas (diferencia con la jornada)</th><th class="num">Extra a pagar</th><th class="num">Faltantes</th><th class="centro">Revisión</th></tr></thead>
+      <tbody>${res.map((r) => {
+        const semanas = r.semanas.map((w) => `<span class="rel-sem ${w.diferencia > 0.005 ? "mas" : w.diferencia < -0.005 ? "menos" : ""}" title="Semana del ${fechaCorta(w.lunes)}: ${hm(w.horas)} de ${hm(w.esperado)}">${fechaCorta(w.lunes)} ${w.diferencia >= 0 ? "+" : ""}${hm(w.diferencia)}</span>`).join(" ");
+        const tieneLinea = lineas.some((l) => l.persona_id === r.pid);
+        return `<tr class="${rel.ver === r.pid ? "rel-actual" : ""}">
+          <th scope="row"><button type="button" class="enlace" data-rel="ver" data-p="${r.pid}">${escapar(r.nombre)}</button><small>${r.porHora ? "Por horas" : `Jornada ${r.jornada} h`}${r.codigo ? ` · reloj n.º ${r.codigo}` : ""}${tieneLinea ? "" : " · no está en esta quincena"}</small></th>
+          <td class="num">${r.dias.length}</td>
+          <td class="num"><strong>${hm(r.total)}</strong></td>
+          <td>${r.porHora ? `<small>Se pagan todas las horas</small>` : semanas || "—"}</td>
+          <td class="num">${r.porHora ? "—" : `<strong>${hm(r.extra)}</strong>`}</td>
+          <td class="num ${r.faltante < 0 ? "pla-neg" : ""}">${r.porHora || !r.faltante ? "—" : hm(r.faltante)}</td>
+          <td class="centro">${r.sinCodigo ? `<span class="stf-chip alerta">Sin número de reloj</span>` : `${r.incompletos ? `<span class="stf-chip aviso">${r.incompletos} con una marca</span>` : ""}${r.cambios ? ` <span class="stf-chip">${r.cambios} ajuste${r.cambios > 1 ? "s" : ""}</span>` : ""}${!r.incompletos && !r.cambios ? `<span class="stf-chip ok">Sin cambios</span>` : ""}`}</td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div>`;
+
+  // Tabla de marcas como en el archivo original: una fila por marca
+  const personas = res.filter((r) => rel.ver === null || r.pid === rel.ver);
+  let filas = "";
+  for (const r of personas) {
+    const dias = rel.trabajo.get(r.pid) || new Map();
+    const calc = new Map(r.dias.map((d) => [d.fecha, d]));
+    const fechas = [...dias.keys()].sort();
+    filas += `<tr class="rel-persona"><th colspan="6">${escapar(r.nombre)} <small>${r.codigo ? `n.º ${r.codigo} en el reloj` : "sin número de reloj"}</small></th></tr>`;
+    if (!fechas.length) filas += `<tr><td colspan="6" class="nota">Sin marcas en el rango.</td></tr>`;
+    for (const fecha of fechas) {
+      const lista = [...dias.get(fecha)].sort((a, b) => a.min - b.min);
+      const d = calc.get(fecha);
+      if (rel.soloAvisos && !(d?.una || lista.some((x) => relEstadoMarca(x) !== "original") || (d?.repetidas))) continue;
+      const nombreReloj = rel.marcas.get(r.codigo)?.nombre || "";
+      lista.forEach((x, i) => {
+        const est = relEstadoMarca(x);
+        filas += `
+          <tr class="rel-marca ${est} ${i === 0 ? "rel-dia-ini" : ""}">
+            <td>${i === 0 ? `<strong>${fechaCorta(fecha)}</strong> <small>${DIAS_CORTO[new Date(fecha + "T12:00:00").getDay()]}</small>` : ""}</td>
+            <td><small>${escapar(nombreReloj)} · ${escapar(r.codigo || "")}</small></td>
+            <td><input type="time" step="1" class="rel-hora" value="${horaTxt(x.min)}${x.min % 1 ? `:${pad(Math.round((x.min % 1) * 60) % 60)}` : ":00"}" data-rel-marca="${r.pid}|${fecha}|${x.id}" ${x.borrada ? "disabled" : ""} aria-label="Hora de la marca"></td>
+            <td>${{ original: "", editada: `<span class="stf-chip aviso">Editada · antes ${horaTxt(x.orig)}</span>`, agregada: `<span class="stf-chip">Agregada</span>`, borrada: `<span class="stf-chip gris">Eliminada</span>` }[est]}</td>
+            <td class="pla-acc">${x.borrada
+              ? `<button type="button" class="enlace" data-rel="restaurar" data-k="${r.pid}|${fecha}|${x.id}">Restaurar</button>`
+              : `${est === "editada" ? `<button type="button" class="enlace" data-rel="deshacer" data-k="${r.pid}|${fecha}|${x.id}">Deshacer</button>` : ""}<button type="button" class="btn-icono" data-rel="borrar" data-k="${r.pid}|${fecha}|${x.id}" aria-label="Eliminar marca">×</button>`}</td>
+            ${i === 0 ? `<td rowspan="${lista.length}" class="rel-dia-total">${d ? `<strong>${hm(d.horas)}</strong>${d.una ? `<small class="pla-neg">Una sola marca: se cuentan ${r.jornada} h</small>` : `<small>${horaTxt(d.entrada)} a ${horaTxt(d.salida)}</small>`}${d.repetidas ? `<small>${d.repetidas} repetida${d.repetidas > 1 ? "s" : ""} (se cuenta una)</small>` : ""}` : `<small>No cuenta (sin marcas)</small>`}
+              <button type="button" class="enlace" data-rel="agregar" data-k="${r.pid}|${fecha}">+ Marca</button></td>` : ""}
+          </tr>`;
+      });
+    }
+    filas += `<tr class="rel-nuevo-dia"><td colspan="6">
+      <label class="stf-inline">Agregar día <input type="date" min="${rel.desde}" max="${rel.hasta}" data-rel-dia="${r.pid}"></label>
+      <input type="time" step="1" data-rel-dia-hora="${r.pid}" value="08:00:00" aria-label="Hora">
+      <button type="button" class="btn chico" data-rel="agregar-dia" data-p="${r.pid}">Agregar marca</button></td></tr>`;
+  }
+  const marcasTabla = `
+    <div class="rel-filtros">
+      <span>Ver:</span>
+      <button type="button" class="stf-pill ${rel.ver === null ? "on oscuro" : ""}" data-rel="ver" data-p="">Todos</button>
+      ${res.map((r) => `<button type="button" class="stf-pill ${rel.ver === r.pid ? "on oscuro" : ""}" data-rel="ver" data-p="${r.pid}">${escapar(r.nombre.split(" ")[0])}${r.incompletos ? " ⚠️" : ""}</button>`).join("")}
+      <label class="stf-inline"><input type="checkbox" data-rel="solo-avisos" ${rel.soloAvisos ? "checked" : ""}> Solo días con avisos o ajustes</label>
+    </div>
+    <div class="rel-scroll"><table class="tabla rel-marcas">
+      <thead><tr><th>Fecha (Date)</th><th>Nombre y n.º (sName · sJobNo)</th><th>Hora (Time)</th><th>Ajuste</th><th></th><th>Horas del día</th></tr></thead>
       <tbody>${filas}</tbody>
-    </table>`;
+    </table></div>`;
+
+  return `
+    <p class="nota">Del ${fechaLarga(rel.desde)} al ${fechaLarga(rel.hasta)} · archivo ${escapar(rel.archivo)}. Abajo están las marcas <strong>tal como vienen del archivo</strong>.
+      Puede cambiar la hora de cualquier marca, eliminarla o agregar las que falten. El resumen se recalcula solo. Nada se guarda en la planilla hasta que toque <strong>Cargar a la planilla</strong>.</p>
+    <h3>Resumen</h3>
+    ${totales}
+    <h3>Marcas del reloj</h3>
+    ${marcasTabla}`;
 }
 
-// ---------- Pasar a la planilla ----------
-async function relAplicar() {
+// ---------- Cargar a la planilla ----------
+async function relCargar() {
   const q = plaQ(pla.actual);
   const lineas = plaLineasDe(q.id);
+  const aplicar = rel.resultado.filter((r) => !r.sinCodigo && lineas.some((l) => l.persona_id === r.pid));
   const sinLinea = rel.resultado.filter((r) => !lineas.some((l) => l.persona_id === r.pid));
   const sinCod = rel.resultado.filter((r) => r.sinCodigo);
-  let msg = `¿Pasar las horas de ${rel.resultado.filter((r) => !r.sinCodigo && !sinLinea.includes(r)).length} colaborador(es) a ${q.nombre}?`;
+  const ajustes = rel.resultado.reduce((s, r) => s + r.cambios, 0);
+  const unaMarca = rel.resultado.reduce((s, r) => s + r.incompletos, 0);
+  let msg = `¿Está seguro de cargar la información del reloj a ${q.nombre}?\n\n` +
+    `• ${aplicar.length} colaborador(es) del ${fechaCorta(rel.desde)} al ${fechaCorta(rel.hasta)}\n` +
+    `• ${ajustes} marca(s) ajustada(s) por usted\n` +
+    `• ${unaMarca} día(s) con una sola marca (se cuenta la jornada completa)`;
   if (sinLinea.length) msg += `\n\nNo están en esta quincena y se omiten: ${sinLinea.map((r) => r.nombre).join(", ")}.`;
   if (sinCod.length) msg += `\n\nSin número de reloj, no se cambian: ${sinCod.map((r) => r.nombre).join(", ")}.`;
-  if (!confirm(msg)) return;
-  // Guardar el número del reloj en cada ficha
+  msg += `\n\nAceptar = cargar. Cancelar = seguir editando.`;
+  if (!confirm(msg)) return;                       // "No": la ventana sigue en edición
   for (const [pid, codigo] of rel.mapa) {
+    if (!rel.sel.has(pid)) continue;
     const p = personaPorId(pid);
     if (!p || String(p.codigo_reloj || "") === codigo) continue;
     const { error } = await db.from("staff_personas").update({ codigo_reloj: codigo }).eq("id", pid);
@@ -291,38 +369,76 @@ async function relAplicar() {
     p.codigo_reloj = codigo;
   }
   const r2h = (x) => Math.round(x * 100) / 100;
-  for (const r of rel.resultado) {
+  for (const r of aplicar) {
     const l = lineas.find((x) => x.persona_id === r.pid);
-    if (!l || r.sinCodigo) continue;
     if (r.porHora) l.horas = r2h(r.total);
     else l.horas_extra = r.extra > 0.005 ? r2h(r.extra) : r2h(r.faltante);
     l.reloj = {
       importado: new Date().toISOString(), archivo: rel.archivo, desde: rel.desde, hasta: rel.hasta, codigo: r.codigo,
-      dias: r.dias.length, horas: r2h(r.total), extra: r2h(r.extra), faltante: r2h(r.faltante), una_marca: r.dias.filter((d) => d.una).length,
-      corregidos: r.dias.filter((d) => d.editado).map((d) => ({ fecha: d.fecha, horas: r2h(d.horas) })),
+      dias: r.dias.length, horas: r2h(r.total), extra: r2h(r.extra), faltante: r2h(r.faltante), una_marca: r.incompletos,
+      ajustes: relCambios(r.pid),
       semanas: r.semanas.map((w) => ({ lunes: w.lunes, horas: r2h(w.horas), esperado: w.esperado, diferencia: r2h(w.diferencia) }))
     };
     await plaGuardarLinea(l);
   }
+  rel.trabajo = new Map(); rel.trabajoClave = ""; rel.paso = 1;
   stfCerrarModal();
-  avisar("Horas del reloj pasadas a la planilla.");
+  avisar("Horas del reloj cargadas a la planilla.");
   plaPintar();
 }
+function relHayCambios() { return rel.paso === 2 && rel.resultado?.some((r) => r.cambios); }
+const relBuscar = (k) => {
+  const [pid, fecha, id] = k.split("|");
+  const lista = rel.trabajo.get(Number(pid))?.get(fecha) || [];
+  return { pid: Number(pid), fecha, lista, x: lista.find((m) => m.id === Number(id)) };
+};
+const relRecalcular = () => { relCalcular(); relPintar(); };
 
 // ---------- Eventos ----------
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-rel]");
-  if (!b || $("staffModal").hidden) return;
+  if (!b || $("staffModal").hidden || b.tagName === "INPUT") return;
   const a = b.dataset.rel;
+  if (a === "cerrar") {
+    if (relHayCambios() && !confirm("Tiene ajustes sin cargar. Si cierra, se conservan mientras no cambie el archivo o el rango. ¿Cerrar?")) return;
+    return stfCerrarModal();
+  }
   if (a === "rango-quincena") { const q = plaQ(pla.actual); rel.desde = q.desde; rel.hasta = q.hasta; return relPintar(); }
-  if (a === "calcular") {
+  if (a === "siguiente") {
     if (!rel.desde || !rel.hasta || rel.desde > rel.hasta) return avisar("Revise el rango de fechas.", "error");
     if (!rel.sel.size) return avisar("Marque al menos un colaborador.", "error");
-    relCalcular(); rel.paso = 2; rel.abiertos.clear(); return relPintar();
+    const clave = `${rel.desde}|${rel.hasta}|${rel.archivo}`;
+    if (rel.trabajoClave && rel.trabajoClave !== clave && [...rel.trabajo.keys()].some((pid) => relCambios(pid).length)
+      && !confirm("Cambió el rango de fechas: los ajustes que había hecho se pierden. ¿Continuar?")) return;
+    relArmarTrabajo(); relCalcular(); rel.paso = 2;
+    if (rel.ver !== null && !rel.sel.has(rel.ver)) rel.ver = null;
+    return relPintar();
   }
   if (a === "volver") { rel.paso = 1; return relPintar(); }
-  if (a === "detalle") { const p = Number(b.dataset.p); rel.abiertos.has(p) ? rel.abiertos.delete(p) : rel.abiertos.add(p); return relPintar(); }
-  if (a === "aplicar") return conBoton(b, relAplicar);
+  if (a === "cargar") return conBoton(b, relCargar);
+  if (a === "ver") { rel.ver = b.dataset.p ? Number(b.dataset.p) : null; return relPintar(); }
+  if (a === "borrar") { const { x } = relBuscar(b.dataset.k); if (x) { if (x.orig === null) { const r = relBuscar(b.dataset.k); r.lista.splice(r.lista.indexOf(x), 1); } else x.borrada = true; } return relRecalcular(); }
+  if (a === "restaurar") { const { x } = relBuscar(b.dataset.k); if (x) x.borrada = false; return relRecalcular(); }
+  if (a === "deshacer") { const { x } = relBuscar(b.dataset.k); if (x && x.orig !== null) x.min = x.orig; return relRecalcular(); }
+  if (a === "agregar") {
+    const [pid, fecha] = b.dataset.k.split("|");
+    const lista = rel.trabajo.get(Number(pid)).get(fecha);
+    const vivas = relDiaVivas(lista);
+    const sug = vivas.length ? Math.min(23 * 60 + 59, vivas[vivas.length - 1] + 8 * 60) : 8 * 60;
+    lista.push({ id: ++rel.sec, min: sug, orig: null, borrada: false });
+    return relRecalcular();
+  }
+  if (a === "agregar-dia") {
+    const pid = Number(b.dataset.p);
+    const fecha = document.querySelector(`[data-rel-dia="${pid}"]`)?.value;
+    const hora = relMinutos(document.querySelector(`[data-rel-dia-hora="${pid}"]`)?.value || "");
+    if (!fecha || fecha < rel.desde || fecha > rel.hasta) return avisar("Elija una fecha dentro del rango.", "error");
+    if (hora === null) return avisar("Escriba la hora de la marca.", "error");
+    const dias = rel.trabajo.get(pid);
+    if (!dias.has(fecha)) dias.set(fecha, []);
+    dias.get(fecha).push({ id: ++rel.sec, min: hora, orig: null, borrada: false });
+    return relRecalcular();
+  }
 });
 document.addEventListener("change", async (e) => {
   const t = e.target;
@@ -333,7 +449,7 @@ document.addEventListener("change", async (e) => {
       avisar("Leyendo el archivo del reloj…");
       rel.marcas = await relLeer(f);
       rel.archivo = f.name;
-      rel.editados.clear();
+      rel.trabajo = new Map(); rel.trabajoClave = "";
       for (const p of relCandidatos()) { const c = relSugerirCodigo(p); if (c) rel.mapa.set(p.id, c); }
       relPintar();
     } catch (err) { fallo(err, err.message); }
@@ -342,12 +458,15 @@ document.addEventListener("change", async (e) => {
   if (t.id === "relDesde") { rel.desde = t.value; return; }
   if (t.id === "relHasta") { rel.hasta = t.value; return; }
   if (t.dataset.rel === "todos") { rel.sel = t.checked ? new Set(relCandidatos().map((p) => p.id)) : new Set(); return relPintar(); }
+  if (t.dataset.rel === "solo-avisos") { rel.soloAvisos = t.checked; return relPintar(); }
   if (t.dataset.relSel) { const id = Number(t.dataset.relSel); t.checked ? rel.sel.add(id) : rel.sel.delete(id); return relPintar(); }
   if (t.dataset.relCod) { const id = Number(t.dataset.relCod); t.value ? rel.mapa.set(id, t.value) : rel.mapa.delete(id); return relPintar(); }
-  if (t.dataset.relHoras) {
-    const v = Number(t.value);
-    if (!(v >= 0 && v <= 24)) return avisar("Escriba horas entre 0 y 24.", "error");
-    rel.editados.set(t.dataset.relHoras, v);
-    relCalcular(); return relPintar();
+  if (t.dataset.relMarca) {
+    const { x } = relBuscar(t.dataset.relMarca);
+    const v = relMinutos(t.value);
+    if (!x) return;
+    if (v === null) { avisar("Escriba una hora válida.", "error"); return relPintar(); }
+    x.min = v;
+    return relRecalcular();
   }
 });
