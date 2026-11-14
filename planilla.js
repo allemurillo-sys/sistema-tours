@@ -334,7 +334,7 @@ function htmlQuincena(q) {
         ${q.motivo_reapertura ? `<p class="nota">Reabierta: ${escapar(q.motivo_reapertura)}</p>` : ""}
       </div>
       <div class="stf-botones">
-        <button type="button" class="btn" disabled title="Se programará más adelante">⏱ Importar reloj marcador <small>(próximamente)</small></button>
+        ${ed ? `<button type="button" class="btn" data-pla-accion="reloj">⏱ Importar reloj marcador</button>` : ""}
         <button type="button" class="btn" data-pla-accion="comprobantes">Comprobantes</button>
         <button type="button" class="btn" data-pla-accion="excel">Descargar Excel</button>
         ${q.estado === "cerrada"
@@ -397,7 +397,14 @@ function htmlQuincena(q) {
       </div>
       <div class="det-seccion sin-margen stf-col pla-puntualidad">
         <h3>Nota informativa de puntualidad <small class="nota">no afecta el pago</small></h3>
-        <p class="nota">Al cierre de cada quincena aquí se mostrará cuántas veces llegó tarde cada colaborador y si le faltan horas según su jornada semanal, comparando las marcas del reloj con el horario publicado. Se activará cuando se programe la importación del reloj marcador.</p>
+        ${lineas.some((l) => l.reloj) ? `
+          <p class="stf-subtitulo">Horas tomadas del reloj marcador</p>
+          <ul class="pla-lista">${lineas.filter((l) => l.reloj).map((l) => {
+            const r = l.reloj;
+            return `<li><strong>${escapar(l.nombre)}</strong>: ${r.dias} días · ${String(r.horas).replace(".", ",")} h trabajadas${l.bloque === "HORA" ? "" : ` · extra ${String(r.extra).replace(".", ",")} h${r.faltante ? ` · faltantes ${String(r.faltante).replace(".", ",")} h` : ""}`}${r.una_marca ? ` · ${r.una_marca} día(s) con una sola marca` : ""}${r.corregidos?.length ? ` · ${r.corregidos.length} corregido(s)` : ""}</li>`;
+          }).join("")}</ul>
+          <p class="nota">Rango ${fechaCorta(lineas.find((l) => l.reloj).reloj.desde)} al ${fechaCorta(lineas.find((l) => l.reloj).reloj.hasta)}. Extra calculada por semana (lunes a domingo), sin rebajar almuerzo.</p>`
+          : `<p class="nota">Use “⏱ Importar reloj marcador” para tomar las horas del archivo del reloj.</p>`}
         ${lineas.filter((l) => esCCSS(l) && l.horas_extra < 0).length ? `
           <p class="stf-subtitulo">Horas faltantes registradas en esta quincena</p>
           <ul class="pla-lista">${lineas.filter((l) => esCCSS(l) && l.horas_extra < 0).map((l) => `<li>${escapar(l.nombre)}: <strong>${l.horas_extra} h</strong></li>`).join("")}</ul>` : ""}
@@ -1167,6 +1174,7 @@ $("staffContenido").addEventListener("click", (e) => {
     "reabrir": () => plaReabrir(),
     "excel": async () => { try { const x = await plaExcelQuincena(q); stfDescargar(x.blob, x.nombre); } catch (err) { fallo(err, "No se pudo generar el Excel."); } },
     "comprobantes": () => plaImprimirComprobantes(q),
+    "reloj": () => relAbrir(),
     "comprobante": () => plaImprimirComprobantes(q, b.dataset.linea),
     "excel-aguinaldo": () => plaExcelAguinaldo().catch((err) => fallo(err, "No se pudo generar el Excel.")),
     "imprimir-aguinaldo": () => window.print(),

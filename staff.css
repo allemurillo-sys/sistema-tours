@@ -354,3 +354,17 @@ body.solo-horario #grupoAdmin { display: none !important; }
 .com-barra span { display: block; height: 100%; background: var(--verde); border-radius: 99px; transition: width .2s; }
 .com-progreso label.stf-inline { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; margin: 0; }
 .com-progreso input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--verde); }
+
+/* ---------- Reloj marcador ---------- */
+.rel-paso { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
+.rel-paso label.btn { cursor: pointer; }
+.rel-fechas { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin-bottom: 14px; }
+.rel-fechas label { max-width: 180px; }
+.rel-sem { display: inline-block; font-size: .78rem; padding: 2px 7px; border-radius: 99px; background: #EEF2F1; margin: 2px 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rel-sem.mas { background: #E3F2E8; color: #1F6B3E; }
+.rel-sem.menos { background: #FDEBDD; color: #A04A12; }
+.rel-tabla td small, .rel-tabla th small { display: block; }
+.rel-detalle > td { background: #F7F9F8; padding: 8px 12px 14px !important; }
+.rel-dias { font-size: .88rem; }
+.rel-dias tr.rel-una td { background: #FFF6E5; }
+.aviso-caja { background: #FFF6E5; border: 1px solid #E8C873; border-radius: 10px; padding: 10px 12px; }
