@@ -215,7 +215,7 @@ function htmlComMes(m) {
         ${celdaPago("deposito")}
         <td class="num"><strong>${usd(g.t.vendedor)}</strong></td>
         <td class="num">${usd(g.t.empresa)}</td>
-        <td class="pla-acc">${g.persona_id ? `<button type="button" class="enlace" data-com-accion="comprobante" data-persona="${g.persona_id}">Comprobante</button>` : ""}</td>
+        <td class="pla-acc">${g.persona_id ? `<button type="button" class="enlace" data-com-accion="imagenes" data-persona="${g.persona_id}">Imágenes</button><button type="button" class="enlace" data-com-accion="comprobante" data-persona="${g.persona_id}">Comprobante</button>` : ""}</td>
       </tr>`;
   }).join("");
 
@@ -543,10 +543,327 @@ function comImprimirReporte() {
       <p>Ganancia total: ${usd(t.ganancia)}${t.revisar ? ` · ${t.revisar} venta(s) por revisar no incluidas` : ""}</p>
     </div>`);
 }
+// =====================================================
+// IMÁGENES PARA EL VENDEDOR
+//  · Imagen 1: facturas Cash (comisión en efectivo)
+//  · Imagen 2: facturas TC + Cash facturado (comisión por depósito)
+//  Muestran cada línea revisada y cuánto generó; no muestran la utilidad de la empresa.
+// =====================================================
+const COM_IMG = {
+  efectivo: { tipos: ["cash"], titulo: "Facturas Cash", sub: "Comisión pagada en efectivo", archivo: "Cash" },
+  deposito: { tipos: ["cash_facturado", "tc"], titulo: "Facturas TC y Cash facturado", sub: "Comisión pagada por depósito bancario", archivo: "TC_y_Cash_facturado" }
+};
+const COM_TIPO_CORTO = { cash: "Cash", cash_facturado: "Cash facturado", tc: "TC" };
+let comImgs = {};   // grupo → { blob, url, nombre }
+
+async function comImagenesVendedor(personaId) {
+  const m = comMes(com.actual);
+  const g = comPorVendedor(m.id).find((x) => x.persona_id === Number(personaId));
+  if (!g) return;
+  Object.values(comImgs).forEach((i) => URL.revokeObjectURL(i.url));
+  comImgs = {};
+  try { await document.fonts?.ready; } catch { /* sin fuentes web: se usa la del sistema */ }
+  const excluidas = g.ventas.filter((v) => v.estado !== "valida");
+  const grupos = Object.keys(COM_IMG).filter((k) => g.ventas.some((v) => v.estado === "valida" && COM_IMG[k].tipos.includes(v.tipo)));
+  if (!grupos.length) return avisar("Este vendedor no tiene ventas válidas en el mes.", "error");
+  for (const k of grupos) {
+    const blob = await comDibujarImagen(m, g, k, k === grupos[0] ? excluidas : []);
+    const nombre = `Comisiones_${nombreArchivo(comNombreMes(m))}_${nombreArchivo(comNombrePersona(personaId))}_${COM_IMG[k].archivo}.png`;
+    comImgs[k] = { blob, url: URL.createObjectURL(blob), nombre };
+  }
+  const compartir = !!navigator.canShare;
+  comModal(comNombreMes(m), `Imágenes para ${escapar(comNombrePersona(personaId))}`, `
+    <p class="nota">Descárguelas o compártalas para enviarlas al vendedor. Muestran cada factura revisada y cuánto generó; no incluyen la utilidad de la empresa.${m.estado === "abierto" ? " <strong>El mes está abierto: las imágenes dicen “preliminar”.</strong>" : ""}</p>
+    <div class="com-imgs">${grupos.map((k) => `
+      <figure class="com-img">
+        <figcaption><strong>${COM_IMG[k].titulo}</strong><small>${COM_IMG[k].sub}</small></figcaption>
+        <a href="${comImgs[k].url}" target="_blank" rel="noopener"><img src="${comImgs[k].url}" alt="${COM_IMG[k].titulo} de ${escapar(comNombrePersona(personaId))}"></a>
+        <div class="com-img-btns">
+          <button type="button" class="btn chico" data-com-modal="img-descargar" data-grupo="${k}">Descargar</button>
+          ${compartir ? `<button type="button" class="btn chico" data-com-modal="img-compartir" data-grupo="${k}">Compartir</button>` : ""}
+        </div>
+      </figure>`).join("")}
+    </div>`,
+    grupos.length > 1 ? `<button type="button" class="btn primario" data-com-modal="img-todas">Descargar ambas</button>` : "", "", "Cerrar");
+}
+function comImgDescargar(grupo) {
+  const lista = grupo ? [comImgs[grupo]] : Object.values(comImgs);
+  lista.forEach((i, n) => setTimeout(() => stfDescargar(i.blob, i.nombre), n * 400));
+}
+async function comImgCompartir(grupo) {
+  const i = comImgs[grupo];
+  const archivo = new File([i.blob], i.nombre, { type: "image/png" });
+  if (!navigator.canShare?.({ files: [archivo] })) { avisar("Este equipo no permite compartir imágenes. Se descargará."); return comImgDescargar(grupo); }
+  try { await navigator.share({ files: [archivo], title: i.nombre }); } catch (e) { if (e.name !== "AbortError") throw e; }
+}
+
+function comDibujarImagen(m, g, grupo, excluidas) {
+  const def = COM_IMG[grupo];
+  const p = m.parametros || com.ajustes;
+  const vs = g.ventas.filter((v) => v.estado === "valida" && def.tipos.includes(v.tipo))
+    .sort((a, b) => def.tipos.indexOf(a.tipo) - def.tipos.indexOf(b.tipo) || String(a.fecha).localeCompare(String(b.fecha)));
+  const dep = grupo === "deposito";
+  const suma = (lista) => lista.reduce((s, v) => ({ n: s.n + 1, total: s.total + v.total_rack, iva: s.iva + v.iva, dat: s.dat + v.datafono, costo: s.costo + v.total_neto, gan: s.gan + v.ganancia, com: s.com + v.com_vendedor }), { n: 0, total: 0, iva: 0, dat: 0, costo: 0, gan: 0, com: 0 });
+  const T = suma(vs);
+
+  // Columnas: [título, ancho, alineación, valor de la venta, valor del subtotal]
+  const cols = dep ? [
+    ["Fecha", 64, "l", (v) => v.fecha ? fechaCorta(v.fecha) : "—"], ["Orden", 72, "l", (v) => v.orden || ""],
+    ["Actividad", 226, "l", (v) => v.actividad || ""], ["Cliente", 150, "l", (v) => v.cliente || ""],
+    ["Tipo", 126, "l", (v) => COM_TIPO_CORTO[v.tipo]], ["Pax", 46, "r", (v) => horasTxt(v.pax), (s) => ""],
+    ["Total", 100, "r", (v) => usd(v.total_rack), (s) => usd(s.total)], ["IVA", 88, "r", (v) => v.iva ? usd(v.iva) : "", (s) => usd(s.iva)],
+    ["Datáfono", 92, "r", (v) => v.datafono ? usd(v.datafono) : "", (s) => s.dat ? usd(s.dat) : ""], ["Costo", 100, "r", (v) => usd(v.total_neto), (s) => usd(s.costo)],
+    ["Ganancia", 98, "r", (v) => usd(v.ganancia), (s) => usd(s.gan)], ["Comisión", 98, "r", (v) => usd(v.com_vendedor), (s) => usd(s.com)]
+  ] : [
+    ["Fecha", 70, "l", (v) => v.fecha ? fechaCorta(v.fecha) : "—"], ["Orden", 80, "l", (v) => v.orden || ""],
+    ["Actividad", 300, "l", (v) => v.actividad || ""], ["Cliente", 190, "l", (v) => v.cliente || ""],
+    ["Pax", 45, "r", (v) => horasTxt(v.pax), (s) => ""], ["Total", 85, "r", (v) => usd(v.total_rack), (s) => usd(s.total)],
+    ["Costo", 85, "r", (v) => usd(v.total_neto), (s) => usd(s.costo)], ["Ganancia", 85, "r", (v) => usd(v.ganancia), (s) => usd(s.gan)],
+    ["Comisión", 80, "r", (v) => usd(v.com_vendedor), (s) => usd(s.com)]
+  ];
+
+  // Lista de lo que se dibuja en la tabla
+  const items = [];
+  for (const tipo of def.tipos) {
+    const delTipo = vs.filter((v) => v.tipo === tipo);
+    if (!delTipo.length) continue;
+    delTipo.forEach((v) => items.push({ k: "fila", v }));
+    if (dep) items.push({ k: "sub", txt: `Subtotal ${COM_TIPOS[tipo]} (${delTipo.length})`, s: suma(delTipo) });
+  }
+  items.push({ k: "total", txt: `Total (${T.n} factura${T.n === 1 ? "" : "s"})`, s: T });
+
+  const X = 40, W = 2 * X + cols.reduce((a, col) => a + col[1], 0), ALTO = { fila: 38, sub: 32, total: 38 };
+  const pg = comPago(m.id, g.persona_id, grupo);
+  const notas = excluidas.map((v) => `${v.orden || "s/n"} · ${v.actividad || ""} · ${v.cliente || ""} — ${v.estado === "no_pagar" ? "No se paga" : `Por revisar (${v.estado_original || "sin tipo"})`}`);
+  const H = 92 + 96 + 96 + 34 + items.reduce((s, i) => s + ALTO[i.k], 0) + 24 + (notas.length ? 30 + notas.length * 22 + 8 : 0) + 30 + 54;
+
+  const esc = 2;
+  const lienzo = document.createElement("canvas");
+  lienzo.width = W * esc; lienzo.height = H * esc;
+  const c = lienzo.getContext("2d");
+  c.scale(esc, esc);
+  const F = (peso, tam) => `${peso} ${tam}px Karla, "Segoe UI", system-ui, sans-serif`;
+  const FT = (tam) => `700 ${tam}px "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif`;
+  const recortar = (t, ancho) => {
+    t = String(t ?? "");
+    if (c.measureText(t).width <= ancho) return t;
+    while (t.length > 1 && c.measureText(t + "…").width > ancho) t = t.slice(0, -1);
+    return t + "…";
+  };
+  const texto = (t, x, y, ancho, alin = "l") => {
+    const s = recortar(t, ancho);
+    c.textAlign = alin === "r" ? "right" : "left";
+    c.fillText(s, alin === "r" ? x + ancho : x, y);
+  };
+
+  // Fondo y encabezado
+  c.fillStyle = "#FFFFFF"; c.fillRect(0, 0, W, H);
+  c.fillStyle = "#2F6E4F"; c.fillRect(0, 0, W, 72);
+  c.fillStyle = "#FFFFFF"; c.textBaseline = "middle";
+  c.font = FT(24); texto("The House of Tours · Home Vacations CR", X, 36, 640);
+  c.font = F(600, 16); texto(`Comisiones · ${comNombreMes(m)}`, W - X - 360, 36, 360, "r");
+  let y = 92;
+
+  // Título y vendedor
+  c.textBaseline = "alphabetic"; c.fillStyle = "#23343D";
+  c.font = FT(26); texto(def.titulo, X, y + 30, 640);
+  c.font = F(400, 16); c.fillStyle = "#5B6B72"; texto(def.sub, X, y + 56, 640);
+  c.font = F(700, 20); c.fillStyle = "#23343D"; texto(comNombrePersona(g.persona_id), W - X - 420, y + 30, 420, "r");
+  c.font = F(400, 15); c.fillStyle = m.estado === "abierto" ? "#8A3B12" : "#5B6B72";
+  texto(m.estado === "abierto" ? "Preliminar · mes abierto" : "Mes cerrado", W - X - 420, y + 56, 420, "r");
+  c.fillStyle = "#5B6B72"; c.font = F(400, 13);
+  texto(`IVA ${p.iva}% incluido en el precio${dep ? ` · datáfono ${p.datafono}% en TC` : ""} · comisión ${p.vendedor}% de la ganancia`, X, y + 80, W - 2 * X);
+  y += 96;
+
+  // Tarjetas
+  const tarjetas = [["Facturas", String(T.n)], ["Total vendido", usd(T.total)], ["Ganancia", usd(T.gan)], ["Su comisión", usd(T.com)]];
+  const tw = (W - 2 * X - 3 * 12) / 4;
+  tarjetas.forEach(([et, val], i) => {
+    const tx = X + i * (tw + 12), dest = i === 3;
+    c.fillStyle = dest ? "#2F6E4F" : "#F1F5F3";
+    c.beginPath(); c.roundRect ? c.roundRect(tx, y, tw, 78, 10) : c.rect(tx, y, tw, 78); c.fill();
+    c.fillStyle = dest ? "#E4EFE8" : "#5B6B72"; c.font = F(400, 14); texto(et, tx + 16, y + 28, tw - 32);
+    c.fillStyle = dest ? "#FFFFFF" : "#23343D"; c.font = F(700, 26); texto(val, tx + 16, y + 62, tw - 32);
+  });
+  y += 96;
+
+  // Encabezado de la tabla
+  c.fillStyle = "#E4EFE8"; c.fillRect(X, y, W - 2 * X, 34);
+  c.fillStyle = "#1F4F38"; c.font = F(700, 13); c.textBaseline = "middle";
+  let cx = X;
+  cols.forEach(([t, w, al]) => { texto(t.toUpperCase(), cx + 6, y + 17, w - 12, al); cx += w; });
+  y += 34;
+
+  // Filas
+  let par = false;
+  for (const it of items) {
+    const h = ALTO[it.k];
+    cx = X;
+    if (it.k === "fila") {
+      if (par) { c.fillStyle = "#F7FAF8"; c.fillRect(X, y, W - 2 * X, h); }
+      par = !par;
+      cols.forEach(([t, w, al, fv]) => {
+        if (t === "Actividad") {
+          c.fillStyle = "#23343D"; c.font = F(400, 14); texto(fv(it.v), cx + 6, y + 14, w - 12);
+          c.fillStyle = "#5B6B72"; c.font = F(400, 11.5); texto(it.v.proveedor || "", cx + 6, y + 29, w - 12);
+        } else {
+          c.fillStyle = "#23343D"; c.font = F(t === "Comisión" ? 700 : 400, 14); texto(fv(it.v), cx + 6, y + h / 2, w - 12, al);
+        }
+        cx += w;
+      });
+      c.strokeStyle = "#E3E9E6"; c.lineWidth = 1;
+    } else {
+      const total = it.k === "total";
+      c.fillStyle = total ? "#2F6E4F" : "#EEF3F0"; c.fillRect(X, y, W - 2 * X, h);
+      c.fillStyle = total ? "#FFFFFF" : "#23343D"; c.font = F(700, total ? 15 : 14);
+      const primeras = cols.findIndex((col) => col[4]);
+      const anchoEt = cols.slice(0, primeras).reduce((s, col) => s + col[1], 0);
+      texto(it.txt, X + 6, y + h / 2, anchoEt - 12);
+      cx = X + anchoEt;
+      cols.slice(primeras).forEach(([, w, al, , fs]) => { texto(fs(it.s), cx + 6, y + h / 2, w - 12, al); cx += w; });
+      par = false;
+    }
+    c.beginPath(); c.moveTo(X, y + h - 0.5); c.lineTo(W - X, y + h - 0.5); c.strokeStyle = "#D5DEDA"; c.stroke();
+    y += h;
+  }
+  y += 24;
+
+  // Ventas que no suman comisión
+  c.textBaseline = "alphabetic";
+  if (notas.length) {
+    c.fillStyle = "#8A3B12"; c.font = F(700, 15);
+    texto(`Revisadas que no suman comisión (${notas.length})`, X, y + 18, W - 2 * X);
+    y += 30;
+    c.fillStyle = "#5B6B72"; c.font = F(400, 13.5);
+    notas.forEach((n) => { texto("• " + n, X, y + 14, W - 2 * X); y += 22; });
+    y += 8;
+  }
+
+  // Estado del pago
+  c.font = F(700, 15);
+  c.fillStyle = pg ? "#2F6E4F" : "#8A3B12";
+  texto(pg ? `✓ ${dep ? "Depositado" : "Pagado en efectivo"} el ${fechaAnio(pg.fecha)}: ${usd(pg.monto)}${pg.banco ? ` · ${pg.banco}` : ""}${pg.referencia ? ` · Comprobante ${pg.referencia}` : ""}` : `Pendiente de pago: ${usd(T.com)}`, X, y + 16, W - 2 * X);
+  y += 30;
+
+  // Pie
+  c.fillStyle = "#D5DEDA"; c.fillRect(X, y + 10, W - 2 * X, 1);
+  c.fillStyle = "#5B6B72"; c.font = F(400, 12);
+  texto(`Generado el ${fechaHora(new Date().toISOString())} · THOT Sistema`, X, y + 34, W - 2 * X);
+
+  return new Promise((ok, mal) => lienzo.toBlob((b) => (b ? ok(b) : mal(new Error("No se pudo crear la imagen."))), "image/png"));
+}
+
+// =====================================================
+// EXCEL: hoja "Reporte general" (totales por tipo, por vendedor, pagos y utilidad)
+// =====================================================
+function comHojaReporte(wb, m) {
+  const ws = wb.addWorksheet("Reporte general");
+  const p = m.parametros || {};
+  const validas = comVentasMes(m.id).filter((v) => v.estado === "valida");
+  const fmt = "#,##0.00";
+  const L = (n) => String.fromCharCode(64 + n);
+  ws.columns = [{ width: 32 }, ...Array(11).fill({ width: 15 })];
+  const tit = (t) => { const r = ws.addRow([t]); r.font = { bold: true, size: 12, color: { argb: "FF1F4F38" } }; return r; };
+  const cab = (vals) => {
+    const r = ws.addRow(vals);
+    r.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    r.alignment = { wrapText: true, vertical: "middle" };
+    r.height = 32;
+    vals.forEach((_, i) => { r.getCell(i + 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F6E4F" } }; });
+    return r;
+  };
+  const fila = (vals, desde, negrita = false) => {
+    const r = ws.addRow(vals);
+    for (let i = desde; i <= vals.length; i++) r.getCell(i).numFmt = fmt;
+    if (negrita) { r.font = { bold: true }; vals.forEach((_, i) => { r.getCell(i + 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE4EFE8" } }; r.getCell(i + 1).border = { top: { style: "thin" } }; }); }
+    return r;
+  };
+  const sumas = (desde, hasta, primera, ultima) => {
+    const out = [];
+    for (let c = desde; c <= hasta; c++) out.push({ formula: `SUM(${L(c)}${primera}:${L(c)}${ultima})` });
+    return out;
+  };
+
+  const r1 = ws.addRow([`Reporte general de comisiones · ${comNombreMes(m)}`]);
+  r1.font = { bold: true, size: 15 };
+  ws.addRow([`The House of Tours · Home Vacations CR · ${m.estado === "cerrado" ? "Mes cerrado" : "Mes abierto (preliminar)"}`]);
+  if (!m.historico) ws.addRow([`Cálculo: IVA ${p.iva}% incluido en el precio · datáfono ${p.datafono}% (solo TC) · vendedor ${p.vendedor}% de la ganancia`]);
+  ws.addRow([]);
+
+  // 1. Por tipo de venta
+  tit("1. Ventas por tipo de venta");
+  cab(["Tipo de venta", "Facturas", "Total vendido", "IVA", "Datáfono", "Costo", "Ganancia", "Comisión vendedores", "Utilidad empresa", "Pago de comisión"]);
+  const i1 = ws.rowCount + 1;
+  for (const [k, nombre] of Object.entries(COM_TIPOS)) {
+    const vs = validas.filter((v) => v.tipo === k);
+    const s = (c) => vs.reduce((a, v) => a + v[c], 0);
+    const r = fila([nombre, vs.length, s("total_rack"), s("iva"), s("datafono"), s("total_neto"), s("ganancia"), s("com_vendedor"), s("com_empresa"), k === "cash" ? "Efectivo" : "Depósito"], 3);
+    r.getCell(10).numFmt = "@";
+  }
+  const f1 = ws.rowCount;
+  fila(["Total", ...sumas(2, 9, i1, f1)], 3, true).getCell(2).numFmt = "0";
+  const filaTotalTipos = ws.rowCount;
+  ws.addRow([]);
+
+  // 2. Por vendedor
+  tit("2. Ventas y comisiones por vendedor");
+  cab(["Vendedor", "Facturas", "Vendido Cash", "Vendido Cash facturado", "Vendido TC", "Total vendido", "Comisión efectivo", "Comisión depósito", "Total comisión", "Comisión pagada", "Pendiente de pagar", "Utilidad empresa"]);
+  const i2 = ws.rowCount + 1;
+  for (const g of comPorVendedor(m.id)) {
+    const vs = g.ventas.filter((v) => v.estado === "valida");
+    const vend = (t) => vs.filter((v) => v.tipo === t).reduce((a, v) => a + v.total_rack, 0);
+    const pagado = com.pagos.filter((x) => x.mes_id === m.id && x.persona_id === g.persona_id).reduce((a, x) => a + n2(x.monto), 0);
+    const n = ws.rowCount + 1;
+    fila([g.persona_id ? comNombrePersona(g.persona_id) : g.texto, g.t.filas, vend("cash"), vend("cash_facturado"), vend("tc"),
+      { formula: `SUM(C${n}:E${n})` }, g.t.efectivo, g.t.deposito, { formula: `G${n}+H${n}` }, pagado, { formula: `I${n}-J${n}` }, g.t.empresa], 3);
+  }
+  const f2 = ws.rowCount;
+  if (f2 >= i2) fila(["Total", ...sumas(2, 12, i2, f2)], 3, true).getCell(2).numFmt = "0";
+  const filaTotalVend = ws.rowCount;
+  ws.addRow([]);
+
+  // 3. Pagos registrados
+  tit("3. Comisiones pagadas");
+  cab(["Vendedor", "Forma de pago", "Fecha de pago", "Monto", "Banco", "Comprobante", "Nota"]);
+  const pagos = com.pagos.filter((x) => x.mes_id === m.id).sort((a, b) => comNombrePersona(a.persona_id).localeCompare(comNombrePersona(b.persona_id)) || a.forma.localeCompare(b.forma));
+  const i3 = ws.rowCount + 1;
+  pagos.forEach((x) => {
+    const r = ws.addRow([comNombrePersona(x.persona_id), x.forma === "efectivo" ? "Efectivo" : "Depósito", x.fecha ? new Date(x.fecha + "T12:00:00") : null, n2(x.monto), x.banco || "", x.referencia || "", x.nota || ""]);
+    r.getCell(3).numFmt = "dd/mm/yyyy"; r.getCell(4).numFmt = fmt;
+  });
+  if (!pagos.length) ws.addRow(["Todavía no hay pagos registrados en este mes."]).font = { italic: true, color: { argb: "FF5B6B72" } };
+  else { const r = fila(["Total pagado", "", "", { formula: `SUM(D${i3}:D${ws.rowCount})` }], 4, true); r.getCell(2).numFmt = "@"; }
+  ws.addRow([]);
+
+  // 4. Resumen
+  tit("4. Resumen del mes");
+  const res = [
+    ["Total vendido", { formula: `C${filaTotalTipos}` }],
+    ["  Cash", { formula: `C${i1}` }],
+    ["  Cash facturado", { formula: `C${i1 + 1}` }],
+    ["  TC", { formula: `C${i1 + 2}` }],
+    ["Ganancia (sin impuestos − costo)", { formula: `G${filaTotalTipos}` }],
+    ["Comisión total de vendedores", { formula: `H${filaTotalTipos}` }],
+    ["Comisiones pagadas", f2 >= i2 ? { formula: `J${filaTotalVend}` } : 0],
+    ["Comisiones pendientes de pagar", f2 >= i2 ? { formula: `K${filaTotalVend}` } : 0],
+    ["Utilidad (comisión) para la empresa", { formula: `I${filaTotalTipos}` }]
+  ];
+  res.forEach(([et, val], i) => { const r = fila([et, val], 2, i === res.length - 1); if (i === 0) r.font = { bold: true }; });
+  const excl = comVentasMes(m.id).filter((v) => v.estado !== "valida");
+  if (excl.length) {
+    ws.addRow([]);
+    ws.addRow([`No incluidas: ${excl.filter((v) => v.estado === "no_pagar").length} venta(s) “No se paga” y ${excl.filter((v) => v.estado === "revisar").length} por revisar.`]).font = { italic: true, color: { argb: "FF5B6B72" } };
+  }
+  ws.views = [{ showGridLines: false }];
+  ws.pageSetup = { paperSize: 1, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+}
+
 async function comExcel() {
   const m = comMes(com.actual);
   const ExcelJS = await stfCargarExcel();
   const wb = new ExcelJS.Workbook();
+  wb.calcProperties.fullCalcOnLoad = true;   // Excel recalcula los totales al abrir
+  comHojaReporte(wb, m);
   const ws = wb.addWorksheet(comNombreMes(m));
   ws.columns = [
     ["Fecha", 12], ["Orden", 10], ["Proveedor", 24], ["Actividad", 32], ["Cliente", 22], ["Vendedor", 26], ["Tipo", 14], ["Estado", 12], ["Pax", 6],
@@ -759,6 +1076,7 @@ $("staffContenido").addEventListener("click", (e) => {
     "pagar": () => comFormPago(b.dataset.forma, b.dataset.persona),
     "ver-pago": () => comVerPago(b.dataset.id),
     "comprobante": () => comImprimirComprobante(b.dataset.persona),
+    "imagenes": () => comImagenesVendedor(b.dataset.persona),
     "imprimir": () => comImprimirReporte(),
     "excel": () => comExcel().catch((err) => fallo(err, "No se pudo generar el Excel.")),
     "ver-archivo": () => comVerArchivo(b.dataset.ruta)
@@ -790,7 +1108,10 @@ document.addEventListener("click", (e) => {
     "importar": () => comConfirmarImporte(),
     "ver-archivo": () => comVerArchivo(b.dataset.ruta),
     "imprimir-pago": () => { stfCerrarModal(); comImprimirComprobante(b.dataset.persona, b.dataset.forma); },
-    "anular-pago": () => comAnularPago(b.dataset.id)
+    "anular-pago": () => comAnularPago(b.dataset.id),
+    "img-descargar": () => comImgDescargar(b.dataset.grupo),
+    "img-compartir": () => comImgCompartir(b.dataset.grupo),
+    "img-todas": () => comImgDescargar(null)
   };
   if (acciones[a]) conBoton(b, async () => { await acciones[a](); });
 });
