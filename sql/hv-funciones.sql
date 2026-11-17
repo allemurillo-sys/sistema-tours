@@ -563,8 +563,9 @@ begin
   if p_estado = 'bloqueada' then
     if p_nota is null or length(p_nota) < 5 then raise exception 'Para marcar Bloqueada debe escribir la razón del bloqueo'; end if;
     if p_autoriza is null then raise exception 'Para marcar Bloqueada debe indicar la persona que autorizó el bloqueo'; end if;
-    select nombre into v_aut from hv.perfiles where id = p_autoriza and activo and rol <> 'mucama';
-    if v_aut is null then raise exception 'La persona que autorizó el bloqueo no es válida'; end if;
+    select nombre into v_aut from hv.perfiles where id = p_autoriza and activo
+       and rol in ('admin', 'operaciones', 'supervisora', 'ama_llaves');
+    if v_aut is null then raise exception 'La persona que autorizó debe ser de Administración, Operaciones, Supervisión o Ama de llaves'; end if;
   else
     p_autoriza := null;
   end if;

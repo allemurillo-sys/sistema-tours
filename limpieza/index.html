@@ -3427,8 +3427,9 @@ async function oMarcarLimpieza(pid, estado, nota, autoriza){
   aviso(estado ? `${nombreProp(pid)}: ${O_LIMP[estado]}` : `${nombreProp(pid)}: marca quitada`);
   return true;
 }
-// Personas que pueden autorizar un bloqueo: personal activo con cuenta, menos las mucamas
-const oAutorizadores = () => Object.values(S.perfiles).filter(p => p.activo !== false && p.rol !== 'mucama')
+// Personas que pueden autorizar un bloqueo: Administración, Operaciones, Supervisión o Ama de llaves (activos)
+const O_ROL_AUTORIZA = ['admin', 'operaciones', 'supervisora', 'ama_llaves'];
+const oAutorizadores = () => Object.values(S.perfiles).filter(p => p.activo !== false && O_ROL_AUTORIZA.includes(p.rol))
   .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 function oFormLimpieza(pid, pre){
   const f = oFila(pid), actual = pre || f.limpieza || '';
