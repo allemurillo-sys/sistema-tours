@@ -1,6 +1,6 @@
 -- 2026-11-17 · Reporte de Limpieza: al marcar "Bloqueada" es obligatorio
 -- indicar la razón del bloqueo y la persona que lo autorizó.
-alter table hv.ocupacion add column if not exists limpieza_autoriza uuid references hv.perfiles(id);
+alter table hv.ocupacion add column if not exists limpieza_autoriza uuid;  -- id del perfil que autorizó (hv.perfiles es una vista)
 drop function if exists hv.ocupacion_limpieza(date, bigint, text, text);
 CREATE OR REPLACE FUNCTION hv.ocupacion_limpieza(p_fecha date, p_propiedad bigint, p_estado text, p_nota text, p_autoriza uuid DEFAULT NULL)
  RETURNS void
