@@ -861,7 +861,16 @@ function htmlHorario() {
     return `<td class="stf-cob">${n}</td>`;
   }).join("");
 
-  const fuera = stf.personas.filter((p) => p.activo && (!h.departamento || p.departamento === h.departamento) && !H.personas.some((hp) => hp.persona_id === p.id));
+  // Administradores: pueden agregar a cualquier colaborador activo (de cualquier departamento).
+  // Los demás: solo a los del departamento del horario.
+  const adminHor = stfEsAdmin();
+  const fuera = stf.personas.filter((p) => p.activo && (adminHor || !h.departamento || p.departamento === h.departamento) && !H.personas.some((hp) => hp.persona_id === p.id))
+    .sort((a, b) => (a.departamento === h.departamento ? 0 : 1) - (b.departamento === h.departamento ? 0 : 1) || String(a.departamento || "").localeCompare(String(b.departamento || "")) || a.nombre.localeCompare(b.nombre));
+  const opcionesFuera = () => {
+    const grupos = new Map();
+    fuera.forEach((p) => { const d = p.departamento || "Sin departamento"; if (!grupos.has(d)) grupos.set(d, []); grupos.get(d).push(p); });
+    return [...grupos.entries()].map(([d, ps]) => `<optgroup label="${escapar(d)}">${ps.map((p) => `<option value="${p.id}">${escapar(p.nombre)}${p.puesto ? ` · ${escapar(p.puesto)}` : ""}</option>`).join("")}</optgroup>`).join("");
+  };
 
   return `
     <div class="stf-horario-cab">
@@ -916,9 +925,10 @@ function htmlHorario() {
     </div>
     ${editable && fuera.length ? `
       <div class="stf-agregar">
-        <label>Agregar colaborador <select id="stfAgregarPersona"><option value="">Elegir…</option>${fuera.map((p) => `<option value="${p.id}">${escapar(p.nombre)}</option>`).join("")}</select></label>
+        <label>Agregar colaborador <select id="stfAgregarPersona"><option value="">Elegir…</option>${opcionesFuera()}</select></label>
         <button type="button" class="btn" data-stf-accion="agregar-persona">Agregar</button>
-      </div>` : ""}
+        ${adminHor ? `<small class="nota">Como administrador puede agregar colaboradores de cualquier departamento.</small>` : ""}
+      </div>` : editable && adminHor ? `<p class="nota stf-agregar">Todos los colaboradores activos ya están en este horario. Para agregar a alguien nuevo, créelo primero en Perfiles de colaboradores.</p>` : ""}
     <div class="stf-leyenda"><span class="t-trabajo">Trabaja</span><span class="t-extra">+ h extra</span><span class="t-libre">Libre</span><span class="t-vac">Vacaciones</span><span class="t-inc">Incapacidad</span><span class="excede">⚠ más de ${MAX_HORAS_DIA} h en el día</span></div>`;
 }
 
