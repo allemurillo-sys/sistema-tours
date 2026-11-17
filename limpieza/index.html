@@ -3373,7 +3373,7 @@ function oFilaHTML(p){
     : `<span class="o-chip" style="min-width:0">${v ?? '—'}</span>`;
 
   let quien = '';
-  if (f.limpieza) quien = `<div class="o-quien">Marcó: <b>${esc(quienRol(f.limpieza_por))}</b> · ${oHora(f.limpieza_en)}${f.limpieza_nota ? ` · “${esc(f.limpieza_nota)}”` : ''}</div>`;
+  if (f.limpieza) quien = `<div class="o-quien">Marcó: <b>${esc(quienRol(f.limpieza_por))}</b> · ${oHora(f.limpieza_en)}${f.limpieza_nota ? ` · “${esc(f.limpieza_nota)}”` : ''}${f.limpieza === 'bloqueada' && f.limpieza_autoriza ? ` · Autorizó: <b>${esc(quienRol(f.limpieza_autoriza))}</b>` : ''}</div>`;
   else { const u = O.ultima.get(p.id); if (u) quien = `<div class="o-quien ant">Última marca: ${O_LIMP[u.limpieza]} · ${esc(oFechaTxt(u.fecha, true))} (${esc(nombre(u.limpieza_por))})</div>`; }
   if (oIngresoPend(f)) quien += `<div class="o-quien o-rojo">⚠️ Entra hoy a las ${O_INGRESO}: debe quedar Lista</div>`;
   const limp = lim
@@ -3417,32 +3417,57 @@ async function oGuardarFila(pid, cambios){
 }
 
 /* ---------- Estado de limpieza (personal de ama de llaves) ---------- */
-async function oMarcarLimpieza(pid, estado, nota){
-  const { error } = await sb.rpc('ocupacion_limpieza', { p_fecha:O.fecha, p_propiedad:pid, p_estado:estado, p_nota:nota || null });
+async function oMarcarLimpieza(pid, estado, nota, autoriza){
+  autoriza = estado === 'bloqueada' ? (autoriza || null) : null;
+  const { error } = await sb.rpc('ocupacion_limpieza', { p_fecha:O.fecha, p_propiedad:pid, p_estado:estado, p_nota:nota || null, p_autoriza:autoriza });
   if (error) { aviso(errMsg(error), true); return false; }
-  O.filas.set(pid, { ...oFila(pid), fecha:O.fecha, propiedad_id:pid, limpieza:estado, limpieza_nota:nota || null,
+  O.filas.set(pid, { ...oFila(pid), fecha:O.fecha, propiedad_id:pid, limpieza:estado, limpieza_nota:nota || null, limpieza_autoriza:autoriza,
     limpieza_por:estado ? S.user.id : null, limpieza_en:estado ? new Date(ahora()).toISOString() : null });
   oRepintarFila(pid);
   aviso(estado ? `${nombreProp(pid)}: ${O_LIMP[estado]}` : `${nombreProp(pid)}: marca quitada`);
   return true;
 }
+// Personas que pueden autorizar un bloqueo: personal activo con cuenta, menos las mucamas
+const oAutorizadores = () => Object.values(S.perfiles).filter(p => p.activo !== false && p.rol !== 'mucama')
+  .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 function oFormLimpieza(pid, pre){
   const f = oFila(pid), actual = pre || f.limpieza || '';
+  const autActual = pre && pre !== f.limpieza ? '' : (f.limpieza_autoriza || '');
   if (!abrirModal(`<div class="m-head"><div><h3>${esc(nombreProp(pid))}</h3><div style="color:var(--muted);font-size:13px">Estado de limpieza · ${esc(oFechaTxt(O.fecha))}</div></div><button class="x" data-x>✕</button></div>
     <form class="m-body" id="ol">
       <div class="seg c4">${Object.keys(O_LIMP).map(k => `<input type="radio" name="ol-e" id="ol-${k}" value="${k}" ${k === actual ? 'checked' : ''}>
         <label for="ol-${k}">${O_LIMP_IC[k]} ${O_LIMP[k]}</label>`).join('')}</div>
-      <label class="f" for="ol-n">Nota (opcional)</label>
+      <label class="f" for="ol-n" id="ol-nl">Nota (opcional)</label>
       <input class="inp" id="ol-n" maxlength="200" placeholder="Ej.: falta reponer toallas, aire acondicionado no enfría…" value="${esc(pre && pre !== f.limpieza ? '' : (f.limpieza_nota || ''))}">
+      <div id="ol-bq" class="hidden">
+        <label class="f" for="ol-a">¿Quién autorizó el bloqueo? (obligatorio)</label>
+        <select class="inp" id="ol-a">
+          <option value="">— Elija la persona —</option>
+          ${oAutorizadores().map(p => `<option value="${esc(p.id)}" ${p.id === autActual ? 'selected' : ''}>${esc(p.nombre)} (${esc(ROL[p.rol] || p.rol)})</option>`).join('')}
+        </select>
+      </div>
       <div class="err" id="ol-err"></div>
       <button class="btn block" type="submit">Guardar</button>
       ${f.limpieza ? '<button class="btn sec block" type="button" id="ol-quitar" style="margin-top:8px">Quitar la marca</button>' : ''}
     </form>`, true)) return;
+  // Bloqueada: la razón y quién lo autorizó son obligatorios
+  const oBloq = () => {
+    const bq = $('input[name="ol-e"]:checked')?.value === 'bloqueada';
+    $('#ol-bq').classList.toggle('hidden', !bq);
+    $('#ol-nl').textContent = bq ? 'Razón del bloqueo (obligatoria)' : 'Nota (opcional)';
+    $('#ol-n').placeholder = bq ? 'Ej.: fuga en el baño, reparación del aire acondicionado, uso del dueño…' : 'Ej.: falta reponer toallas, aire acondicionado no enfría…';
+  };
+  $('#ol').querySelectorAll('input[name="ol-e"]').forEach(r => r.addEventListener('change', oBloq));
+  oBloq();
   $('#ol').onsubmit = async e => {
     e.preventDefault();
-    const est = $('input[name="ol-e"]:checked')?.value;
+    const est = $('input[name="ol-e"]:checked')?.value, nota = $('#ol-n').value.trim(), aut = $('#ol-a').value;
     if (!est) return $('#ol-err').textContent = 'Elija el estado de la propiedad';
-    if (await oMarcarLimpieza(pid, est, $('#ol-n').value.trim())) cerrarModal();
+    if (est === 'bloqueada') {
+      if (nota.length < 5) { $('#ol-n').focus(); return $('#ol-err').textContent = 'Escriba la razón del bloqueo'; }
+      if (!aut) { $('#ol-a').focus(); return $('#ol-err').textContent = 'Elija la persona que autorizó el bloqueo'; }
+    }
+    if (await oMarcarLimpieza(pid, est, nota, aut)) cerrarModal();
   };
   const q = $('#ol-quitar'); if (q) q.onclick = async () => { if (await oMarcarLimpieza(pid, null, null)) cerrarModal(); };
 }
@@ -3514,19 +3539,20 @@ function oExcel(){
   const c = oCuenta();
   const filas = [[oTitulo().toUpperCase()], [oFechaTxt(O.fecha)],
     [`Creado por: ${O.dia?.creado_por ? quienRol(O.dia.creado_por) + ' · ' + fecha(O.dia.creado_en) : '—'}${O.dia?.archivado_en ? '   ·   Archivado: ' + fecha(O.dia.archivado_en) : ''}`], [],
-    ['PROPIEDAD', 'GRUPO', 'AMANECE', 'QUEDA', 'Noches', 'Pax', 'TAREA', 'Nota recepción', 'LIMPIEZA', 'Marcada por', 'Hora', 'Nota limpieza']];
+    ['PROPIEDAD', 'GRUPO', 'AMANECE', 'QUEDA', 'Noches', 'Pax', 'TAREA', 'Nota recepción', 'LIMPIEZA', 'Marcada por', 'Hora', 'Nota limpieza', 'Bloqueo autorizado por']];
   oProps().forEach(p => {
     const f = oFila(p.id);
     filas.push([p.nombre, p.grupo || '', f.estado ? O_AMANECE[f.estado].toUpperCase() : '—', f.entrada ? O_QUEDA[f.entrada].toUpperCase() : '—',
       f.noches ?? '', f.pax ?? '', oTarea(f).txt, f.nota || '',
       f.limpieza ? O_LIMP[f.limpieza].toUpperCase() : 'SIN MARCAR', f.limpieza ? quienRol(f.limpieza_por) : '',
-      f.limpieza_en ? oHora(f.limpieza_en) : '', f.limpieza_nota || '']);
+      f.limpieza_en ? oHora(f.limpieza_en) : '', f.limpieza_nota || '',
+      f.limpieza === 'bloqueada' && f.limpieza_autoriza ? quienRol(f.limpieza_autoriza) : '']);
   });
   filas.push([], ['RESUMEN'], ['OCUPADAS', c.ocupada], ['ENTRADAS', c.entra], ['SALIDAS', c.sale], ['LIBRES', c.libre],
     ['BLOQUEADAS', c.bloq], ['PAX', c.pax], [], ['LIMPIEZA'], ['LISTAS', c.lista], ['SUCIAS', c.sucia],
     ['PENDIENTES', c.pendiente], ['BLOQUEADAS', c.bloqueada], ['SIN MARCAR', c.sin]);
   const ws = XLSX.utils.aoa_to_sheet(filas);
-  ws['!cols'] = [{ wch:18 }, { wch:14 }, { wch:11 }, { wch:16 }, { wch:7 }, { wch:5 }, { wch:44 }, { wch:28 }, { wch:12 }, { wch:26 }, { wch:9 }, { wch:28 }];
+  ws['!cols'] = [{ wch:18 }, { wch:14 }, { wch:11 }, { wch:16 }, { wch:7 }, { wch:5 }, { wch:44 }, { wch:28 }, { wch:12 }, { wch:26 }, { wch:9 }, { wch:28 }, { wch:26 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte de Limpieza');
   XLSX.writeFile(wb, `Reporte_Limpieza_${oFechaCorta(O.fecha).replaceAll('/', '-')}.xlsx`);
