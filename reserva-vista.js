@@ -33,11 +33,17 @@ function nombrePersonas(nombre, n) {
 
 function personasTexto(a) {
   const partes = a.participantes.filter((p) => p.cantidad > 0)
-    .map((p) => `${p.cantidad} ${nombrePersonas(categoriaPorId(p.categoria_id)?.nombre, p.cantidad)}`);
+    .map((p) => esCategoriaGrupo(p.categoria_id)
+      ? `${p.cantidad} × ${p.opcion || categoriaPorId(p.categoria_id)?.nombre || ""}`
+      : `${p.cantidad} ${nombrePersonas(categoriaPorId(p.categoria_id)?.nombre, p.cantidad)}`);
   if (!partes.length) return "Sin personas";
   return partes.length === 1 ? partes[0] : `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
 }
-const totalPersonas = (a) => a.participantes.reduce((s, p) => s + (p.cantidad || 0), 0);
+// Las filas de vehículo o servicio (Transporte, Tipo Servicio) no son personas, salvo que sean las únicas
+const totalPersonas = (a) => {
+  const pers = a.participantes.filter((p) => !esCategoriaGrupo(p.categoria_id)).reduce((s, p) => s + (p.cantidad || 0), 0);
+  return pers || a.participantes.reduce((s, p) => s + (p.cantidad || 0), 0);
+};
 
 const NOMBRE_TARIFA = { tc: "precio con tarjeta (TC)", cash: "precio en efectivo", manual: "precio escrito a mano", pendiente: "sin tarifa" };
 
@@ -75,7 +81,8 @@ function faltasServicio(a) {
   const pers = totalPersonas(a);
   if (!pers) f.push({ paso: 2, texto: "No hay personas en este servicio." });
   if (a.tarifa_tipo === "pendiente") f.push({ paso: 2, texto: "No hay tarifa para esa fecha: pregúntale el precio al proveedor y escríbelo (Manual)." });
-  else if (pers && a.participantes.some((p) => p.cantidad > 0 && !(p.precio_unitario > 0))) f.push({ paso: 2, texto: "Hay personas sin precio." });
+  else if (pers && a.participantes.some((p) => p.cantidad > 0 && !(p.precio_unitario > 0)
+    && !(tieneFilaGrupo(a) && !esCategoriaGrupo(p.categoria_id)))) f.push({ paso: 2, texto: "Hay personas sin precio." });
 
   const lleva = a.transporte_modo === "incluido" || (a.transporte_modo === "opcional" && a.transporte_respuesta === "si");
   if (lleva && !String(a.lugar_recogida || "").trim()) f.push({ paso: 3, texto: "Falta dónde lo recogen." });

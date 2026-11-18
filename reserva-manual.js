@@ -301,8 +301,16 @@ function htmlAlertasTarifario(a) {
   // tipos de cliente con personas pero sin precio en la tarifa de esa fecha
   const t = typeof tarifaDe === "function" ? tarifaDe(a) : null;
   if (t?.precios?.length) {
-    const sinPrecio = a.participantes.filter((p) => p.cantidad > 0 && !t.precios.some((x) => x.categoria_id === p.categoria_id && x.tc != null));
-    if (sinPrecio.length) avisos.push(`La tarifa no tiene precio para: ${sinPrecio.map((p) => escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")).join(", ")}. Escribe el precio a mano (Manual).`);
+    const cats = [...new Set(t.precios.map((x) => x.categoria_id))];
+    const soloGrupo = typeof esCategoriaGrupo === "function" && cats.every(esCategoriaGrupo);
+    const btn = `<button type="button" class="btn chico" data-accion="aplicar-tarifa">Usar los precios del Tarifario</button>`;
+    if (soloGrupo && !a.participantes.some((p) => p.cantidad > 0 && cats.includes(p.categoria_id))) {
+      // Servicio guardado antes de este cambio: la tarifa es por vehículo o servicio y aún no tiene esa fila
+      avisos.push(`El precio de esta actividad es por ${escapar(categoriaPorId(cats[0])?.nombre?.toLowerCase() ?? "grupo")}, no por persona. ${btn}`);
+    } else if (!(typeof tieneFilaGrupo === "function" && tieneFilaGrupo(a))) {
+      const sinPrecio = a.participantes.filter((p) => p.cantidad > 0 && !t.precios.some((x) => x.categoria_id === p.categoria_id && x.tc != null));
+      if (sinPrecio.length) avisos.push(`La tarifa no tiene precio para: ${sinPrecio.map((p) => escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")).join(", ")}. Escribe el precio a mano (Manual).`);
+    }
   }
   if (!avisos.length && !notas.length) return "";
   return `<div class="tar-alertas">

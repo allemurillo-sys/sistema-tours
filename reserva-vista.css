@@ -136,3 +136,7 @@
   .rv-avance, .act-fila { display: none !important; }
 }
 .act-num.neutro { background: #9AA8AD; }
+
+/* Opción del Tarifario en una fila de personas (Sencillo / Doble, 1 - 6 Pax…) */
+.participantes .act-opcion { display: block; margin-top: 4px; max-width: 100%; font-size: .85rem; font-weight: normal; }
+.participantes th .horarios-nota { display: block; font-weight: normal; }

@@ -169,11 +169,63 @@ const claveTarifa = (servicioId, f) => `${Number(servicioId)}|${f}`;
 const tarifaDe = (a) => (a?.servicio_id && a.fecha ? app.tarifas.get(claveTarifa(a.servicio_id, a.fecha)) : null);
 const tienePrecios = (t) => !!t?.precios?.some((p) => p.tc != null);
 const tieneCash = (t) => !!t?.precios?.some((p) => p.cash != null);
-const precioTarifa = (t, categoriaId, tipo) => {
-  const p = t?.precios?.find((x) => x.categoria_id === Number(categoriaId));
+// La tarifa trae un precio por OPCIÓN del Tarifario (Adulto; Sencillo / Doble / Triple; 1 - 6 Pax / 7 - 10 Pax…).
+// Categorías "de grupo": precio por vehículo o por servicio (Transporte, Tipo Servicio), no por persona.
+const esCategoriaGrupo = (id) => { const k = categoriaPorId(id); return !!k && (!!k.por_grupo || /tipo\s*servicio/i.test(k.nombre)); };
+const opcionesDe = (t, categoriaId) => (t?.precios || []).filter((x) => x.categoria_id === Number(categoriaId));
+const usaOpcion = (t, categoriaId) => opcionesDe(t, categoriaId).length > 1 || (esCategoriaGrupo(categoriaId) && opcionesDe(t, categoriaId).length > 0);
+// Cuántas personas van (sin contar las filas de vehículo/grupo); si no hay filas de personas, las de la cotización
+function personasAct(a) {
+  const n = a.participantes.filter((p) => !esCategoriaGrupo(p.categoria_id)).reduce((s, p) => s + (p.cantidad || 0), 0);
+  const c = app.actual?.cot;
+  return n || (c ? (c.adultos || 0) + (c.ninos || 0) + (c.menores || 0) : 0);
+}
+// Opción que corresponde: la indicada; si es por rango de personas, la del rango; si no, la primera
+function elegirOpcion(t, categoriaId, personas, opcion = "") {
+  const lista = opcionesDe(t, categoriaId);
+  if (!lista.length) return null;
+  const exacta = opcion && lista.find((x) => x.opcion === opcion);
+  if (exacta) return exacta;
+  const rangos = lista.filter((x) => x.min != null && x.max != null);
+  if (rangos.length && personas) {
+    return rangos.find((x) => personas >= x.min && personas <= x.max)
+      || [...rangos].sort((x, y) => y.max - x.max)[0];
+  }
+  return lista[0];
+}
+const precioTarifa = (t, categoriaId, tipo, opcion = "", personas = 0) => {
+  const p = elegirOpcion(t, categoriaId, personas, opcion);
   return p ? (tipo === "cash" ? p.cash : p.tc) ?? null : null;
 };
-const netoTarifa = (t, categoriaId) => t?.precios?.find((x) => x.categoria_id === Number(categoriaId))?.neto ?? null;
+const netoTarifa = (t, categoriaId, opcion = "", personas = 0) => elegirOpcion(t, categoriaId, personas, opcion)?.neto ?? null;
+// Hay una fila de vehículo/grupo con precio: las filas de personas solo informan cuántos van
+const tieneFilaGrupo = (a) => a.participantes.some((p) => p.cantidad > 0 && esCategoriaGrupo(p.categoria_id) && p.precio_unitario > 0);
+
+// Si la tarifa es solo por vehículo o por servicio y el servicio aún no tiene esa fila, se agrega sola
+// (con la opción del rango de personas). Las filas de personas se conservan para saber cuántos van.
+function agregarFilaGrupo(a, t) {
+  const cats = [...new Set((t?.precios || []).map((x) => x.categoria_id))];
+  if (!cats.length || !cats.every(esCategoriaGrupo)) return;
+  if (a.participantes.some((p) => cats.includes(p.categoria_id) && p.cantidad > 0)) return;
+  a.participantes = a.participantes.filter((p) => !cats.includes(p.categoria_id));
+  const pers = personasAct(a);
+  const op = elegirOpcion(t, cats[0], pers);
+  const cantidad = op.max && pers > op.max ? Math.ceil(pers / op.max) : 1;
+  a.participantes.push({ categoria_id: cats[0], opcion: op.opcion, cantidad, precio_unitario: 0, neto_unitario: 0 });
+}
+
+// Al cambiar cuántas personas van, la fila por rango (1 - 6 Pax / 7 - 10 Pax) se ajusta sola
+function ajustarRangos(a) {
+  const t = tarifaDe(a);
+  const pers = personasAct(a);
+  a.participantes.forEach((p) => {
+    const lista = opcionesDe(t, p.categoria_id);
+    if (!esCategoriaGrupo(p.categoria_id) || !lista.some((x) => x.min != null)) return;
+    const op = elegirOpcion(t, p.categoria_id, pers);
+    p.opcion = op.opcion;
+    p.cantidad = op.max && pers > op.max ? Math.ceil(pers / op.max) : 1;
+  });
+}
 
 async function cargarTarifas(lista) {
   const faltan = new Map();
@@ -201,13 +253,15 @@ function aplicarTarifa(a, tipo = a.tarifa_tipo) {
   if (tipo === "pendiente") tipo = "tc";
   if (tipo === "cash" && !tieneCash(t)) tipo = "tc";
   a.tarifa_tipo = tipo;
+  agregarFilaGrupo(a, t);
+  const pers = personasAct(a);
+  const grupo = a.participantes.some((p) => esCategoriaGrupo(p.categoria_id) && opcionesDe(t, p.categoria_id).length);
   a.participantes.forEach((p) => {
-    const neto = netoTarifa(t, p.categoria_id);
-    if (neto != null) p.neto_unitario = neto;
-    if (tipo !== "manual") {
-      const precio = precioTarifa(t, p.categoria_id, tipo);
-      p.precio_unitario = precio ?? 0;
-    }
+    const op = elegirOpcion(t, p.categoria_id, pers, p.opcion);
+    p.opcion = op && usaOpcion(t, p.categoria_id) ? op.opcion : "";
+    if (op?.neto != null) p.neto_unitario = op.neto;
+    else if (grupo) p.neto_unitario = 0;
+    if (tipo !== "manual") p.precio_unitario = (op && (tipo === "cash" ? op.cash : op.tc)) ?? 0;
   });
   return a;
 }
@@ -540,11 +594,12 @@ function normalizarActividad(a) {
     participantes: (a.actividad_participantes || [])
       .map((p) => ({
         categoria_id: p.categoria_id,
+        opcion: p.opcion || "",
         cantidad: p.cantidad,
         precio_unitario: Number(p.precio_unitario),
         neto_unitario: Number(p.neto_unitario) || 0
       }))
-      .sort((x, y) => (categoriaPorId(x.categoria_id)?.orden ?? 0) - (categoriaPorId(y.categoria_id)?.orden ?? 0)),
+      .sort((x, y) => (categoriaPorId(x.categoria_id)?.orden ?? 0) - (categoriaPorId(y.categoria_id)?.orden ?? 0) || x.opcion.localeCompare(y.opcion)),
     _pendiente: false
   };
 }
@@ -834,16 +889,21 @@ function htmlActividad(a, idx) {
   const paso = (n, titulo, cuerpo) => vista ? htmlPasoAct(a, idx, n, titulo, cuerpo, faltas)
     : `<fieldset class="act-paso-simple"><legend>${titulo}</legend>${cuerpo}</fieldset>`;
 
+  const tAct = tarifaDe(a);
+  const grupoAct = tieneFilaGrupo(a);
   const filas = a.participantes.map((p) => `
-    <tr data-cat="${p.categoria_id}">
-      <th scope="row">${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}</th>
+    <tr data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}">
+      <th scope="row">${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${htmlOpcionFila(tAct, p)}
+        ${grupoAct && !esCategoriaGrupo(p.categoria_id) && !(p.precio_unitario > 0) ? `<span class="horarios-nota">Solo indica cuántos van: el precio va en la fila del vehículo o servicio.</span>` : ""}</th>
       <td><input data-p="cantidad" type="number" min="0" value="${p.cantidad}" aria-label="Cuántas personas"></td>
       <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio al cliente por persona"></td>
       ${verNeto ? `<td class="celda-oficina"><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="El proveedor nos cobra por persona"></td>` : ""}
       <td class="num celda-subtotal">${dinero(p.cantidad * p.precio_unitario)}</td>
-      <td><button type="button" class="enlace" data-accion="quitar-cat" data-cat="${p.categoria_id}">Quitar</button></td>
+      <td><button type="button" class="enlace" data-accion="quitar-cat" data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}">Quitar</button></td>
     </tr>`).join("");
-  const faltantes = app.categorias.filter((c) => !a.participantes.some((p) => p.categoria_id === c.id));
+  // Un tipo con varias opciones en el Tarifario (Sencillo, Doble…) se puede agregar otra vez con otra opción
+  const faltantes = app.categorias.filter((c) => !a.participantes.some((p) => p.categoria_id === c.id)
+    || opcionesDe(tAct, c.id).some((x) => !a.participantes.some((p) => p.categoria_id === c.id && p.opcion === x.opcion)));
 
   const paso1 = `
     <div class="act-campos">
@@ -953,7 +1013,7 @@ function htmlTarifa(a) {
   else if (!conPrecios) info = `<span class="act-aviso"><strong>El Tarifario no tiene precio para el ${escapar(fecha(a.fecha, { day: "numeric", month: "long", year: "numeric" }))}.</strong> Pregúntale al proveedor, escribe el precio abajo y elige "Manual".</span>`;
   else {
     const temporadas = [...new Set(t.precios.map((p) => p.temporada).filter(Boolean))].join(", ");
-    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">nos cobra ${dinero(p.neto)}</span>` : ""}`).join("<br>");
+    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${usaOpcion(t, p.categoria_id) ? ` · ${escapar(p.opcion)}` : ""}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">nos cobra ${dinero(p.neto)}</span>` : ""}`).join("<br>");
     info = `<span class="nota">Precios del Tarifario para esa fecha (temporada ${escapar(temporadas)})${t.precios.some((p) => p.colones) ? " · tarifa en colones convertida a dólares" : ""}:</span><br>${lista}`;
   }
   return `
@@ -961,6 +1021,18 @@ function htmlTarifa(a) {
       <label>¿Qué precio se usa? <select data-campo="tarifa_tipo">${opciones}</select></label>
       <p class="act-tarifa-info">${info}</p>
     </div>`;
+}
+
+// Opción del Tarifario de una fila (Sencillo / Doble / Triple, 1 - 6 Pax / 7 - 10 Pax…)
+function htmlOpcionFila(t, p) {
+  const lista = opcionesDe(t, p.categoria_id);
+  if (lista.length > 1) {
+    const extra = p.opcion && !lista.some((x) => x.opcion === p.opcion)
+      ? `<option value="${escapar(p.opcion)}" selected>${escapar(p.opcion)} (no está en la tarifa de esta fecha)</option>` : "";
+    return `<select data-p="opcion" class="act-opcion" aria-label="Opción del Tarifario">${extra}${lista.map((x) =>
+      `<option value="${escapar(x.opcion)}" ${x.opcion === p.opcion ? "selected" : ""}>${escapar(x.opcion)}${x.tc != null ? ` · ${dinero(x.tc)}` : ""}</option>`).join("")}</select>`;
+  }
+  return p.opcion ? ` <span class="nota">· ${escapar(p.opcion)}</span>` : "";
 }
 
 // Otros proveedores que ofrecen la misma actividad (solo oficina)
@@ -1452,11 +1524,12 @@ function leerTarjeta(card) {
     operador_confirmacion: v("operador_confirmacion"),
     participantes: [...card.querySelectorAll("tr[data-cat]")].map((tr) => ({
       categoria_id: Number(tr.dataset.cat),
+      opcion: tr.querySelector('[data-p="opcion"]')?.value ?? tr.dataset.op ?? "",
       cantidad: Math.max(0, parseInt(tr.querySelector('[data-p="cantidad"]').value, 10) || 0),
       precio_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="precio"]').value) || 0),
       neto_unitario: tr.querySelector('[data-p="neto"]')
         ? Math.max(0, parseFloat(tr.querySelector('[data-p="neto"]').value) || 0)
-        : (previa.participantes.find((p) => p.categoria_id === Number(tr.dataset.cat))?.neto_unitario ?? 0)
+        : (previa.participantes.find((p) => p.categoria_id === Number(tr.dataset.cat) && (p.opcion || "") === (tr.dataset.op || ""))?.neto_unitario ?? 0)
     }))
   };
 }
@@ -1584,10 +1657,15 @@ async function guardarTodo(btn) {
 
         let r = await db.from("actividad_participantes").delete().eq("actividad_id", a.id);
         if (r.error) throw r.error;
-        const filas = a.participantes.filter((p) => p.cantidad > 0).map((p) => ({
-          actividad_id: a.id, categoria_id: p.categoria_id, cantidad: p.cantidad,
-          precio_unitario: p.precio_unitario, neto_unitario: p.neto_unitario || 0
-        }));
+        const filas = [];
+        a.participantes.filter((p) => p.cantidad > 0).forEach((p) => {
+          const igual = filas.find((f) => f.categoria_id === p.categoria_id && f.opcion === (p.opcion || ""));
+          if (igual) { igual.cantidad += p.cantidad; return; }   // misma opción repetida: se suman
+          filas.push({
+            actividad_id: a.id, categoria_id: p.categoria_id, opcion: p.opcion || "", cantidad: p.cantidad,
+            precio_unitario: p.precio_unitario, neto_unitario: p.neto_unitario || 0
+          });
+        });
         if (filas.length) {
           r = await db.from("actividad_participantes").insert(filas);
           if (r.error) throw r.error;
@@ -1675,6 +1753,25 @@ $("detalleContenido").addEventListener("change", async (e) => {
     return;
   }
 
+  // Otra opción del Tarifario en una fila (Sencillo → Doble, 1 - 6 Pax → 7 - 10 Pax): su precio
+  // Otra cantidad de personas: la fila por rango de personas se ajusta sola
+  if (e.target.dataset.p === "opcion" || e.target.dataset.p === "cantidad") {
+    const a = leerTarjeta(card);
+    a._pendiente = true;
+    const t = tarifaDe(a);
+    if (e.target.dataset.p === "cantidad") {
+      const fila = e.target.closest("tr[data-cat]");
+      if (fila && esCategoriaGrupo(fila.dataset.cat)) return;   // cambió la cantidad de vehículos: se respeta
+      ajustarRangos(a);
+    }
+    if (tienePrecios(t) && ["tc", "cash"].includes(a.tarifa_tipo)) aplicarTarifa(a, a.tarifa_tipo);
+    else a.participantes.forEach((p) => { const n = netoTarifa(t, p.categoria_id, p.opcion); if (n != null) p.neto_unitario = n; });
+    app.actual.actividades[idx] = a;
+    repintarTarjeta(idx);
+    pintarTotales();
+    return;
+  }
+
   if (e.target.dataset.campo === "transporte_modo") {
     const a = leerTarjeta(card);
     a._pendiente = true;
@@ -1701,12 +1798,17 @@ $("detalleContenido").addEventListener("change", async (e) => {
     }
 
     const t = tarifaDe(a);
+    // Si el tipo tiene opciones, la primera que aún no está (o la del rango de personas)
+    const libres = opcionesDe(t, categoriaId).filter((x) => !a.participantes.some((p) => p.categoria_id === categoriaId && p.opcion === x.opcion));
+    const op = libres.length > 1 ? (elegirOpcion({ precios: libres }, categoriaId, personasAct(a)) || libres[0]) : libres[0] || null;
+    const opcion = op && usaOpcion(t, categoriaId) ? op.opcion : "";
     a.participantes.push({
       categoria_id: categoriaId,
+      opcion,
       cantidad: 1,
-      precio_unitario: ["tc", "cash"].includes(a.tarifa_tipo) ? precioTarifa(t, categoriaId, a.tarifa_tipo) ?? 0
+      precio_unitario: ["tc", "cash"].includes(a.tarifa_tipo) ? precioTarifa(t, categoriaId, a.tarifa_tipo, opcion) ?? 0
         : a.servicio_id && a.tarifa_tipo === "manual" ? precioBase(a.servicio_id, categoriaId) : 0,
-      neto_unitario: netoTarifa(t, categoriaId) ?? (a.servicio_id ? netoBase(a.servicio_id, categoriaId) : 0)
+      neto_unitario: netoTarifa(t, categoriaId, opcion) ?? (a.servicio_id ? netoBase(a.servicio_id, categoriaId) : 0)
     });
     a._pendiente = true;
     app.actual.actividades[idx] = a;
@@ -1756,6 +1858,20 @@ $("detalleContenido").addEventListener("click", async (e) => {
       });
       break;
 
+    case "aplicar-tarifa": {
+      // Servicio guardado antes: se le ponen los precios del Tarifario (agrega la fila del vehículo o servicio)
+      const idx = Number(card.dataset.idx);
+      const a = leerTarjeta(card);
+      await cargarTarifas([a]);
+      aplicarTarifa(a, a.tarifa_tipo === "cash" ? "cash" : "tc");
+      a._pendiente = true;
+      app.actual.actividades[idx] = a;
+      repintarTarjeta(idx);
+      pintarTotales();
+      avisar("Precios del Tarifario aplicados. Revisa y presiona Guardar cambios.");
+      break;
+    }
+
     case "agregar-actividad":
       sincronizar();
       app.actual.actividades.push(nuevaActividad());
@@ -1782,7 +1898,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
     case "quitar-cat": {
       const idx = Number(card.dataset.idx);
       const a = leerTarjeta(card);
-      a.participantes = a.participantes.filter((p) => p.categoria_id !== Number(btn.dataset.cat));
+      a.participantes = a.participantes.filter((p) => !(p.categoria_id === Number(btn.dataset.cat) && (p.opcion || "") === (btn.dataset.op || "")));
       a._pendiente = true;
       app.actual.actividades[idx] = a;
       repintarTarjeta(idx);

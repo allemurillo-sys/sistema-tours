@@ -145,7 +145,7 @@ function pintar() {
               <span class="monto">${dinero(sub)}</span>
             </div>
             <p class="act-hora">${escapar(horario)}</p>
-            <p class="act-part">${a.participantes.map((p) => `${p.cantidad} ${escapar(tCategoria(p.categoria))} × ${dinero(p.precio)}`).join(", ")}</p>
+            <p class="act-part">${a.participantes.map((p) => `${p.cantidad} ${escapar(tCategoria(p.categoria))}${p.opcion ? ` (${escapar(p.opcion)})` : ""}${Number(p.precio) > 0 ? ` × ${dinero(p.precio)}` : ""}`).join(", ")}</p>
             ${htmlTransporte(a, puedeResponder)}
             ${reservada ? htmlEstadoServicio(a) : ""}
           </div>`;
@@ -304,7 +304,7 @@ function htmlVoucher(d, a, saldo) {
   const fila = (clave, valor, ancha = false) => (valor ? `<div class="vch-fila${ancha ? " ancha" : ""}"><dt>${etiqueta(clave)}</dt><dd>${valor}</dd></div>` : "");
   const horario = a.hora_inicio ? `${hora(a.hora_inicio)}${a.hora_fin ? " – " + hora(a.hora_fin) : ""}` : t("c_horario_pendiente");
   const conTransporte = a.transporte_modo === "incluido" || (a.transporte_modo === "opcional" && a.transporte_respuesta === true);
-  const participantes = a.participantes.map((p) => `${p.cantidad} ${escapar(nombreCategoria(p))}`).join(", ");
+  const participantes = a.participantes.map((p) => `${p.cantidad} ${escapar(nombreCategoria(p))}${p.opcion ? ` (${escapar(p.opcion)})` : ""}`).join(", ");
   return `
     <article class="vch">
       <header class="vch-cab">

@@ -36,7 +36,11 @@ function rangoVisible() {
   return { desde, hasta };
 }
 
-const personasActividad = (a) => (a.actividad_participantes || []).reduce((s, p) => s + (p.cantidad || 0), 0);
+const personasActividad = (a) => {
+  const filas = a.actividad_participantes || [];
+  const pers = filas.filter((p) => !(typeof esCategoriaGrupo === "function" && esCategoriaGrupo(p.categoria_id)));
+  return (pers.length ? pers : filas).reduce((s, p) => s + (p.cantidad || 0), 0);
+};
 const iconoTipo = (servicioId) => app.tipos.find((tp) => tp.id === servicioPorId(servicioId)?.tipo_id)?.icono || "";
 function visibles() {
   let lista = cal.datos;
@@ -60,7 +64,7 @@ async function cargarCalendario() {
 
   const { data, error } = await db.from("actividades")
     .select("id, fecha, hora_inicio, hora_fin, hora_recogida, lugar_recogida, servicio_id, cotizacion_id, " +
-            "actividad_participantes(cantidad), cotizaciones!inner(id, numero, nombre, apellido, estado, idioma, colaborador_id)")
+            "actividad_participantes(cantidad, categoria_id), cotizaciones!inner(id, numero, nombre, apellido, estado, idioma, colaborador_id)")
     .in("cotizaciones.estado", ESTADOS_CALENDARIO)
     .gte("fecha", desde).lte("fecha", hasta)
     .order("fecha").order("hora_inicio", { nullsFirst: false });
