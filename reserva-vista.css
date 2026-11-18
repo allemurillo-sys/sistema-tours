@@ -140,3 +140,16 @@
 /* Opción del Tarifario en una fila de personas (Sencillo / Doble, 1 - 6 Pax…) */
 .participantes .act-opcion { display: block; margin-top: 4px; max-width: 100%; font-size: .85rem; font-weight: normal; }
 .participantes th .horarios-nota { display: block; font-weight: normal; }
+
+/* Cierre rápido */
+.cobrar-todo { margin-top: 8px; align-items: center; }
+
+/* Reserva manual: actividades en el formulario */
+.man-act { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(200px, 2fr) auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.man-act select, .man-act input { width: 100%; }
+.man-fechas { margin-top: 12px; }
+@media (max-width: 700px) {
+  .man-act { grid-template-columns: 1fr 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--linea, #ddd); }
+  .man-act select, .man-act [data-man-buscar] { grid-column: 1 / -1; }
+}
+.man-transporte { display: block; margin-top: 10px; max-width: 420px; }

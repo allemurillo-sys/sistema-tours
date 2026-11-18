@@ -23,6 +23,25 @@ const CODIGOS_PAIS = [
   ["+44", "Reino Unido"], ["+31", "Países Bajos"], ["+41", "Suiza"], ["", "Otro (escríbelo en el número)"]
 ];
 
+// Idioma que se sugiere según el código de país del teléfono (el agente lo puede cambiar)
+const IDIOMA_PAIS = { "+506": "es", "+52": "es", "+507": "es", "+57": "es", "+54": "es", "+56": "es", "+34": "es",
+  "+1": "en", "+44": "en", "+31": "en", "+55": "en", "+33": "fr", "+49": "de", "+41": "de", "+39": "it" };
+const man = { fechasManuales: false, idiomaManual: false };
+const leerLocal = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const guardarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
+const sumarDia = (f, n) => { const d = new Date(`${f}T12:00:00`); d.setDate(d.getDate() + n); return aTexto(d); };
+
+// Una fila de actividad del formulario: qué actividad (del Tarifario final) y qué día
+function htmlFilaManual(dia) {
+  return `
+    <div class="man-act">
+      <input type="search" class="tar-buscar" data-man-buscar placeholder="Buscar actividad o proveedor…" aria-label="Buscar actividad o proveedor">
+      <select data-man-serv aria-label="Actividad"><option value="">Elige una actividad</option>${htmlOpcionesTarifario(null)}</select>
+      <input type="date" data-man-dia value="${dia}" aria-label="Día de la actividad">
+      <button type="button" class="enlace peligro" data-manual="quitar-act">Quitar</button>
+    </div>`;
+}
+
 function htmlFormManual() {
   const hoy = aTexto(new Date());
   const colaboradores = app.perfiles
@@ -46,7 +65,7 @@ function htmlFormManual() {
           <label>Origen
             <select id="manOrigen">
               ${Object.entries(ORIGENES).filter(([k]) => k !== "web")
-                .map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}
+                .map(([k, v]) => `<option value="${k}" ${k === (leerLocal("thot.manOrigen") || "oficina") ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           </label>
           <label>Atiende
@@ -85,10 +104,6 @@ function htmlFormManual() {
       <section class="det-seccion">
         <h3>Viaje</h3>
         <div class="fila">
-          <label>Desde * <input id="manInicio" type="date" value="${hoy}" required></label>
-          <label>Hasta * <input id="manFin" type="date" value="${hoy}" required></label>
-        </div>
-        <div class="fila">
           <label>Hospedaje *
             <select id="manPropiedad">
               <option value="">Elige el hospedaje…</option>
@@ -107,24 +122,42 @@ function htmlFormManual() {
       </section>
 
       <section class="det-seccion">
-        <h3>Lo que pide el cliente</h3>
-        <label>Notas internas (opcional)
-          <textarea id="manNotas" rows="3" placeholder="Ej.: quiere canopy el martes en la mañana y termales el miércoles; paga en efectivo en la oficina."></textarea>
+        <h3>Actividades</h3>
+        <p class="nota">Elige cada actividad y su día. Al crear la reserva quedan con el precio del Tarifario, el horario y el proveedor; después solo revisas.</p>
+        <div id="manActs">${htmlFilaManual(hoy)}</div>
+        <button type="button" class="btn" data-manual="agregar-act">+ Agregar otra actividad</button>
+        <label class="man-transporte">Si la actividad tiene transporte opcional, ¿lo quiere?
+          <select id="manTransporte">
+            <option value="">Preguntarle después</option>
+            <option value="si">Sí lo quiere</option>
+            <option value="no">No lo quiere</option>
+          </select>
         </label>
-        <p class="nota">Al crearla se abre la reserva para que agregues las actividades con sus fechas y tarifas.
-          Cuando esté lista puedes enviarle el enlace o usar <strong>Confirmar en nombre del cliente</strong> para pasarla a Reserva.</p>
+        <div class="fila man-fechas">
+          <label>Viaje desde * <input id="manInicio" type="date" value="${hoy}" required></label>
+          <label>Hasta * <input id="manFin" type="date" value="${hoy}" required></label>
+        </div>
+        <p class="nota">Las fechas del viaje se calculan solas con los días de las actividades (puedes cambiarlas si el viaje es más largo).</p>
+      </section>
+
+      <section class="det-seccion">
+        <h3>Notas internas (opcional)</h3>
+        <textarea id="manNotas" rows="2" aria-label="Notas internas" placeholder="Ej.: paga en efectivo en la oficina; prefiere tours en la mañana."></textarea>
+        <p class="nota">Cuando esté lista puedes enviarle el enlace o usar <strong>Confirmar en nombre del cliente</strong> para pasarla a Reserva.</p>
       </section>
 
       <div id="manErrores" class="det-seccion man-errores" hidden></div>
 
       <div class="barra-guardar man-barra">
-        <button type="submit" class="btn primario" id="manCrear">Crear y agregar actividades</button>
+        <button type="submit" class="btn primario" id="manCrear">Crear reserva</button>
         <button type="button" class="btn" data-manual="cerrar">Cancelar</button>
       </div>
     </form>`;
 }
 
 function abrirManual() {
+  man.fechasManuales = false;
+  man.idiomaManual = false;
   $("manualContenido").innerHTML = htmlFormManual();
   $("manual").hidden = false;
   document.body.classList.add("detalle-abierto");
@@ -133,7 +166,7 @@ function abrirManual() {
 
 function hayDatosManual() {
   return ["manNombre", "manApellido", "manTelefono", "manCorreo", "manNotas"]
-    .some((id) => $(id)?.value.trim());
+    .some((id) => $(id)?.value.trim()) || leerActsManual().length > 0;
 }
 
 function cerrarManual(preguntar = true) {
@@ -142,6 +175,22 @@ function cerrarManual(preguntar = true) {
   $("manual").hidden = true;
   $("manualContenido").innerHTML = "";
   if ($("detalle").hidden) document.body.classList.remove("detalle-abierto");
+}
+
+// Actividades elegidas en el formulario (las filas sin actividad se ignoran)
+function leerActsManual() {
+  return [...document.querySelectorAll("#manActs .man-act")]
+    .map((f) => ({ servicio_id: Number(f.querySelector("[data-man-serv]").value) || null, fecha: f.querySelector("[data-man-dia]").value }))
+    .filter((x) => x.servicio_id);
+}
+
+// Fechas del viaje = primer y último día de las actividades (salvo que el agente las haya cambiado a mano)
+function recalcularFechasManual() {
+  if (man.fechasManuales) return;
+  const dias = leerActsManual().map((x) => x.fecha).filter(Boolean).sort();
+  if (!dias.length) return;
+  $("manInicio").value = dias[0];
+  $("manFin").value = dias[dias.length - 1];
 }
 
 function leerManual() {
@@ -179,10 +228,14 @@ function validarManual(d) {
   if (!d._prop) e.push("Elige el hospedaje (o \"Otro lugar\").");
   if (d._prop === "otro" && !d.propiedad_otro) e.push("Escribe dónde se hospeda el cliente.");
   if (d.adultos < 1) e.push("Debe haber al menos un adulto.");
+  const acts = leerActsManual();
+  if (acts.some((x) => !x.fecha)) e.push("Cada actividad necesita su día.");
+  else if (acts.some((x) => x.fecha < d.fecha_inicio || x.fecha > d.fecha_fin)) e.push("Hay actividades fuera de las fechas del viaje.");
   return e;
 }
 
 async function crearManual() {
+  recalcularFechasManual();
   const d = leerManual();
   const errores = validarManual(d);
   const caja = $("manErrores");
@@ -197,6 +250,9 @@ async function crearManual() {
       !confirm("La fecha de inicio ya pasó. ¿Crear la reserva de todos modos?")) return;
 
   const { _prop, ...fila } = d;
+  const acts = leerActsManual();
+  const transporte = $("manTransporte").value;
+  guardarLocal("thot.manOrigen", d.origen);
   await conBoton($("manCrear"), async () => {
     const { data, error } = await db.from("cotizaciones")
       .insert({ ...fila, estado: "proceso" })
@@ -210,7 +266,23 @@ async function crearManual() {
     cerrarManual(false);
     await cargarTablero();
     await abrirDetalle(data.id);
-    avisar(`Reserva manual ${data.numero} creada. Agrega las actividades y guarda.`);
+    if (!acts.length) return avisar(`Reserva manual ${data.numero} creada. Agrega las actividades y guarda.`);
+
+    // Las actividades del formulario se crean con la tarifa TC de su temporada, horario y proveedor, y se guardan
+    const nuevas = acts.map((x) => nuevaActividad(x.servicio_id, x.fecha));
+    await cargarTarifas(nuevas);
+    nuevas.forEach((a) => {
+      aplicarTarifa(a, "tc");
+      if (a.transporte_modo === "opcional" && transporte) a.transporte_respuesta = transporte;   // respuesta dada en el formulario
+    });
+    app.actual.actividades.push(...nuevas);
+    app.actual.actividades.sort(ordenActividad);
+    pintarDetalle();
+    const ok = await guardarTodo(null);
+    const pendientes = nuevas.filter((a) => a.tarifa_tipo === "pendiente").length;
+    avisar(ok
+      ? `Reserva ${data.numero} creada con ${nuevas.length} ${nuevas.length === 1 ? "actividad" : "actividades"}.${pendientes ? ` ${pendientes} sin tarifa para su día: escribe el precio.` : ""} Revisa lo que falta en cada servicio.`
+      : `Reserva ${data.numero} creada, pero no se pudieron guardar las actividades. Revísalas y presiona Guardar cambios.`, ok ? "ok" : "error");
   });
 }
 
@@ -229,7 +301,45 @@ $("manualContenido").addEventListener("change", (e) => {
     $("manOtroCaja").hidden = e.target.value !== "otro";
     if (e.target.value === "otro") $("manOtro").focus();
   }
+  if (e.target.id === "manInicio" || e.target.id === "manFin") man.fechasManuales = true;
   if (e.target.id === "manInicio" && $("manFin").value < e.target.value) $("manFin").value = e.target.value;
+  if (e.target.id === "manIdioma") man.idiomaManual = true;
+  if (e.target.id === "manCodigo" && !man.idiomaManual && IDIOMA_PAIS[e.target.value]) $("manIdioma").value = IDIOMA_PAIS[e.target.value];
+  if (e.target.matches("[data-man-serv], [data-man-dia]")) recalcularFechasManual();
+});
+
+// Buscador de cada fila de actividad
+$("manualContenido").addEventListener("input", (e) => {
+  if (!e.target.matches("[data-man-buscar]")) return;
+  const sel = e.target.parentElement.querySelector("[data-man-serv]");
+  const actual = Number(sel.value) || null;
+  sel.innerHTML = `<option value="">${e.target.value.trim() ? "Elige entre las que coinciden" : "Elige una actividad"}</option>${htmlOpcionesTarifario(actual, e.target.value)}`;
+  if (actual) sel.value = String(actual);
+});
+$("manualContenido").addEventListener("keydown", (e) => {
+  if (!e.target.matches("[data-man-buscar]") || e.key !== "Enter") return;
+  e.preventDefault();   // Enter en el buscador no envía el formulario: elige la única coincidencia
+  const sel = e.target.parentElement.querySelector("[data-man-serv]");
+  const opciones = [...sel.options].filter((op) => op.value && !op.disabled);
+  if (opciones.length === 1) { sel.value = opciones[0].value; recalcularFechasManual(); e.target.parentElement.querySelector("[data-man-dia]").focus(); }
+  else sel.focus();
+});
+
+$("manualContenido").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-manual]");
+  if (!b) return;
+  if (b.dataset.manual === "agregar-act") {
+    // La siguiente actividad empieza el día después de la última
+    const dias = [...document.querySelectorAll("#manActs [data-man-dia]")].map((x) => x.value).filter(Boolean).sort();
+    const dia = dias.length ? sumarDia(dias[dias.length - 1], 1) : $("manInicio").value;
+    $("manActs").insertAdjacentHTML("beforeend", htmlFilaManual(dia));
+    $("manActs").lastElementChild.querySelector("[data-man-buscar]").focus();
+  }
+  if (b.dataset.manual === "quitar-act") {
+    b.closest(".man-act").remove();
+    if (!document.querySelector("#manActs .man-act")) $("manActs").insertAdjacentHTML("beforeend", htmlFilaManual($("manInicio").value));
+    recalcularFechasManual();
+  }
 });
 
 $("manualContenido").addEventListener("submit", (e) => {

@@ -428,7 +428,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
 
     case "crear": {
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de solicitar a los proveedores.", "error");
+      if (!(await guardarSiHayCambios())) return;
       const ids = [...solP.seleccion];
       if (!ids.length) return;
       await conBoton(btn, async () => {
@@ -455,7 +455,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
     }
     case "confirmar-servicio": {
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar.", "error");
+      if (!(await guardarSiHayCambios())) return;
       const act = app.actual.actividades.find((x) => x.id === Number(btn.dataset.act));
       const saldo = typeof saldoServicio === "function" ? saldoServicio(act) : 0;
       const nombre = servicioPorId(act?.servicio_id)?.nombre ?? "el servicio";
@@ -578,7 +578,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
     }
 
     case "nueva-version":
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de reenviar.", "error");
+      if (!(await guardarSiHayCambios())) return;
       if (!confirm(`¿Crear una nueva versión de ${s.codigo} con los datos actuales de la actividad? El proveedor deberá responder de nuevo.`)) return;
       await conBoton(btn, async () => {
         const { error } = await db.rpc("nueva_version_solicitud", { p_id: s.id });

@@ -1249,7 +1249,7 @@ function htmlPagos(c, editable) {
       ${editable ? `
         <div class="fila-form">
           <label>Prepago a solicitar <input id="prepago" type="number" min="0" step="0.01" value="${Number(c.prepago_solicitado) || 0}"></label>
-          <button type="button" class="btn" data-accion="guardar-prepago">Guardar monto</button>
+          <span class="nota">Se guarda solo al cambiarlo.</span>
         </div>` : ""}
       ${pagos.length ? `
         <div class="tabla-scroll">
@@ -1270,7 +1270,12 @@ function htmlPagos(c, editable) {
           </label>
           <label>Referencia <input id="pagoReferencia" type="text" placeholder="Número de comprobante"></label>
           <button type="button" class="btn primario" data-accion="registrar-pago">Registrar pago</button>
-        </div>` : ""}
+        </div>
+        ${saldoActual() > 0.005 ? `
+        <div class="fila-form cobrar-todo">
+          <button type="button" class="btn primario" data-accion="cobrar-todo">Cobrar todo ahora (${dinero(saldoActual())})</button>
+          <span class="nota">Registra el saldo completo con el método y la referencia de arriba y lo reparte entre los servicios.</span>
+        </div>` : ""}` : ""}
     </section>`;
 }
 
@@ -1376,7 +1381,9 @@ function htmlTiquetes(c) {
           ${a.voucher_habilitado ? `<span class="act-confirmada">Visible para el cliente</span>` : ""}
         </li>`).join("")}</ul>
       <div class="sec-botones">
-        <button type="button" class="btn primario" data-accion="guardar-tiquetes">Guardar tiquetes</button>
+        ${acts.some((a) => a.id && a.codigo_reserva && a.estado_servicio === "confirmado" && !a.voucher_habilitado)
+          ? `<button type="button" class="btn primario" data-accion="guardar-tiquetes" data-todos="1">Habilitar todos</button>` : ""}
+        <button type="button" class="btn" data-accion="guardar-tiquetes">Guardar tiquetes</button>
         ${habilitados && c.enviada_en ? `<a class="btn" href="${escapar(enlaceCliente(c))}#vouchers" target="_blank" rel="noopener">Ver los tiquetes como el cliente</a>` : ""}
       </div>
       ${habilitados && !c.enviada_en ? `<p class="nota">Activa el enlace del cliente (abajo) para que pueda verlos.</p>` : ""}
@@ -1613,16 +1620,19 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
   };
 }
 
+// Devuelve true si quedó todo guardado. Sin botón (btn = null) se usa al guardar automáticamente.
 async function guardarTodo(btn) {
   sincronizar();
   const pendientes = app.actual.actividades.filter((a) => a._pendiente);
-  if (!pendientes.length) return avisar("No hay cambios por guardar.");
+  if (!pendientes.length) { if (btn) avisar("No hay cambios por guardar."); return true; }
   if (pendientes.some((a) => !a.servicio_id || !a.fecha)) {
-    return avisar("Cada actividad necesita un servicio y una fecha.", "error");
+    avisar("Cada actividad necesita un servicio y una fecha.", "error");
+    return false;
   }
 
   const c = app.actual.cot;
-  await conBoton(btn, async () => {
+  let ok = false;
+  const correr = async () => {
     try {
       for (const a of pendientes) {
         const fila = {
@@ -1675,6 +1685,7 @@ async function guardarTodo(btn) {
           await registrar(c.id, "tiquete actualizado", `${c.numero}-${a.codigo_reserva}: el cliente ve el tiquete con los cambios.`);
         }
       }
+      ok = true;
       avisar("Cambios guardados.");
       // Etapa 9: si cambió un servicio ya solicitado al proveedor, se prepara la MODIFICACIÓN (o la cancelación si cambió el proveedor)
       if (c.estado === "reserva" && typeof revisarCambiosSolicitudes === "function") await revisarCambiosSolicitudes(c);
@@ -1684,7 +1695,15 @@ async function guardarTodo(btn) {
       fallo(error);
       pintarDetalle();
     }
-  });
+  };
+  if (btn) await conBoton(btn, correr); else await correr();
+  return ok;
+}
+
+// Antes de enviar, confirmar, solicitar o habilitar tiquetes: si hay cambios sin guardar, se guardan solos
+async function guardarSiHayCambios() {
+  if (!hayPendientes()) return true;
+  return guardarTodo(null);
 }
 
 // ---------- Eventos dentro de las tarjetas ----------
@@ -1832,6 +1851,20 @@ async function cambiarIdiomaCliente(sel) {
   avisar(`Idioma del cliente: ${NOMBRE_IDIOMA[nuevo]}.`);
 }
 
+// Prepago: se guarda solo al cambiar el monto (antes tenía su botón "Guardar monto")
+$("detalleContenido").addEventListener("change", async (e) => {
+  if (e.target.id !== "prepago" || !app.actual) return;
+  const c = app.actual.cot;
+  const monto = Math.max(0, parseFloat(e.target.value) || 0);
+  if (monto === (Number(c.prepago_solicitado) || 0)) return;
+  const { error } = await db.from("cotizaciones").update({ prepago_solicitado: monto }).eq("id", c.id);
+  if (error) return fallo(error);
+  await registrar(c.id, "prepago solicitado", dinero(monto));
+  c.prepago_solicitado = monto;
+  pintarTotales();
+  avisar("Monto del prepago guardado.");
+});
+
 // ---------- Botones del detalle ----------
 $("detalleContenido").addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-accion]");
@@ -1931,7 +1964,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
 
     case "enviar":
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de enviarlo.", "error");
+      if (!(await guardarSiHayCambios())) return;
       if (!app.actual.actividades.some((a) => a.id)) return avisar("Agrega y guarda al menos una actividad.", "error");
       await conBoton(btn, async () => {
         const { error } = await db.from("cotizaciones")
@@ -1945,7 +1978,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
 
     case "confirmar-reserva": {
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar la reserva.", "error");
+      if (!(await guardarSiHayCambios())) return;
       const acts = app.actual.actividades;
       if (!acts.length) return avisar("La reserva no tiene actividades.", "error");
       const sinConfirmar = acts.filter((a) => !a.operador_confirmado);
@@ -1966,10 +1999,11 @@ $("detalleContenido").addEventListener("click", async (e) => {
     }
 
     case "guardar-tiquetes": {
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de habilitar tiquetes.", "error");
-      const cambios = [...document.querySelectorAll("#secTiquetes [data-voucher]")]
-        .filter((el) => el.dataset.voucher)
-        .map((el) => ({ a: app.actual.actividades.find((x) => String(x.id) === el.dataset.voucher), on: el.checked }))
+      const marcadas = [...document.querySelectorAll("#secTiquetes [data-voucher]")]
+        .filter((el) => el.dataset.voucher).map((el) => ({ id: el.dataset.voucher, on: btn.dataset.todos ? !el.disabled || el.checked : el.checked }));
+      if (!(await guardarSiHayCambios())) return;
+      const cambios = marcadas
+        .map((x) => ({ a: app.actual.actividades.find((y) => String(y.id) === x.id), on: x.on }))
         .filter((x) => x.a && x.a.voucher_habilitado !== x.on);
       if (!cambios.length) return avisar("No hay cambios en los tiquetes.");
       const nuevos = cambios.filter((x) => x.on);
@@ -2008,17 +2042,19 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
 
     case "confirmar-cliente":
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de confirmar.", "error");
+      if (!(await guardarSiHayCambios())) return;
       if (!app.actual.actividades.length) return avisar("La cotización no tiene actividades.", "error");
       if (app.actual.actividades.some(transportePendiente)) {
         return avisar("Falta la respuesta del cliente sobre el transporte en alguna actividad. Anótala en la sección Transporte y guarda.", "error");
       }
-      if (!confirm("¿Confirmar esta cotización en nombre del cliente? Pasará a Reserva.")) return;
+      if (!confirm("¿Confirmar esta cotización en nombre del cliente? Pasará a Reserva y su enlace quedará activo.")) return;
       await conBoton(btn, async () => {
+        // El enlace del cliente queda activo de una vez (antes había que tocar "Activar enlace" después)
+        const ahora = new Date().toISOString();
         const { error } = await db.from("cotizaciones")
-          .update({ estado: "reserva", confirmada_en: new Date().toISOString() }).eq("id", c.id);
+          .update({ estado: "reserva", confirmada_en: ahora, ...(c.enviada_en ? {} : { enviada_en: ahora }) }).eq("id", c.id);
         if (error) return fallo(error);
-        await registrar(c.id, "confirmada", `Confirmada por ${app.yo.nombre} en nombre del cliente`);
+        await registrar(c.id, "confirmada", `Confirmada por ${app.yo.nombre} en nombre del cliente${c.enviada_en ? "" : " · enlace del cliente activado"}`);
         await recargarDetalle(false);
         cargarTablero();
       });
@@ -2045,6 +2081,15 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
     }
 
+    case "cobrar-todo": {
+      // Cliente en la oficina: se registra el saldo completo y se reparte entre todos los servicios
+      const saldo = saldoActual();
+      if (!(saldo > 0.005)) return avisar("Esta reserva no tiene saldo pendiente.");
+      if (!confirm(`¿Registrar un pago de ${dinero(saldo)} (${$("pagoMetodo").value}) por el saldo completo?`)) return;
+      $("pagoMonto").value = saldo;
+      document.querySelectorAll("[data-aplicar]:checked").forEach((x) => { x.checked = false; });
+    }
+    // falls through
     case "registrar-pago": {
       const monto = parseFloat($("pagoMonto").value);
       if (!(monto > 0)) return avisar("Escribe un monto mayor que cero.", "error");

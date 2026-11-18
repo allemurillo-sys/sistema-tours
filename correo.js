@@ -224,7 +224,7 @@ $("detalleContenido").addEventListener("click", async (e) => {
   const c = app.actual.cot;
   switch (btn.dataset.correoAccion) {
     case "nuevo":
-      if (hayPendientes()) return avisar("Guarda los cambios del itinerario antes de escribir al cliente.", "error");
+      if (!(await guardarSiHayCambios())) return;
       correo.redactando = borradorCorreo(btn.dataset.tipo, c);
       pintarDetalle();
       document.getElementById("secCorreo")?.scrollIntoView({ block: "start" });
