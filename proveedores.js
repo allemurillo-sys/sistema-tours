@@ -72,6 +72,81 @@ function htmlContenidoSolicitud(c) {
     ${c.notas ? `<p><strong>Notas para el proveedor:</strong> ${escapar(c.notas)}</p>` : ""}`;
 }
 
+// ---------- Correo que recibe el proveedor (vista previa) ----------
+// Copia de la plantilla htmlSolicitud de la función de Supabase "correo": si cambias una, cambia la otra.
+const usdCorreo = (n) => "$" + (Number(n) || 0).toFixed(2);
+function fechaLargaCorreo(f) {
+  if (!f) return "";
+  const t = new Date(String(f).slice(0, 10) + "T12:00:00").toLocaleDateString("es-CR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function htmlCorreoSolicitud(s, enlace, empresa, agente, aviso) {
+  const c = s.contenido || {};
+  const fila = (k, v) => v ? `<tr><td style="padding:6px 10px;color:#6b7a73;white-space:nowrap;vertical-align:top">${escapar(k)}</td><td style="padding:6px 10px;font-weight:bold">${escapar(v)}</td></tr>` : "";
+  const part = (c.participantes || []).map((p) => `<tr><td style="padding:5px 10px">${escapar(String(p.cantidad))} ${escapar(p.categoria)}</td><td style="padding:5px 10px;text-align:right">${usdCorreo(p.neto)}</td><td style="padding:5px 10px;text-align:right">${usdCorreo(p.subtotal)}</td></tr>`).join("");
+  const marca = empresa?.logo
+    ? `<img src="${escapar(empresa.logo)}" alt="${escapar(empresa?.nombre_legal || "The House of Tours")}" style="max-height:48px;max-width:180px">`
+    : `<strong style="font-size:18px;color:#1f5a3e">The House of Tours</strong>`;
+  const pie = [empresa?.nombre_legal, empresa?.cedula && `Céd. ${empresa.cedula}`, empresa?.direccion, empresa?.movil, empresa?.correo].filter(Boolean).map(escapar).join(" · ");
+  return `<div style="max-width:640px;margin:0 auto;padding:24px 16px">
+   <div style="background:#fff;border-radius:12px;padding:22px">
+    <table width="100%" style="border-bottom:2px solid #2f7a55;margin-bottom:14px"><tr><td>${marca}</td>
+      <td style="text-align:right"><div style="font-size:12px;color:#6b7a73;text-transform:uppercase">Solicitud de servicio</div>
+      <div style="font-size:22px;font-weight:bold">${escapar(s.codigo)}</div>
+      <div style="font-size:12px;color:#6b7a73">Ref. ${escapar(c.codigo_reserva || c.cotizacion || "")}${s.version > 1 ? ` · versión ${s.version}` : ""}</div></td></tr></table>
+    ${aviso ? `<p style="background:#fcebdd;color:#8a3b12;padding:10px 12px;border-radius:8px;font-weight:bold">${escapar(aviso)}</p>` : ""}
+    <table style="border-collapse:collapse;font-size:15px">
+      ${fila("Servicio", c.servicio)}${fila("Titular", c.titular)}
+      ${fila("Fecha", fechaLargaCorreo(c.fecha))}
+      ${fila("Hora", c.hora_inicio ? hora(c.hora_inicio) + (c.hora_fin ? " a " + hora(c.hora_fin) : "") : "Por confirmar")}
+      ${c.transporte ? fila("Pick up", c.recogida ? `${c.recogida}${c.hora_recogida ? " · " + hora(c.hora_recogida) : ""}` : "") : ""}
+      ${c.transporte ? fila("Drop off", c.dejada || "") : ""}
+    </table>
+    <table width="100%" style="border-collapse:collapse;font-size:14px;margin-top:12px;border-top:1px solid #dfe6e2">
+      <tr style="color:#6b7a73;font-size:12px"><td style="padding:6px 10px">Participantes</td><td style="padding:6px 10px;text-align:right">Neto por persona</td><td style="padding:6px 10px;text-align:right">Subtotal</td></tr>
+      ${part}
+      ${Number(c.transporte_neto) ? `<tr><td style="padding:5px 10px">Transporte</td><td></td><td style="padding:5px 10px;text-align:right">${usdCorreo(c.transporte_neto)}</td></tr>` : ""}
+      <tr style="border-top:2px solid #1d2a24"><td style="padding:8px 10px;font-weight:bold">TOTAL NETO</td><td></td><td style="padding:8px 10px;text-align:right;font-weight:bold;font-size:17px">${usdCorreo(c.total)}</td></tr>
+    </table>
+    ${c.notas ? `<p style="margin:14px 0 0"><strong>Notas:</strong> ${escapar(c.notas)}</p>` : ""}
+    <p style="margin:20px 0 6px">Para <strong>confirmar</strong>, <strong>revisar</strong> o indicar que <strong>no hay disponibilidad</strong>, ingrese al enlace:</p>
+    <p style="margin:0 0 6px"><a href="${escapar(enlace)}" style="background:#2f7a55;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;display:inline-block">Responder solicitud</a></p>
+    ${agente?.nombre ? `<p style="font-size:13px;color:#6b7a73;margin-top:16px">Agente: ${escapar(agente.nombre)}${agente.correo ? " · " + escapar(agente.correo) : ""}</p>` : ""}
+   </div>
+   ${pie ? `<p style="font-size:12px;color:#6b7a73;text-align:center;margin:14px 0 0">${pie}</p>` : ""}
+  </div>`;
+}
+
+// Abre en otra pestaña el correo tal como lo recibe el proveedor, con Para y Asunto arriba
+async function abrirCorreoProveedor(s) {
+  const w = window.open("", "_blank");
+  if (!w) return avisar("El navegador bloqueó la pestaña nueva. Permite las ventanas emergentes para este sitio.", "error");
+  w.document.write(`<p style="font-family:Arial,sans-serif;padding:20px">Preparando la vista previa…</p>`);
+  const [ref, emp] = await Promise.all([
+    s.estado === "borrador" ? db.rpc("refrescar_solicitud", { p_id: s.id }) : Promise.resolve({ data: null }),
+    db.from("empresa").select("*").eq("id", 1).maybeSingle()
+  ]);
+  if (ref.data) s.contenido = ref.data;   // datos actuales del servicio (como al enviar)
+  const c = s.contenido || {};
+  const k = contactoDe(s.operador_id) || {};
+  const modif = s.aviso === "modificacion";
+  const aviso = modif ? `MODIFICACIÓN (versión ${s.version}): hubo cambios en esta solicitud. Por favor revise y confirme de nuevo.` : "";
+  const asunto = `${modif ? "MODIFICACIÓN · " : ""}Solicitud de servicio ${s.codigo}${s.version > 1 ? ` (versión ${s.version})` : ""} · ${c.servicio} · ${fechaLargaCorreo(c.fecha)}`;
+  const cuerpo = htmlCorreoSolicitud(s, enlaceProveedor(s) + "&vista=1", emp.data, app.yo, aviso);
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Vista previa · ${escapar(s.codigo)}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>@media print { .vp { display: none } body { background: #fff !important } }</style></head>
+    <body style="margin:0;background:#f2f5f3;font-family:Arial,Helvetica,sans-serif;color:#1d2a24">
+    <div class="vp" style="background:#1d2a24;color:#fff;padding:12px 16px;font-size:14px;line-height:1.5">
+      <strong>Vista previa del correo al proveedor</strong> · todavía no se ha enviado nada<br>
+      Para: ${escapar(k.correo_reservas || "(el proveedor no tiene correo para reservas)")}<br>
+      Asunto: ${escapar(asunto)}<br>
+      <button onclick="print()" style="margin-top:8px;padding:6px 14px;border-radius:6px;border:0;cursor:pointer">Imprimir o guardar en PDF</button>
+    </div>${cuerpo}</body></html>`);
+  w.document.close();
+}
+
 // Texto para WhatsApp (corto; el detalle completo está en el enlace)
 function textoWhatsApp(s, aviso = "") {
   const c = s.contenido || {};
@@ -249,6 +324,15 @@ function htmlVistaPrevia(s) {
       <h4>Vista previa · ${escapar(s.codigo)}${s.version > 1 ? ` (versión ${s.version})` : ""}</h4>
       ${s.aviso === "modificacion" ? `<p class="aviso">Se enviará como <strong>MODIFICACIÓN</strong>: el proveedor deberá confirmar de nuevo.</p>` : ""}
       ${htmlContenidoSolicitud(s.contenido || {})}
+      <div class="sol-recibe">
+        <p class="oficina-tit">Lo que recibe el proveedor</p>
+        <div class="sec-botones">
+          <button type="button" class="btn" data-solp="ver-correo" data-id="${s.id}">Ver el correo</button>
+          <button type="button" class="btn" data-solp="ver-pagina" data-id="${s.id}">Ver su página de respuesta</button>
+        </div>
+        ${medio === "whatsapp" ? `<p class="nota">Mensaje de WhatsApp:</p><pre class="correo-vista">${escapar(textoWhatsApp(s, s.aviso === "modificacion" ? `MODIFICACIÓN (versión ${s.version}): hubo cambios, por favor confirme de nuevo.` : ""))}</pre>` : ""}
+        <p class="nota">Se abren en otra pestaña tal como los verá el proveedor (puedes imprimirlos). En la vista previa los botones de respuesta no envían nada.</p>
+      </div>
       <div class="fila-form">
         <label>Enviar por
           <select data-solp-medio="${s.id}">
@@ -527,6 +611,14 @@ $("detalleContenido").addEventListener("click", async (e) => {
       solP.abierto = null;
       pintarDetalle();
       break;
+
+    case "ver-correo": return abrirCorreoProveedor(s);
+    case "ver-pagina": {
+      // La página del proveedor en modo vista previa (los botones no responden)
+      const w = window.open(enlaceProveedor(s) + "&vista=1", "_blank");
+      if (!w) avisar("El navegador bloqueó la pestaña nueva. Permite las ventanas emergentes para este sitio.", "error");
+      break;
+    }
 
     case "copiar":
       try { await navigator.clipboard.writeText(enlaceProveedor(s)); avisar("Enlace del proveedor copiado."); }

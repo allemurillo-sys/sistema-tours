@@ -8,6 +8,8 @@ const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 const params = new URLSearchParams(location.search);
 const codigo = params.get("p");
 const token = params.get("t");
+// Vista previa del agente (desde el panel): se ve igual que el proveedor, pero los botones no responden
+const vistaPrevia = params.get("vista") === "1";
 
 let datos = null;
 let eleccion = null;          // "confirmar" | "revisar" | "sin_disponibilidad" | "correcto" | "incorrecto"
@@ -33,6 +35,8 @@ async function cargar() {
   const { data, error } = await db.rpc("ver_solicitud", { p_codigo: codigo, p_token: token });
   if (error || !data) return fallar("No encontramos esta solicitud. Revise el enlace o comuníquese con The House of Tours.");
   datos = data;
+  // Vista previa de una solicitud sin enviar: se muestra como la verá el proveedor cuando llegue
+  if (vistaPrevia && datos.estado === "borrador") { datos.sinEnviar = true; datos.estado = "enviada"; }
   pintar();
 }
 function fallar(texto) {
@@ -180,6 +184,9 @@ function pintar() {
     </div>
     ${pie ? `<p class="pie">${pie}</p>` : ""}`;
   Object.entries(previos).forEach(([id, valor]) => { if ($(id)) $(id).value = valor; });
+  if (vistaPrevia) {
+    $("contenido").insertAdjacentHTML("afterbegin", `<p class="vista-previa">Vista previa para el agente: así verá el proveedor esta página.${datos?.sinEnviar ? " La solicitud todavía no se ha enviado." : ""} Los botones no envían nada.</p>`);
+  }
   $("contenido").hidden = false;
 }
 
@@ -196,6 +203,10 @@ async function llamar(cuerpo) {
 $("contenido").addEventListener("click", async (ev) => {
   const op = ev.target.closest("[data-eleccion]");
   if (op) { eleccion = op.dataset.eleccion; mensaje = null; return pintar(); }
+  if (vistaPrevia && ["btnResponder", "btnRecibido", "btnMensaje"].includes(ev.target.id)) {
+    alert("Esto es una vista previa: el botón no envía nada. El proveedor lo usará desde su enlace.");
+    return;
+  }
 
   if (ev.target.id === "btnResponder") {
     const nombre = $("rNombre").value.trim();
