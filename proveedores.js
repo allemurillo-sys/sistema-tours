@@ -408,7 +408,8 @@ async function guardarEdicionSolicitud(btn, s) {
     }
     const texto = cambios.join("; ");
     r = await db.rpc("registrar_edicion_solicitud", { p_id: s.id, p_cambios: texto, p_motivo: motivo || null });
-    if (r.error) console.error("Bitácora:", r.error);
+    const sinBitacora = !!r.error;
+    if (sinBitacora) console.error("Bitácora:", r.error);
 
     // La solicitud toma los datos nuevos: sin enviar → se refresca; enviada → MODIFICACIÓN; sin disponibilidad → nueva versión
     if (s.estado === "sin_disponibilidad") {
@@ -422,6 +423,7 @@ async function guardarEdicionSolicitud(btn, s) {
     const sol = solicitudPorId(s.id);
     solP.abierto = sol?.estado === "borrador" ? { id: s.id, tipo: "vista" } : null;
     pintarDetalle();
+    if (sinBitacora) return avisar(`${s.codigo} se editó, pero el cambio no quedó en la bitácora. Avísale al administrador.`, "error");
     avisar(`${s.codigo} editada: ${texto}.${sol?.estado === "borrador" && s.estado !== "borrador" ? " Revisa la vista previa y envía la MODIFICACIÓN." : ""}${nuevo.fecha !== a.fecha ? " El precio al cliente no cambió: si el nuevo día es de otra temporada, revísalo en el servicio." : ""}`);
   });
 }
