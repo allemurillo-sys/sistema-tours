@@ -265,6 +265,9 @@ function htmlFilaSolicitud(a, c) {
     if (["revisar", "confirmada", "sin_disponibilidad"].includes(s.estado) && !cambioProveedor) {
       acciones += `<button type="button" class="btn chico" data-solp="nueva-version" data-id="${s.id}">Nueva versión y reenviar</button>`;
     }
+    if (!["cancelada", "cerrada"].includes(s.estado) && !cambioProveedor && a.estado_servicio !== "cancelado") {
+      acciones += `<button type="button" class="btn chico" data-solp="editar" data-id="${s.id}">Editar</button>`;
+    }
     if (s.estado !== "borrador" && s.estado !== "cancelada") {
       acciones += `<button type="button" class="btn chico" data-solp="mensaje" data-id="${s.id}">Mensaje al proveedor</button>`;
       acciones += `<button type="button" class="enlace" data-solp="copiar" data-id="${s.id}">Copiar enlace</button>`;
@@ -308,11 +311,119 @@ function htmlFilaSolicitud(a, c) {
         ${resp}
         ${acciones ? `<div class="sec-botones">${acciones}</div>` : ""}
         ${abierto === "vista" ? htmlVistaPrevia(s) : ""}
+        ${abierto === "editar" ? htmlEditarSolicitud(s, a) : ""}
         ${abierto === "registro" ? htmlRegistro(s) : ""}
         ${abierto === "mensaje" ? htmlMensaje(s) : ""}
         ${abierto === "aviso" ? htmlAviso(s) : ""}
         ${htmlConversacion(s)}` : ""}
     </li>`;
+}
+
+// ---------- Editar una solicitud ----------
+// Los cambios se guardan en el servicio de la reserva (una sola fuente de datos) y luego la solicitud
+// se actualiza: sin enviar → se refresca; ya enviada → MODIFICACIÓN (nueva versión). Todo queda en la bitácora.
+const llevaTransporteSol = (a) => a.transporte_modo === "incluido" || (a.transporte_modo === "opcional" && a.transporte_respuesta === "si");
+function htmlEditarSolicitud(s, a) {
+  const campo = (etq, attr, valor, tipo = "text") => `<label>${etq} <input type="${tipo}" data-ed="${attr}" value="${escapar(valor ?? "")}"${tipo === "number" ? ' min="0" step="0.01"' : ""}></label>`;
+  const filas = a.participantes.filter((p) => p.cantidad > 0).map((p) => `
+    <tr><td>${p.cantidad} ${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${p.opcion ? ` · ${escapar(p.opcion)}` : ""}</td>
+      <td class="num"><input type="number" min="0" step="0.01" data-ed-neto data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}" value="${Number(p.neto_unitario) || 0}" aria-label="Neto por persona"></td></tr>`).join("");
+  const enviada = s.estado !== "borrador";
+  return `
+    <div class="sol-panel sol-editar">
+      <h4>Editar la solicitud · ${escapar(s.codigo)}</h4>
+      <p class="nota">Los cambios se guardan también en el servicio de la reserva, para que todo coincida.
+        ${enviada ? "<strong>Como ya se le envió al proveedor, se preparará una MODIFICACIÓN (nueva versión) para que la confirme de nuevo.</strong>" : "La solicitud todavía no se ha enviado: solo se actualiza."}</p>
+      <div class="fila-form">
+        ${campo("Día", "fecha", a.fecha, "date")}
+        ${campo("Empieza", "hora_inicio", a.hora_inicio, "time")}
+        ${campo("Termina", "hora_fin", a.hora_fin, "time")}
+      </div>
+      ${llevaTransporteSol(a) ? `
+      <div class="fila-form">
+        ${campo("Pick up (lugar)", "lugar_recogida", a.lugar_recogida)}
+        ${campo("Hora de pick up", "hora_recogida", a.hora_recogida, "time")}
+        ${campo("Drop off", "lugar_dejada", a.lugar_dejada)}
+        ${campo("Transporte neto", "transporte_neto", a.transporte_neto, "number")}
+      </div>` : ""}
+      ${filas ? `<table class="tabla sol-tabla"><thead><tr><th>Participantes</th><th class="num">Neto por persona</th></tr></thead><tbody>${filas}</tbody></table>` : ""}
+      <label class="ancho">Notas para el proveedor <textarea data-ed="notas_proveedor" rows="2">${escapar(a.notas_proveedor || "")}</textarea></label>
+      <label class="ancho">Motivo del cambio (opcional, queda en la bitácora) <input type="text" data-ed-motivo placeholder="Ej.: el proveedor pidió cambiar la hora"></label>
+      <p class="nota">Para cambiar la actividad, el proveedor o cuántas personas van, hazlo en el servicio del itinerario.</p>
+      <div class="sec-botones">
+        <button type="button" class="btn primario" data-solp="guardar-edicion" data-id="${s.id}" data-act="${a.id}">Guardar cambios</button>
+        <button type="button" class="btn" data-solp="cerrar">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+async function guardarEdicionSolicitud(btn, s) {
+  const panel = btn.closest(".sol-editar");
+  const leer = (k) => panel.querySelector(`[data-ed="${k}"]`)?.value.trim();
+  const nuevo = {};
+  ["fecha", "hora_inicio", "hora_fin", "lugar_recogida", "hora_recogida", "lugar_dejada", "transporte_neto", "notas_proveedor"]
+    .forEach((k) => { const v = leer(k); if (v !== undefined) nuevo[k] = v; });
+  const netos = [...panel.querySelectorAll("[data-ed-neto]")].map((x) => ({ cat: Number(x.dataset.cat), op: x.dataset.op || "", neto: Math.max(0, parseFloat(x.value) || 0) }));
+  const motivo = panel.querySelector("[data-ed-motivo]").value.trim();
+  if (!nuevo.fecha) return avisar("El servicio necesita un día.", "error");
+
+  if (!(await guardarSiHayCambios())) return;   // otros cambios del itinerario sin guardar
+  const a = app.actual.actividades.find((x) => x.id === Number(btn.dataset.act));
+  if (!a) return avisar("No se encontró el servicio.", "error");
+
+  // Qué cambió (para la bitácora)
+  const NOMBRES = { fecha: "Día", hora_inicio: "Hora", hora_fin: "Termina", lugar_recogida: "Pick up", hora_recogida: "Hora de pick up",
+    lugar_dejada: "Drop off", transporte_neto: "Transporte neto", notas_proveedor: "Notas para el proveedor" };
+  const mostrar = (k, v) => k === "fecha" ? (v ? fecha(v, { day: "numeric", month: "short", year: "numeric" }) : "—")
+    : k === "transporte_neto" ? dinero(v) : (String(v ?? "").trim() || "—");
+  const cambios = [];
+  Object.entries(nuevo).forEach(([k, v]) => {
+    const antes = k === "transporte_neto" ? Number(a[k]) || 0 : String(a[k] ?? "").trim();
+    const despues = k === "transporte_neto" ? Number(v) || 0 : v;
+    if (antes !== despues) cambios.push(`${NOMBRES[k]}: ${mostrar(k, antes)} → ${mostrar(k, despues)}`);
+  });
+  const netosCambiados = netos.filter((n) => {
+    const p = a.participantes.find((x) => x.categoria_id === n.cat && (x.opcion || "") === n.op);
+    if (!p || Math.abs((Number(p.neto_unitario) || 0) - n.neto) < 0.005) return false;
+    cambios.push(`Neto ${categoriaPorId(n.cat)?.nombre ?? ""}${n.op ? " · " + n.op : ""}: ${dinero(p.neto_unitario)} → ${dinero(n.neto)}`);
+    return true;
+  });
+  if (!cambios.length) return avisar("No hay cambios por guardar.");
+
+  await conBoton(btn, async () => {
+    const fila = {
+      fecha: nuevo.fecha, hora_inicio: nuevo.hora_inicio || null, hora_fin: nuevo.hora_fin || null,
+      notas_proveedor: nuevo.notas_proveedor || null
+    };
+    if ("lugar_recogida" in nuevo) Object.assign(fila, {
+      lugar_recogida: nuevo.lugar_recogida || null, hora_recogida: nuevo.hora_recogida || null,
+      lugar_dejada: nuevo.lugar_dejada || null, transporte_neto: Math.max(0, parseFloat(nuevo.transporte_neto) || 0)
+    });
+    let r = await db.from("actividades").update(fila).eq("id", a.id);
+    if (r.error) return fallo(r.error, "No se pudo guardar el cambio.");
+    for (const n of netosCambiados) {
+      r = await db.from("actividad_participantes").update({ neto_unitario: n.neto })
+        .eq("actividad_id", a.id).eq("categoria_id", n.cat).eq("opcion", n.op);
+      if (r.error) return fallo(r.error, "No se pudo guardar el neto.");
+    }
+    const texto = cambios.join("; ");
+    r = await db.rpc("registrar_edicion_solicitud", { p_id: s.id, p_cambios: texto, p_motivo: motivo || null });
+    if (r.error) console.error("Bitácora:", r.error);
+
+    // La solicitud toma los datos nuevos: sin enviar → se refresca; enviada → MODIFICACIÓN; sin disponibilidad → nueva versión
+    if (s.estado === "sin_disponibilidad") {
+      r = await db.rpc("nueva_version_solicitud", { p_id: s.id });
+      if (r.error) fallo(r.error, "Se guardó el cambio, pero no se pudo crear la nueva versión.");
+    } else {
+      await revisarCambiosSolicitudes(app.actual.cot);
+    }
+    await recargarDetalle(false);
+    cargarTablero();
+    const sol = solicitudPorId(s.id);
+    solP.abierto = sol?.estado === "borrador" ? { id: s.id, tipo: "vista" } : null;
+    pintarDetalle();
+    avisar(`${s.codigo} editada: ${texto}.${sol?.estado === "borrador" && s.estado !== "borrador" ? " Revisa la vista previa y envía la MODIFICACIÓN." : ""}${nuevo.fecha !== a.fecha ? " El precio al cliente no cambió: si el nuevo día es de otra temporada, revísalo en el servicio." : ""}`);
+  });
 }
 
 function htmlVistaPrevia(s) {
@@ -439,6 +550,7 @@ function htmlConversacion(s) {
     const d = e.detalle || {};
     switch (e.tipo) {
       case "creada": return `Solicitud creada · servicio pasa a COTIZANDO`;
+      case "edicion": return `Editada: ${d.cambios ?? ""}${d.motivo ? ` · motivo: ${d.motivo}` : ""}`;
       case "enviada": return `Enviada por ${d.medio === "whatsapp" ? "WhatsApp" : "correo"}${d.para ? " a " + d.para : ""}${d.version > 1 ? ` (versión ${d.version})` : ""}`;
       case "nueva_version": return `Nueva versión ${d.version}`;
       case "respuesta": return `Respuesta en el enlace: ${RESPUESTA_P[d.respuesta] ?? ""} · ${e.nombre ?? ""}${d.numero ? ` · N.º ${d.numero}` : ""}`;
@@ -613,6 +725,11 @@ $("detalleContenido").addEventListener("click", async (e) => {
       break;
 
     case "ver-correo": return abrirCorreoProveedor(s);
+    case "editar":
+      solP.abierto = { id: s.id, tipo: "editar" };
+      pintarDetalle();
+      break;
+    case "guardar-edicion": return guardarEdicionSolicitud(btn, s);
     case "ver-pagina": {
       // La página del proveedor en modo vista previa (los botones no responden)
       const w = window.open(enlaceProveedor(s) + "&vista=1", "_blank");

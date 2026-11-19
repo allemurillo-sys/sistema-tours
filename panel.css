@@ -663,3 +663,7 @@ a.menu-btn { text-decoration: none; display: inline-flex; align-items: center; }
 /* Vista previa de lo que recibe el proveedor */
 .sol-recibe { margin: 12px 0; padding: 10px 12px; border: 1px dashed var(--linea); border-radius: 8px; }
 .sol-recibe .sec-botones { margin: 6px 0; }
+.sol-editar .fila-form { flex-wrap: wrap; }
+.sol-editar .ancho { display: block; margin-top: 8px; }
+.sol-editar .ancho textarea, .sol-editar .ancho input { width: 100%; }
+.sol-editar td input { max-width: 120px; text-align: right; }
