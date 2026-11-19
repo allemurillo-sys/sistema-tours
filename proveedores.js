@@ -65,9 +65,15 @@ function htmlContenidoSolicitud(c) {
     </dl>
     <table class="tabla sol-tabla">
       <thead><tr><th>Participantes</th><th class="num">Neto por persona</th><th class="num">Subtotal</th></tr></thead>
-      <tbody>${(c.participantes || []).map((p) => `<tr><td>${p.cantidad} ${escapar(p.categoria)}</td><td class="num">${usdP(p.neto)}</td><td class="num">${usdP(p.subtotal)}</td></tr>`).join("")}
+      <tbody>${(c.participantes || []).map((p) => `<tr><td>${p.cantidad} ${escapar(p.categoria)}</td>
+          <td class="num">${usdP(p.neto)}${p.iva_pct ? `<small class="iva">${usdP(p.neto_sin_iva)} + IVA ${p.iva_pct} % ${usdP(p.iva)}</small>` : ""}</td>
+          <td class="num">${usdP(p.subtotal)}${p.iva_pct ? `<small class="iva">${usdP(p.subtotal_sin_iva)} + IVA ${usdP(p.subtotal_iva)}</small>` : ""}</td></tr>`).join("")}
         ${Number(c.transporte_neto) ? `<tr><td>Transporte</td><td></td><td class="num">${usdP(c.transporte_neto)}</td></tr>` : ""}</tbody>
-      <tfoot><tr><th colspan="2">Total neto</th><th class="num">${usdP(c.total)}</th></tr></tfoot>
+      <tfoot>
+        ${Number(c.total_iva) ? `<tr class="iva-fila"><td colspan="2">Total sin IVA</td><td class="num">${usdP(c.total - c.total_iva)}</td></tr>
+        <tr class="iva-fila"><td colspan="2">IVA${c.iva_pct ? ` ${c.iva_pct} %` : ""}</td><td class="num">${usdP(c.total_iva)}</td></tr>` : ""}
+        <tr><th colspan="2">Total neto${Number(c.total_iva) ? " (IVA incluido)" : ""}</th><th class="num">${usdP(c.total)}</th></tr>
+      </tfoot>
     </table>
     ${c.notas ? `<p><strong>Notas para el proveedor:</strong> ${escapar(c.notas)}</p>` : ""}`;
 }
@@ -83,7 +89,10 @@ function fechaLargaCorreo(f) {
 function htmlCorreoSolicitud(s, enlace, empresa, agente, aviso) {
   const c = s.contenido || {};
   const fila = (k, v) => v ? `<tr><td style="padding:6px 10px;color:#6b7a73;white-space:nowrap;vertical-align:top">${escapar(k)}</td><td style="padding:6px 10px;font-weight:bold">${escapar(v)}</td></tr>` : "";
-  const part = (c.participantes || []).map((p) => `<tr><td style="padding:5px 10px">${escapar(String(p.cantidad))} ${escapar(p.categoria)}</td><td style="padding:5px 10px;text-align:right">${usdCorreo(p.neto)}</td><td style="padding:5px 10px;text-align:right">${usdCorreo(p.subtotal)}</td></tr>`).join("");
+  const ivaTxt = (m, sin, iva, pct) => pct ? `<div style="font-size:11px;color:#6b7a73">${usdCorreo(sin)} + IVA${pct === true ? "" : " " + pct + " %"} ${usdCorreo(iva)}</div>` : "";
+  const part = (c.participantes || []).map((p) => `<tr><td style="padding:5px 10px">${escapar(String(p.cantidad))} ${escapar(p.categoria)}</td><td style="padding:5px 10px;text-align:right">${usdCorreo(p.neto)}${ivaTxt(p.neto, p.neto_sin_iva, p.iva, p.iva_pct)}</td><td style="padding:5px 10px;text-align:right">${usdCorreo(p.subtotal)}${ivaTxt(p.subtotal, p.subtotal_sin_iva, p.subtotal_iva, p.iva_pct && true)}</td></tr>`).join("");
+  const filasIva = Number(c.total_iva) ? `<tr style="color:#6b7a73"><td style="padding:4px 10px">Total sin IVA</td><td></td><td style="padding:4px 10px;text-align:right">${usdCorreo(c.total - c.total_iva)}</td></tr>
+      <tr style="color:#6b7a73"><td style="padding:4px 10px">IVA${c.iva_pct ? " " + c.iva_pct + " %" : ""}</td><td></td><td style="padding:4px 10px;text-align:right">${usdCorreo(c.total_iva)}</td></tr>` : "";
   const marca = empresa?.logo
     ? `<img src="${escapar(empresa.logo)}" alt="${escapar(empresa?.nombre_legal || "The House of Tours")}" style="max-height:48px;max-width:180px">`
     : `<strong style="font-size:18px;color:#1f5a3e">The House of Tours</strong>`;
@@ -106,7 +115,8 @@ function htmlCorreoSolicitud(s, enlace, empresa, agente, aviso) {
       <tr style="color:#6b7a73;font-size:12px"><td style="padding:6px 10px">Participantes</td><td style="padding:6px 10px;text-align:right">Neto por persona</td><td style="padding:6px 10px;text-align:right">Subtotal</td></tr>
       ${part}
       ${Number(c.transporte_neto) ? `<tr><td style="padding:5px 10px">Transporte</td><td></td><td style="padding:5px 10px;text-align:right">${usdCorreo(c.transporte_neto)}</td></tr>` : ""}
-      <tr style="border-top:2px solid #1d2a24"><td style="padding:8px 10px;font-weight:bold">TOTAL NETO</td><td></td><td style="padding:8px 10px;text-align:right;font-weight:bold;font-size:17px">${usdCorreo(c.total)}</td></tr>
+      ${filasIva}
+      <tr style="border-top:2px solid #1d2a24"><td style="padding:8px 10px;font-weight:bold">TOTAL NETO${Number(c.total_iva) ? " (IVA incluido)" : ""}</td><td></td><td style="padding:8px 10px;text-align:right;font-weight:bold;font-size:17px">${usdCorreo(c.total)}</td></tr>
     </table>
     ${c.notas ? `<p style="margin:14px 0 0"><strong>Notas:</strong> ${escapar(c.notas)}</p>` : ""}
     <p style="margin:20px 0 6px">Para <strong>confirmar</strong>, <strong>revisar</strong> o indicar que <strong>no hay disponibilidad</strong>, ingrese al enlace:</p>
@@ -155,7 +165,7 @@ function textoWhatsApp(s, aviso = "") {
     aviso,
     `Solicitud ${s.codigo}${s.version > 1 ? ` (versión ${s.version})` : ""} · The House of Tours`,
     `${c.servicio} · ${fechaLarga(c.fecha)}${c.hora_inicio ? " · " + hora(c.hora_inicio) : ""}`,
-    `${part}${Number(c.total) ? ` · Total neto ${usdP(c.total)}` : ""}`,
+    `${part}${Number(c.total) ? ` · Total neto ${usdP(c.total)}${Number(c.total_iva) ? ` (${usdP(c.total - c.total_iva)} + IVA ${usdP(c.total_iva)})` : ""}` : ""}`,
     "",
     "Para confirmar, revisar o indicar que no hay disponibilidad, ingrese al enlace:",
     enlaceProveedor(s)
@@ -327,7 +337,8 @@ function htmlEditarSolicitud(s, a) {
   const campo = (etq, attr, valor, tipo = "text") => `<label>${etq} <input type="${tipo}" data-ed="${attr}" value="${escapar(valor ?? "")}"${tipo === "number" ? ' min="0" step="0.01"' : ""}></label>`;
   const filas = a.participantes.filter((p) => p.cantidad > 0).map((p) => `
     <tr><td>${p.cantidad} ${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${p.opcion ? ` · ${escapar(p.opcion)}` : ""}</td>
-      <td class="num"><input type="number" min="0" step="0.01" data-ed-neto data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}" value="${Number(p.neto_unitario) || 0}" aria-label="Neto por persona"></td></tr>`).join("");
+      <td class="num"><input type="number" min="0" step="0.01" data-ed-neto data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}" value="${Number(p.neto_unitario) || 0}" aria-label="Neto por persona"></td>
+      <td class="centro"><input type="checkbox" data-ed-iva ${Number(p.iva_pct) > 0 ? "checked" : ""} aria-label="El neto incluye IVA"></td></tr>`).join("");
   const enviada = s.estado !== "borrador";
   return `
     <div class="sol-panel sol-editar">
@@ -346,7 +357,7 @@ function htmlEditarSolicitud(s, a) {
         ${campo("Drop off", "lugar_dejada", a.lugar_dejada)}
         ${campo("Transporte neto", "transporte_neto", a.transporte_neto, "number")}
       </div>` : ""}
-      ${filas ? `<table class="tabla sol-tabla"><thead><tr><th>Participantes</th><th class="num">Neto por persona</th></tr></thead><tbody>${filas}</tbody></table>` : ""}
+      ${filas ? `<table class="tabla sol-tabla"><thead><tr><th>Participantes</th><th class="num">Neto por persona</th><th class="centro">IVA incluido</th></tr></thead><tbody>${filas}</tbody></table>` : ""}
       <label class="ancho">Notas para el proveedor <textarea data-ed="notas_proveedor" rows="2">${escapar(a.notas_proveedor || "")}</textarea></label>
       <label class="ancho">Motivo del cambio (opcional, queda en la bitácora) <input type="text" data-ed-motivo placeholder="Ej.: el proveedor pidió cambiar la hora"></label>
       <p class="nota">Para cambiar la actividad, el proveedor o cuántas personas van, hazlo en el servicio del itinerario.</p>
@@ -363,7 +374,10 @@ async function guardarEdicionSolicitud(btn, s) {
   const nuevo = {};
   ["fecha", "hora_inicio", "hora_fin", "lugar_recogida", "hora_recogida", "lugar_dejada", "transporte_neto", "notas_proveedor"]
     .forEach((k) => { const v = leer(k); if (v !== undefined) nuevo[k] = v; });
-  const netos = [...panel.querySelectorAll("[data-ed-neto]")].map((x) => ({ cat: Number(x.dataset.cat), op: x.dataset.op || "", neto: Math.max(0, parseFloat(x.value) || 0) }));
+  const IVA = (typeof tar !== "undefined" && Number(tar.ajustes?.iva)) || 13;
+  const netos = [...panel.querySelectorAll("[data-ed-neto]")].map((x) => ({
+    cat: Number(x.dataset.cat), op: x.dataset.op || "", neto: Math.max(0, parseFloat(x.value) || 0),
+    iva: x.closest("tr").querySelector("[data-ed-iva]").checked }));
   const motivo = panel.querySelector("[data-ed-motivo]").value.trim();
   if (!nuevo.fecha) return avisar("El servicio necesita un día.", "error");
 
@@ -384,9 +398,14 @@ async function guardarEdicionSolicitud(btn, s) {
   });
   const netosCambiados = netos.filter((n) => {
     const p = a.participantes.find((x) => x.categoria_id === n.cat && (x.opcion || "") === n.op);
-    if (!p || Math.abs((Number(p.neto_unitario) || 0) - n.neto) < 0.005) return false;
-    cambios.push(`Neto ${categoriaPorId(n.cat)?.nombre ?? ""}${n.op ? " · " + n.op : ""}: ${dinero(p.neto_unitario)} → ${dinero(n.neto)}`);
-    return true;
+    if (!p) return false;
+    const nombre = `${categoriaPorId(n.cat)?.nombre ?? ""}${n.op ? " · " + n.op : ""}`;
+    const tenia = Number(p.iva_pct) > 0;
+    n.iva_pct = n.iva ? (tenia ? Number(p.iva_pct) : IVA) : 0;
+    let cambio = false;
+    if (Math.abs((Number(p.neto_unitario) || 0) - n.neto) >= 0.005) { cambios.push(`Neto ${nombre}: ${dinero(p.neto_unitario)} → ${dinero(n.neto)}`); cambio = true; }
+    if (tenia !== n.iva) { cambios.push(`IVA ${nombre}: ${tenia ? "incluido" : "sin IVA"} → ${n.iva ? "incluido" : "sin IVA"}`); cambio = true; }
+    return cambio;
   });
   if (!cambios.length) return avisar("No hay cambios por guardar.");
 
@@ -402,7 +421,7 @@ async function guardarEdicionSolicitud(btn, s) {
     let r = await db.from("actividades").update(fila).eq("id", a.id);
     if (r.error) return fallo(r.error, "No se pudo guardar el cambio.");
     for (const n of netosCambiados) {
-      r = await db.from("actividad_participantes").update({ neto_unitario: n.neto })
+      r = await db.from("actividad_participantes").update({ neto_unitario: n.neto, iva_pct: n.iva_pct })
         .eq("actividad_id", a.id).eq("categoria_id", n.cat).eq("opcion", n.op);
       if (r.error) return fallo(r.error, "No se pudo guardar el neto.");
     }

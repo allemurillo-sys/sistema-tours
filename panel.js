@@ -193,6 +193,13 @@ function elegirOpcion(t, categoriaId, personas, opcion = "") {
   }
   return lista[0];
 }
+// Desglose de un neto con IVA incluido: "$52.00 + IVA 13% $6.76" (vacío si no trae IVA)
+function textoIva(monto, pct) {
+  const p = Number(pct) || 0;
+  if (!p || !(Number(monto) > 0)) return "";
+  const sin = Math.round((Number(monto) / (1 + p / 100)) * 100) / 100;
+  return `${dinero(sin)} + IVA ${p} % ${dinero(Math.round((Number(monto) - sin) * 100) / 100)}`;
+}
 const precioTarifa = (t, categoriaId, tipo, opcion = "", personas = 0) => {
   const p = elegirOpcion(t, categoriaId, personas, opcion);
   return p ? (tipo === "cash" ? p.cash : p.tc) ?? null : null;
@@ -259,8 +266,8 @@ function aplicarTarifa(a, tipo = a.tarifa_tipo) {
   a.participantes.forEach((p) => {
     const op = elegirOpcion(t, p.categoria_id, pers, p.opcion);
     p.opcion = op && usaOpcion(t, p.categoria_id) ? op.opcion : "";
-    if (op?.neto != null) p.neto_unitario = op.neto;
-    else if (grupo) p.neto_unitario = 0;
+    if (op?.neto != null) { p.neto_unitario = op.neto; p.iva_pct = op.iva_pct ?? null; }
+    else if (grupo) { p.neto_unitario = 0; p.iva_pct = null; }
     if (tipo !== "manual") p.precio_unitario = (op && (tipo === "cash" ? op.cash : op.tc)) ?? 0;
   });
   return a;
@@ -595,6 +602,7 @@ function normalizarActividad(a) {
       .map((p) => ({
         categoria_id: p.categoria_id,
         opcion: p.opcion || "",
+        iva_pct: p.iva_pct == null ? null : Number(p.iva_pct),
         cantidad: p.cantidad,
         precio_unitario: Number(p.precio_unitario),
         neto_unitario: Number(p.neto_unitario) || 0
@@ -892,12 +900,12 @@ function htmlActividad(a, idx) {
   const tAct = tarifaDe(a);
   const grupoAct = tieneFilaGrupo(a);
   const filas = a.participantes.map((p) => `
-    <tr data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}">
+    <tr data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}" data-iva="${p.iva_pct ?? ""}">
       <th scope="row">${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${htmlOpcionFila(tAct, p)}
         ${grupoAct && !esCategoriaGrupo(p.categoria_id) && !(p.precio_unitario > 0) ? `<span class="horarios-nota">Solo indica cuántos van: el precio va en la fila del vehículo o servicio.</span>` : ""}</th>
       <td><input data-p="cantidad" type="number" min="0" value="${p.cantidad}" aria-label="Cuántas personas"></td>
       <td><input data-p="precio" type="number" min="0" step="0.01" value="${p.precio_unitario}" aria-label="Precio al cliente por persona"></td>
-      ${verNeto ? `<td class="celda-oficina"><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="El proveedor nos cobra por persona"></td>` : ""}
+      ${verNeto ? `<td class="celda-oficina"><input data-p="neto" type="number" min="0" step="0.01" value="${p.neto_unitario || 0}" aria-label="El proveedor nos cobra por persona">${textoIva(p.neto_unitario, p.iva_pct) ? `<span class="horarios-nota">Incluye IVA: ${textoIva(p.neto_unitario, p.iva_pct)}</span>` : ""}</td>` : ""}
       <td class="num celda-subtotal">${dinero(p.cantidad * p.precio_unitario)}</td>
       <td><button type="button" class="enlace" data-accion="quitar-cat" data-cat="${p.categoria_id}" data-op="${escapar(p.opcion || "")}">Quitar</button></td>
     </tr>`).join("");
@@ -1013,7 +1021,7 @@ function htmlTarifa(a) {
   else if (!conPrecios) info = `<span class="act-aviso"><strong>El Tarifario no tiene precio para el ${escapar(fecha(a.fecha, { day: "numeric", month: "long", year: "numeric" }))}.</strong> Pregúntale al proveedor, escribe el precio abajo y elige "Manual".</span>`;
   else {
     const temporadas = [...new Set(t.precios.map((p) => p.temporada).filter(Boolean))].join(", ");
-    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${usaOpcion(t, p.categoria_id) ? ` · ${escapar(p.opcion)}` : ""}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">nos cobra ${dinero(p.neto)}</span>` : ""}`).join("<br>");
+    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${usaOpcion(t, p.categoria_id) ? ` · ${escapar(p.opcion)}` : ""}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">nos cobra ${dinero(p.neto)}${textoIva(p.neto, p.iva_pct) ? ` (incluye IVA: ${textoIva(p.neto, p.iva_pct)})` : ""}</span>` : ""}`).join("<br>");
     info = `<span class="nota">Precios del Tarifario para esa fecha (temporada ${escapar(temporadas)})${t.precios.some((p) => p.colones) ? " · tarifa en colones convertida a dólares" : ""}:</span><br>${lista}`;
   }
   return `
@@ -1532,6 +1540,7 @@ function leerTarjeta(card) {
     participantes: [...card.querySelectorAll("tr[data-cat]")].map((tr) => ({
       categoria_id: Number(tr.dataset.cat),
       opcion: tr.querySelector('[data-p="opcion"]')?.value ?? tr.dataset.op ?? "",
+      iva_pct: tr.dataset.iva === "" || tr.dataset.iva == null ? null : Number(tr.dataset.iva),
       cantidad: Math.max(0, parseInt(tr.querySelector('[data-p="cantidad"]').value, 10) || 0),
       precio_unitario: Math.max(0, parseFloat(tr.querySelector('[data-p="precio"]').value) || 0),
       neto_unitario: tr.querySelector('[data-p="neto"]')
@@ -1672,7 +1681,7 @@ async function guardarTodo(btn) {
           const igual = filas.find((f) => f.categoria_id === p.categoria_id && f.opcion === (p.opcion || ""));
           if (igual) { igual.cantidad += p.cantidad; return; }   // misma opción repetida: se suman
           filas.push({
-            actividad_id: a.id, categoria_id: p.categoria_id, opcion: p.opcion || "", cantidad: p.cantidad,
+            actividad_id: a.id, categoria_id: p.categoria_id, opcion: p.opcion || "", cantidad: p.cantidad, iva_pct: p.iva_pct ?? null,
             precio_unitario: p.precio_unitario, neto_unitario: p.neto_unitario || 0
           });
         });
@@ -1784,7 +1793,10 @@ $("detalleContenido").addEventListener("change", async (e) => {
       ajustarRangos(a);
     }
     if (tienePrecios(t) && ["tc", "cash"].includes(a.tarifa_tipo)) aplicarTarifa(a, a.tarifa_tipo);
-    else a.participantes.forEach((p) => { const n = netoTarifa(t, p.categoria_id, p.opcion); if (n != null) p.neto_unitario = n; });
+    else a.participantes.forEach((p) => {
+      const op = elegirOpcion(t, p.categoria_id, personasAct(a), p.opcion);
+      if (op?.neto != null) { p.neto_unitario = op.neto; p.iva_pct = op.iva_pct ?? null; }
+    });
     app.actual.actividades[idx] = a;
     repintarTarjeta(idx);
     pintarTotales();
@@ -1824,6 +1836,7 @@ $("detalleContenido").addEventListener("change", async (e) => {
     a.participantes.push({
       categoria_id: categoriaId,
       opcion,
+      iva_pct: op?.iva_pct ?? null,
       cantidad: 1,
       precio_unitario: ["tc", "cash"].includes(a.tarifa_tipo) ? precioTarifa(t, categoriaId, a.tarifa_tipo, opcion) ?? 0
         : a.servicio_id && a.tarifa_tipo === "manual" ? precioBase(a.servicio_id, categoriaId) : 0,

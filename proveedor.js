@@ -59,10 +59,16 @@ function htmlContenido(c) {
     <table class="part">
       <thead><tr><th>Participantes</th><th class="num">Neto por persona</th><th class="num">Subtotal</th></tr></thead>
       <tbody>
-        ${(c.participantes || []).map((p) => `<tr><td>${escapar(p.cantidad)} ${escapar(p.categoria)}</td><td class="num">${usd(p.neto)}</td><td class="num">${usd(p.subtotal)}</td></tr>`).join("")}
+        ${(c.participantes || []).map((p) => `<tr><td>${escapar(p.cantidad)} ${escapar(p.categoria)}</td>
+          <td class="num">${usd(p.neto)}${p.iva_pct ? `<small class="iva">${usd(p.neto_sin_iva)} + IVA ${p.iva_pct} % ${usd(p.iva)}</small>` : ""}</td>
+          <td class="num">${usd(p.subtotal)}${p.iva_pct ? `<small class="iva">${usd(p.subtotal_sin_iva)} + IVA ${usd(p.subtotal_iva)}</small>` : ""}</td></tr>`).join("")}
         ${Number(c.transporte_neto) ? `<tr><td>Transporte</td><td></td><td class="num">${usd(c.transporte_neto)}</td></tr>` : ""}
       </tbody>
-      <tfoot><tr><th colspan="2">Total neto</th><th class="num">${usd(c.total)}</th></tr></tfoot>
+      <tfoot>
+        ${Number(c.total_iva) ? `<tr class="iva-fila"><td colspan="2">Total sin IVA</td><td class="num">${usd(c.total - c.total_iva)}</td></tr>
+        <tr class="iva-fila"><td colspan="2">IVA${c.iva_pct ? ` ${c.iva_pct} %` : ""}</td><td class="num">${usd(c.total_iva)}</td></tr>` : ""}
+        <tr><th colspan="2">Total neto${Number(c.total_iva) ? " (IVA incluido)" : ""}</th><th class="num">${usd(c.total)}</th></tr>
+      </tfoot>
     </table>
     ${c.notas ? `<p style="margin-top:14px"><strong>Notas:</strong> ${escapar(c.notas)}</p>` : ""}`;
 }

@@ -667,3 +667,5 @@ a.menu-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .sol-editar .ancho { display: block; margin-top: 8px; }
 .sol-editar .ancho textarea, .sol-editar .ancho input { width: 100%; }
 .sol-editar td input { max-width: 120px; text-align: right; }
+.sol-tabla small.iva { display: block; font-size: .78rem; color: var(--texto-suave, #6b7a73); font-weight: normal; }
+.sol-tabla .iva-fila td { color: var(--texto-suave, #6b7a73); font-size: .9rem; }
