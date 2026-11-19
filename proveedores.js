@@ -246,7 +246,7 @@ function htmlAvanceReserva(c) {
     </section>`;
 }
 
-// Antes de solicitar: el agente indicó cómo paga el cliente y el proveedor tiene definido si acepta Cash
+// Antes de solicitar: el agente indicó el método de pago y el proveedor tiene definido si acepta Cash
 const proveedorSinDefinir = (a) => { const k = contactoDe(a.operador_id); return !!k && (k.acepta_cash === null || k.acepta_cash === undefined); };
 function puedeSolicitar(a) {
   if (!a.id || !a.operador_id || a._pendiente || !a.pago_cliente || proveedorSinDefinir(a)) return false;
@@ -310,7 +310,7 @@ function htmlFilaSolicitud(a, c) {
         ${chipP([estTxt, estClase])}
       </div>
       ${sinOperador ? `<p class="nota">Asigna el operador en la actividad para poder solicitarlo.</p>` : ""}
-      ${!sinOperador && !a.pago_cliente && !s ? `<p class="aviso">Falta elegir cómo paga el cliente (TC o Cash) en el servicio: sin eso no se puede solicitar.</p>` : ""}
+      ${!sinOperador && !a.pago_cliente && !s ? `<p class="aviso">Falta elegir el método de pago (TC o Cash) en el servicio: sin eso no se puede solicitar.</p>` : ""}
       ${!sinOperador && proveedorSinDefinir(a) && !s ? `<p class="aviso">El proveedor todavía no indica si acepta pagos en Cash. ${app.yo?.rol === "administrador" ? "Defínelo en Tarifario › Operadores › Editar" : "Pídele al administrador que lo defina en Tarifario › Operadores"} para poder solicitarlo.</p>` : ""}
       ${sinDisp && !cambioProveedor ? `<p class="aviso">El proveedor no tiene disponibilidad. Si cambias la fecha u hora, guarda y usa "Nueva versión y reenviar". Si cambias de proveedor en la actividad, guarda y aparecerá la casilla para pedirle al nuevo proveedor (nuevo número P).</p>` : ""}
       ${cambioProveedor && !sinDisp ? `<p class="aviso">El proveedor de la actividad ya no es el de la solicitud ${escapar(s.codigo)} (${escapar(nombreOperador(s.operador_id))}). Guarda los cambios del itinerario: la solicitud anterior se cancela y queda el aviso de cancelación.</p>` : ""}

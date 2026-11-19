@@ -1017,7 +1017,7 @@ function htmlTarifa(a) {
   const cash = tieneCash(t);
   const tipo = a.tarifa_tipo || "manual";
   const pago = a.pago_cliente || "";
-  const pagos = [["", "Elige cómo paga…"], ["tc", "Tarjeta (TC)"], ["cash", "Efectivo (Cash)"]]
+  const pagos = [["", "Elige el método de pago…"], ["tc", "Tarjeta (TC)"], ["cash", "Efectivo (Cash)"]]
     .map(([v, txt]) => `<option value="${v}" ${v === pago ? "selected" : ""}>${txt}</option>`).join("");
   const opciones = [
     ["auto", "Del Tarifario", !conPrecios],
@@ -1041,7 +1041,7 @@ function htmlTarifa(a) {
   return `
     <div class="act-tarifa${tipo === "pendiente" ? " sin-tarifa" : ""}">
       <div class="act-tarifa-campos">
-        <label${pago ? "" : ' class="falta-campo"'}>¿Cómo paga el cliente? <select data-campo="pago_cliente">${pagos}</select></label>
+        <label${pago ? "" : ' class="falta-campo"'}>Método de pago <select data-campo="pago_cliente">${pagos}</select></label>
         <label>Precio <select data-campo="tarifa_tipo">${opciones}</select></label>
       </div>
       ${sinCash ? `<p class="nota">Este proveedor no tiene precio en efectivo: se cobra el precio TC.</p>` : ""}
@@ -1646,7 +1646,7 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     forma_pago: "prepago",
     pago_limite: "",
     participantes,
-    pago_cliente: app.actual?.pagoManual || "",   // reserva manual: "¿Cómo paga el cliente?" del formulario
+    pago_cliente: app.actual?.pagoManual || "",   // reserva manual: "Método de pago" del formulario
     _pago_guardado: "",
     _pendiente: true
   };
@@ -1714,10 +1714,10 @@ async function guardarTodo(btn) {
           if (r.error) throw r.error;
         }
         a._pendiente = false;
-        // Cómo paga el cliente: cada cambio queda en la bitácora
+        // Método de pago del cliente: cada cambio queda en la bitácora
         if ((a.pago_cliente || "") !== (a._pago_guardado || "")) {
           const N = { tc: "TC", cash: "Cash", "": "sin definir" };
-          await registrar(c.id, "forma de pago del cliente",
+          await registrar(c.id, "método de pago",
             `${servicioPorId(a.servicio_id)?.nombre ?? "Servicio"} (${fecha(a.fecha, { day: "numeric", month: "short" })}): ${N[a._pago_guardado || ""]} → ${N[a.pago_cliente || ""]}`);
           a._pago_guardado = a.pago_cliente || "";
         }

@@ -126,7 +126,7 @@ function htmlFormManual() {
         <p class="nota">Elige cada actividad y su día. Al crear la reserva quedan con el precio del Tarifario, el horario y el proveedor; después solo revisas.</p>
         <div id="manActs">${htmlFilaManual(hoy)}</div>
         <button type="button" class="btn" data-manual="agregar-act">+ Agregar otra actividad</button>
-        <label class="man-transporte">¿Cómo paga el cliente?
+        <label class="man-transporte">Método de pago
           <select id="manPago">
             <option value="">Definir después (en cada servicio)</option>
             <option value="tc">Tarjeta (TC)</option>
@@ -277,7 +277,7 @@ async function crearManual() {
     if (!acts.length) return avisar(`Reserva manual ${data.numero} creada. Agrega las actividades y guarda.`);
 
     // Las actividades del formulario se crean con la tarifa TC de su temporada, horario y proveedor, y se guardan
-    app.actual.pagoManual = pago;   // "¿Cómo paga el cliente?" del formulario, para todas sus actividades
+    app.actual.pagoManual = pago;   // "Método de pago" del formulario, para todas sus actividades
     const nuevas = acts.map((x) => nuevaActividad(x.servicio_id, x.fecha));
     delete app.actual.pagoManual;
     await cargarTarifas(nuevas);
