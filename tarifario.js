@@ -1084,6 +1084,14 @@ function tarHtmlFormOperador() {
         <label>Nombre <input id="tarOpNombre" value="${escapar(o.nombre ?? "")}" autofocus></label>
         <label>Contacto <input id="tarOpContacto" value="${escapar(o.contacto ?? "")}" placeholder="Nombre de la persona de contacto"></label>
       </div>
+      <fieldset class="tar-cash-pregunta">
+        <legend>¿Acepta pagos en Cash (sin factura)? *</legend>
+        <label class="check-linea"><input type="radio" name="tarOpCash" value="si" ${o.acepta_cash === true ? "checked" : ""}>
+          <strong>Sí</strong>: si el cliente paga en efectivo, no factura. Se le paga el neto sin IVA y la solicitud lleva la nota "NO FACTURAR".</label>
+        <label class="check-linea"><input type="radio" name="tarOpCash" value="no" ${o.acepta_cash === false ? "checked" : ""}>
+          <strong>No</strong>: factura todo, aunque el cliente pague en efectivo. Se le paga el neto con IVA.</label>
+        ${o.id && o.acepta_cash == null ? `<p class="aviso-texto">Sin definir: mientras no se conteste, no se le pueden enviar solicitudes.</p>` : ""}
+      </fieldset>
       <h4>Datos para enviar solicitudes de reserva (P)</h4>
       <div class="fila-form">
         <label>Correo para reservas <input id="tarOpCorreo" type="email" value="${escapar(o.correo_reservas ?? "")}" placeholder="reservas@proveedor.com"></label>
@@ -1114,7 +1122,10 @@ async function tarGuardarOperador(btn) {
     whatsapp: $("tarOpWhatsapp").value.trim() || null,
     medio_preferido: $("tarOpMedio").value
   };
+  const cash = document.querySelector('input[name="tarOpCash"]:checked')?.value;
   if (!datos.nombre) return avisar("Escribe el nombre del operador.", "error");
+  if (!cash) return avisar("Indica si el operador acepta pagos en Cash (sin factura).", "error");
+  datos.acepta_cash = cash === "si";
   if (datos.correo_reservas && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(datos.correo_reservas)) return avisar("Revisa el correo para reservas.", "error");
   if (datos.whatsapp) {
     const digitos = datos.whatsapp.replace(/\D/g, "");

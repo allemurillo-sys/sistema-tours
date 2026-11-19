@@ -257,16 +257,22 @@ function aplicarTarifa(a, tipo = a.tarifa_tipo) {
     }
     return a;
   }
-  if (tipo === "pendiente") tipo = "tc";
-  if (tipo === "cash" && !tieneCash(t)) tipo = "tc";
+  if (tipo !== "manual") tipo = a.pago_cliente === "cash" ? "cash" : "tc";
+  if (tipo === "cash" && !tieneCash(t)) tipo = "tc";   // sin precio en efectivo: se cobra el precio TC
   a.tarifa_tipo = tipo;
   agregarFilaGrupo(a, t);
+  // Cliente paga en efectivo y el proveedor acepta Cash (no factura): se le paga el neto SIN IVA
+  const sinFactura = a.pago_cliente === "cash" && t?.acepta_cash === true;
   const pers = personasAct(a);
   const grupo = a.participantes.some((p) => esCategoriaGrupo(p.categoria_id) && opcionesDe(t, p.categoria_id).length);
   a.participantes.forEach((p) => {
     const op = elegirOpcion(t, p.categoria_id, pers, p.opcion);
     p.opcion = op && usaOpcion(t, p.categoria_id) ? op.opcion : "";
-    if (op?.neto != null) { p.neto_unitario = op.neto; p.iva_pct = op.iva_pct ?? null; }
+    if (op?.neto != null) {
+      const pct = Number(op.iva_pct) || 0;
+      p.neto_unitario = sinFactura && pct ? Math.round((op.neto / (1 + pct / 100)) * 100) / 100 : op.neto;
+      p.iva_pct = sinFactura ? 0 : op.iva_pct ?? null;
+    }
     else if (grupo) { p.neto_unitario = 0; p.iva_pct = null; }
     if (tipo !== "manual") p.precio_unitario = (op && (tipo === "cash" ? op.cash : op.tc)) ?? 0;
   });
@@ -588,6 +594,8 @@ function normalizarActividad(a) {
     operador_id: a.operador_id,
     notas: a.notas ?? "",
     tarifa_tipo: a.tarifa_tipo || "manual",
+    pago_cliente: a.pago_cliente || "",
+    _pago_guardado: a.pago_cliente || "",
     operador_confirmado: !!a.operador_confirmado,
     operador_confirmacion: a.operador_confirmacion ?? "",
     operador_confirmado_en: a.operador_confirmado_en ?? null,
@@ -1008,12 +1016,16 @@ function htmlTarifa(a) {
   const conPrecios = tienePrecios(t);
   const cash = tieneCash(t);
   const tipo = a.tarifa_tipo || "manual";
+  const pago = a.pago_cliente || "";
+  const pagos = [["", "Elige cómo paga…"], ["tc", "Tarjeta (TC)"], ["cash", "Efectivo (Cash)"]]
+    .map(([v, txt]) => `<option value="${v}" ${v === pago ? "selected" : ""}>${txt}</option>`).join("");
   const opciones = [
-    ["tc", "Tarjeta (TC): precio del Tarifario", !conPrecios],
-    ["cash", cash ? "Efectivo (Cash): precio del Tarifario" : "Efectivo (este proveedor no lo ofrece)", !conPrecios || !cash],
+    ["auto", "Del Tarifario", !conPrecios],
     ["manual", "Manual: tú escribes el precio", false]
-  ].map(([v, txt, off]) => `<option value="${v}" ${v === tipo ? "selected" : ""} ${off && v !== tipo ? "disabled" : ""}>${txt}</option>`).join("")
+  ].map(([v, txt, off]) => `<option value="${v}" ${(v === "auto" ? ["tc", "cash"].includes(tipo) : v === tipo) ? "selected" : ""} ${off ? "disabled" : ""}>${txt}</option>`).join("")
     + (tipo === "pendiente" ? `<option value="pendiente" selected>Sin tarifa (pendiente)</option>` : "");
+  const sinCash = pago === "cash" && conPrecios && !cash && tipo !== "manual";
+  const sinFacturaT = pago === "cash" && t?.acepta_cash === true;
 
   let info;
   if (!t) info = `<span class="nota">Consultando la tarifa…</span>`;
@@ -1021,12 +1033,18 @@ function htmlTarifa(a) {
   else if (!conPrecios) info = `<span class="act-aviso"><strong>El Tarifario no tiene precio para el ${escapar(fecha(a.fecha, { day: "numeric", month: "long", year: "numeric" }))}.</strong> Pregúntale al proveedor, escribe el precio abajo y elige "Manual".</span>`;
   else {
     const temporadas = [...new Set(t.precios.map((p) => p.temporada).filter(Boolean))].join(", ");
-    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${usaOpcion(t, p.categoria_id) ? ` · ${escapar(p.opcion)}` : ""}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">nos cobra ${dinero(p.neto)}${textoIva(p.neto, p.iva_pct) ? ` (incluye IVA: ${textoIva(p.neto, p.iva_pct)})` : ""}</span>` : ""}`).join("<br>");
+    const lista = t.precios.map((p) => `${escapar(categoriaPorId(p.categoria_id)?.nombre ?? "")}${usaOpcion(t, p.categoria_id) ? ` · ${escapar(p.opcion)}` : ""}: tarjeta ${dinero(p.tc)}${p.cash != null ? ` · efectivo ${dinero(p.cash)}` : ""}${puede("ver_utilidad") ? ` <span class="interno">${sinFacturaT && Number(p.iva_pct)
+      ? `en Cash sin factura nos cobra ${dinero(Math.round((p.neto / (1 + p.iva_pct / 100)) * 100) / 100)} (sin IVA)`
+      : `nos cobra ${dinero(p.neto)}${textoIva(p.neto, p.iva_pct) ? ` (incluye IVA: ${textoIva(p.neto, p.iva_pct)})` : ""}`}</span>` : ""}`).join("<br>");
     info = `<span class="nota">Precios del Tarifario para esa fecha (temporada ${escapar(temporadas)})${t.precios.some((p) => p.colones) ? " · tarifa en colones convertida a dólares" : ""}:</span><br>${lista}`;
   }
   return `
     <div class="act-tarifa${tipo === "pendiente" ? " sin-tarifa" : ""}">
-      <label>¿Qué precio se usa? <select data-campo="tarifa_tipo">${opciones}</select></label>
+      <div class="act-tarifa-campos">
+        <label${pago ? "" : ' class="falta-campo"'}>¿Cómo paga el cliente? <select data-campo="pago_cliente">${pagos}</select></label>
+        <label>Precio <select data-campo="tarifa_tipo">${opciones}</select></label>
+      </div>
+      ${sinCash ? `<p class="nota">Este proveedor no tiene precio en efectivo: se cobra el precio TC.</p>` : ""}
       <p class="act-tarifa-info">${info}</p>
     </div>`;
 }
@@ -1533,7 +1551,10 @@ function leerTarjeta(card) {
     notas_proveedor: v("notas_proveedor"),
     forma_pago: v("forma_pago") || "prepago",
     pago_limite: v("pago_limite"),
-    tarifa_tipo: v("tarifa_tipo") || previa.tarifa_tipo || "manual",
+    pago_cliente: v("pago_cliente") || "",
+    tarifa_tipo: v("tarifa_tipo") === "auto"
+      ? (["tc", "cash"].includes(previa.tarifa_tipo) ? previa.tarifa_tipo : "tc")
+      : v("tarifa_tipo") || previa.tarifa_tipo || "manual",
     operador_confirmado: card.querySelector('[data-campo="operador_confirmado"]')
       ? card.querySelector('[data-campo="operador_confirmado"]').checked : !!previa.operador_confirmado,
     operador_confirmacion: v("operador_confirmacion"),
@@ -1625,6 +1646,8 @@ function nuevaActividad(servicioId = null, fechaActividad = "") {
     forma_pago: "prepago",
     pago_limite: "",
     participantes,
+    pago_cliente: app.actual?.pagoManual || "",   // reserva manual: "¿Cómo paga el cliente?" del formulario
+    _pago_guardado: "",
     _pendiente: true
   };
 }
@@ -1662,7 +1685,8 @@ async function guardarTodo(btn) {
           notas_proveedor: a.notas_proveedor?.trim() || null,
           forma_pago: a.forma_pago || "prepago",
           pago_limite: a.forma_pago === "oficina" && a.pago_limite ? a.pago_limite : null,
-          tarifa_tipo: a.tarifa_tipo || "manual"
+          tarifa_tipo: a.tarifa_tipo || "manual",
+          pago_cliente: a.pago_cliente || null
           // La confirmación del operador ya no se escribe aquí: la registra la solicitud al proveedor (etapa 8)
         };
         if (a.id) {
@@ -1690,6 +1714,13 @@ async function guardarTodo(btn) {
           if (r.error) throw r.error;
         }
         a._pendiente = false;
+        // Cómo paga el cliente: cada cambio queda en la bitácora
+        if ((a.pago_cliente || "") !== (a._pago_guardado || "")) {
+          const N = { tc: "TC", cash: "Cash", "": "sin definir" };
+          await registrar(c.id, "forma de pago del cliente",
+            `${servicioPorId(a.servicio_id)?.nombre ?? "Servicio"} (${fecha(a.fecha, { day: "numeric", month: "short" })}): ${N[a._pago_guardado || ""]} → ${N[a.pago_cliente || ""]}`);
+          a._pago_guardado = a.pago_cliente || "";
+        }
         if (a.voucher_habilitado && a.codigo_reserva) {
           await registrar(c.id, "tiquete actualizado", `${c.numero}-${a.codigo_reserva}: el cliente ve el tiquete con los cambios.`);
         }
@@ -1767,7 +1798,7 @@ $("detalleContenido").addEventListener("change", async (e) => {
   }
 
   // Otra fecha → la tarifa de la temporada de esa fecha. Otro tipo de tarifa → sus precios.
-  if (e.target.dataset.campo === "fecha" || e.target.dataset.campo === "tarifa_tipo") {
+  if (e.target.dataset.campo === "fecha" || e.target.dataset.campo === "tarifa_tipo" || e.target.dataset.campo === "pago_cliente") {
     const a = leerTarjeta(card);
     a._pendiente = true;
     if (a.servicio_id && a.fecha) {
@@ -1792,11 +1823,7 @@ $("detalleContenido").addEventListener("change", async (e) => {
       if (fila && esCategoriaGrupo(fila.dataset.cat)) return;   // cambió la cantidad de vehículos: se respeta
       ajustarRangos(a);
     }
-    if (tienePrecios(t) && ["tc", "cash"].includes(a.tarifa_tipo)) aplicarTarifa(a, a.tarifa_tipo);
-    else a.participantes.forEach((p) => {
-      const op = elegirOpcion(t, p.categoria_id, personasAct(a), p.opcion);
-      if (op?.neto != null) { p.neto_unitario = op.neto; p.iva_pct = op.iva_pct ?? null; }
-    });
+    if (tienePrecios(t)) aplicarTarifa(a, a.tarifa_tipo);   // con precio Manual solo se actualiza el neto
     app.actual.actividades[idx] = a;
     repintarTarjeta(idx);
     pintarTotales();

@@ -55,8 +55,9 @@ document.addEventListener("detalle-cerrado", () => { solP.seleccion.clear(); sol
 // ---------- Contenido de una solicitud (lo mismo que ve el proveedor) ----------
 function htmlContenidoSolicitud(c) {
   const fila = (k, v) => (v ? `<div><dt>${k}</dt><dd>${escapar(v)}</dd></div>` : "");
+  const noFacturar = c.no_facturar ? `<p class="no-facturar">*** NO FACTURAR ***</p>` : "";
   const horario = c.hora_inicio ? `${hora(c.hora_inicio)}${c.hora_fin ? " a " + hora(c.hora_fin) : ""}` : "Por confirmar";
-  return `
+  return `${noFacturar}
     <dl class="sol-datos">
       ${fila("Servicio", c.servicio)}${fila("Titular", c.titular)}
       ${fila("Fecha", fechaLarga(c.fecha))}${fila("Hora", horario)}
@@ -104,6 +105,7 @@ function htmlCorreoSolicitud(s, enlace, empresa, agente, aviso) {
       <div style="font-size:22px;font-weight:bold">${escapar(s.codigo)}</div>
       <div style="font-size:12px;color:#6b7a73">Ref. ${escapar(c.codigo_reserva || c.cotizacion || "")}${s.version > 1 ? ` · versión ${s.version}` : ""}</div></td></tr></table>
     ${aviso ? `<p style="background:#fcebdd;color:#8a3b12;padding:10px 12px;border-radius:8px;font-weight:bold">${escapar(aviso)}</p>` : ""}
+    ${c.no_facturar ? `<p style="background:#b3261e;color:#fff;padding:10px 12px;border-radius:8px;font-weight:bold;font-size:17px;text-align:center;letter-spacing:1px">*** NO FACTURAR ***</p>` : ""}
     <table style="border-collapse:collapse;font-size:15px">
       ${fila("Servicio", c.servicio)}${fila("Titular", c.titular)}
       ${fila("Fecha", fechaLargaCorreo(c.fecha))}
@@ -163,13 +165,14 @@ function textoWhatsApp(s, aviso = "") {
   const part = (c.participantes || []).map((p) => `${p.cantidad} ${p.categoria}`).join(", ");
   return [
     aviso,
+    c.no_facturar ? "*** NO FACTURAR ***" : "",
     `Solicitud ${s.codigo}${s.version > 1 ? ` (versión ${s.version})` : ""} · The House of Tours`,
     `${c.servicio} · ${fechaLarga(c.fecha)}${c.hora_inicio ? " · " + hora(c.hora_inicio) : ""}`,
     `${part}${Number(c.total) ? ` · Total neto ${usdP(c.total)}${Number(c.total_iva) ? ` (${usdP(c.total - c.total_iva)} + IVA ${usdP(c.total_iva)})` : ""}` : ""}`,
     "",
     "Para confirmar, revisar o indicar que no hay disponibilidad, ingrese al enlace:",
     enlaceProveedor(s)
-  ].filter((x, i) => i !== 0 || x).join("\n");
+  ].filter((x, i) => i > 1 || x).join("\n");
 }
 const enlaceWhatsApp = (numero, texto) => `https://wa.me/${String(numero || "").replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
 
@@ -243,8 +246,10 @@ function htmlAvanceReserva(c) {
     </section>`;
 }
 
+// Antes de solicitar: el agente indicó cómo paga el cliente y el proveedor tiene definido si acepta Cash
+const proveedorSinDefinir = (a) => { const k = contactoDe(a.operador_id); return !!k && (k.acepta_cash === null || k.acepta_cash === undefined); };
 function puedeSolicitar(a) {
-  if (!a.id || !a.operador_id || a._pendiente) return false;
+  if (!a.id || !a.operador_id || a._pendiente || !a.pago_cliente || proveedorSinDefinir(a)) return false;
   const s = solicitudDeActividad(a.id);
   return !s || ["cancelada", "cerrada"].includes(s.estado) || (s.estado === "sin_disponibilidad" && s.operador_id !== a.operador_id);
 }
@@ -305,6 +310,8 @@ function htmlFilaSolicitud(a, c) {
         ${chipP([estTxt, estClase])}
       </div>
       ${sinOperador ? `<p class="nota">Asigna el operador en la actividad para poder solicitarlo.</p>` : ""}
+      ${!sinOperador && !a.pago_cliente && !s ? `<p class="aviso">Falta elegir cómo paga el cliente (TC o Cash) en el servicio: sin eso no se puede solicitar.</p>` : ""}
+      ${!sinOperador && proveedorSinDefinir(a) && !s ? `<p class="aviso">El proveedor todavía no indica si acepta pagos en Cash. ${app.yo?.rol === "administrador" ? "Defínelo en Tarifario › Operadores › Editar" : "Pídele al administrador que lo defina en Tarifario › Operadores"} para poder solicitarlo.</p>` : ""}
       ${sinDisp && !cambioProveedor ? `<p class="aviso">El proveedor no tiene disponibilidad. Si cambias la fecha u hora, guarda y usa "Nueva versión y reenviar". Si cambias de proveedor en la actividad, guarda y aparecerá la casilla para pedirle al nuevo proveedor (nuevo número P).</p>` : ""}
       ${cambioProveedor && !sinDisp ? `<p class="aviso">El proveedor de la actividad ya no es el de la solicitud ${escapar(s.codigo)} (${escapar(nombreOperador(s.operador_id))}). Guarda los cambios del itinerario: la solicitud anterior se cancela y queda el aviso de cancelación.</p>` : ""}
       ${a.estado_servicio === "confirmado" && a.codigo_reserva ? `<p class="sol-confirmado">Servicio confirmado · <strong>${escapar(c.numero)}-${escapar(a.codigo_reserva)}</strong>${s && s.estado !== "confirmada" ? " · el proveedor debe confirmar la modificación (el código R se conserva)" : ""}</p>` : ""}
