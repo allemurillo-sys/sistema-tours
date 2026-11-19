@@ -53,7 +53,7 @@ function resumenPaso(a, n) {
     const horas = a.hora_inicio ? `${a.hora_inicio}${a.hora_fin ? " a " + a.hora_fin : ""}` : "";
     return [serv?.nombre, a.fecha ? fecha(a.fecha, { weekday: "short", day: "numeric", month: "short" }) : "", horas].filter(Boolean).join(" · ") || "Sin elegir";
   }
-  if (n === 2) return `${personasTexto(a)} · ${dinero(subtotalPersonas(a))} · ${NOMBRE_TARIFA[a.tarifa_tipo] || "precio escrito a mano"}`;
+  if (n === 2) return `${personasTexto(a)} · ${dinero(subtotalPersonas(a))} · ${a.pago_cliente === "cash" ? "método de pago: Cash" : a.pago_cliente === "tc" ? "método de pago: TC" : "falta el método de pago"}${a.tarifa_tipo === "manual" ? " · precio escrito a mano" : ""}`;
   if (n === 3) {
     if (a.transporte_modo === "sin_transporte") return "No lleva transporte: llegan por su cuenta";
     const recoge = a.lugar_recogida ? ` · recogen${a.hora_recogida ? " a las " + a.hora_recogida : ""} en ${a.lugar_recogida}` : "";
@@ -80,6 +80,7 @@ function faltasServicio(a) {
 
   const pers = totalPersonas(a);
   if (!pers) f.push({ paso: 2, texto: "No hay personas en este servicio." });
+  if (!a.pago_cliente) f.push({ paso: 2, texto: "Falta elegir el método de pago (TC o Cash)." });
   if (a.tarifa_tipo === "pendiente") f.push({ paso: 2, texto: "No hay tarifa para esa fecha: pregúntale el precio al proveedor y escríbelo (Manual)." });
   else if (pers && a.participantes.some((p) => p.cantidad > 0 && !(p.precio_unitario > 0)
     && !(tieneFilaGrupo(a) && !esCategoriaGrupo(p.categoria_id)))) f.push({ paso: 2, texto: "Hay personas sin precio." });

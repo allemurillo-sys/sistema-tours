@@ -669,3 +669,12 @@ a.menu-btn { text-decoration: none; display: inline-flex; align-items: center; }
 .sol-editar td input { max-width: 120px; text-align: right; }
 .sol-tabla small.iva { display: block; font-size: .78rem; color: var(--texto-suave, #6b7a73); font-weight: normal; }
 .sol-tabla .iva-fila td { color: var(--texto-suave, #6b7a73); font-size: .9rem; }
+
+/* Forma de pago del cliente y nota NO FACTURAR */
+.no-facturar { background: #b3261e; color: #fff; padding: 8px 12px; border-radius: 8px; font-weight: 800; text-align: center; letter-spacing: 1px; margin: 0 0 10px; }
+.act-tarifa-campos { display: flex; flex-wrap: wrap; gap: 12px; }
+.act-tarifa-campos label { flex: 1 1 200px; }
+.falta-campo select { border-color: var(--alerta, #b3261e); box-shadow: 0 0 0 2px #fde7e5; }
+.tar-cash-pregunta { border: 1px solid var(--linea); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.tar-cash-pregunta legend { font-weight: 700; padding: 0 4px; }
+.tar-cash-pregunta .check-linea { display: block; margin: 4px 0; }

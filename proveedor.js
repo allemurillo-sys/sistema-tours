@@ -47,7 +47,7 @@ function fallar(texto) {
 
 function htmlContenido(c) {
   const fila = (k, v) => (v ? `<div><dt>${k}</dt><dd>${escapar(v)}</dd></div>` : "");
-  return `
+  return `${c.no_facturar ? `<p class="no-facturar">*** NO FACTURAR ***</p>` : ""}
     <dl class="datos">
       ${fila("Servicio", c.servicio)}
       ${fila("Titular", c.titular)}
