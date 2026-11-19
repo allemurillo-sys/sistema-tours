@@ -247,7 +247,7 @@ function htmlAvanceReserva(c) {
 }
 
 // Antes de solicitar: el agente indicó el método de pago y el proveedor tiene definido si acepta Cash
-const proveedorSinDefinir = (a) => { const k = contactoDe(a.operador_id); return !!k && (k.acepta_cash === null || k.acepta_cash === undefined); };
+const proveedorSinDefinir = (a) => { const k = contactoDe(a.operador_id); return !k || k.acepta_cash === null || k.acepta_cash === undefined; };
 function puedeSolicitar(a) {
   if (!a.id || !a.operador_id || a._pendiente || !a.pago_cliente || proveedorSinDefinir(a)) return false;
   const s = solicitudDeActividad(a.id);

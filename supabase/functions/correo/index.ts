@@ -129,6 +129,7 @@ function textoSolicitud(s: any, enlace: string, aviso?: string) {
   const conIva = Number(c.total_iva) > 0;
   return [
     aviso ? aviso + "\n" : "",
+    c.no_facturar ? "*** NO FACTURAR ***\n" : "",
     `Solicitud ${s.codigo}${s.version > 1 ? ` (versión ${s.version})` : ""} · Ref. ${c.codigo_reserva || c.cotizacion}`,
     `Titular: ${c.titular}`,
     `Servicio: ${c.servicio}`,
@@ -167,6 +168,7 @@ function htmlSolicitud(s: any, enlace: string, empresa: any, agente: any, aviso?
       <div style="font-size:22px;font-weight:bold">${escapar(s.codigo)}</div>
       <div style="font-size:12px;color:#6b7a73">Ref. ${escapar(c.codigo_reserva || c.cotizacion || "")}${s.version > 1 ? ` · versión ${s.version}` : ""}</div></td></tr></table>
     ${aviso ? `<p style="background:#fcebdd;color:#8a3b12;padding:10px 12px;border-radius:8px;font-weight:bold">${escapar(aviso)}</p>` : ""}
+    ${c.no_facturar ? `<p style="background:#b3261e;color:#fff;padding:10px 12px;border-radius:8px;font-weight:bold;font-size:17px;text-align:center;letter-spacing:1px">*** NO FACTURAR ***</p>` : ""}
     <table style="border-collapse:collapse;font-size:15px">
       ${fila("Servicio", c.servicio)}${fila("Titular", c.titular)}
       ${fila("Fecha", fechaLarga(c.fecha))}
