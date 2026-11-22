@@ -392,3 +392,14 @@ body.solo-horario #grupoAdmin { display: none !important; }
 .rel-nuevo-dia td { background: #F7F9F8; }
 .rel-nuevo-dia label, .rel-nuevo-dia input { display: inline-flex; width: auto; margin-right: 8px; }
 .rel-tabla tr.rel-actual th, .rel-tabla tr.rel-actual td { background: #EEF6F1; }
+
+/* División por semanas (horario de más de una semana) */
+.stf-tabla .sem-ini, .stf-imp-tabla .sem-ini { border-left: 3px solid #23343D !important; }
+.stf-tabla thead tr.stf-semanas th { position: static; padding: 6px 4px 2px; background: var(--blanco); }
+.stf-tabla thead tr.stf-semanas th.stf-nombre { position: sticky; left: 0; z-index: 1; }
+.stf-semanas span { display: block; padding: 4px 6px; border-radius: 6px; background: #DCEFE4; color: #1F4F38; font-size: .8rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stf-semanas span.par { background: #EDF1F0; color: #23343D; }
+.stf-tabla thead tr.stf-semanas th.sem-ini { padding-left: 6px; }
+.stf-imp-tabla tr.stf-semanas th { border: 0; padding: 0 2px 3px; }
+.stf-imp-tabla tr.stf-semanas th.sem-ini { border-left: 3px solid #23343D; }
+.stf-imp-tabla .stf-semanas span { font-size: 7.5pt; padding: 2px 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

@@ -85,6 +85,19 @@ const diaSemana = (f) => new Date(f + "T12:00:00").getDay();
 const iniciales = (n) => String(n || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join("");
 const fechaCorta = (f) => fecha(f, { day: "numeric", month: "short" });
 const fechaAnio = (f) => fecha(f, { day: "numeric", month: "short", year: "numeric" });
+// División por semanas (lunes a domingo): solo cuando el periodo abarca más de una semana
+function semanasDe(fechas) {
+  const sem = [];
+  fechas.forEach((f, i) => { if (i === 0 || diaSemana(f) === 1) sem.push([]); sem[sem.length - 1].push(f); });
+  return sem.length > 1 ? sem : [];
+}
+const textoSemana = (s, k) => `Semana ${k + 1} · ${s.length > 1 ? `${fechaCorta(s[0])} – ${fechaCorta(s[s.length - 1])}` : fechaCorta(s[0])}`;
+function marcasSemana(fechas) {
+  const sems = semanasDe(fechas);
+  const corte = new Set(sems.slice(1).map((s) => s[0]));
+  return { sems, corte, cs: (f) => (corte.has(f) ? " sem-ini" : "") };
+}
+const filaSemanas = (sems) => sems.length ? `<tr class="stf-semanas"><th class="stf-nombre"></th>${sems.map((s, k) => `<th colspan="${s.length}" class="${k ? "sem-ini" : ""}"><span class="${k % 2 ? "par" : ""}">${textoSemana(s, k)}</span></th>`).join("")}<th></th></tr>` : "";
 const horasJornada = (p) => (p?.jornada === "media" ? 4 : 8);
 // Horas extra (etapa 15): opcionales por casilla de trabajo; se avisa si el día pasa de 12 h
 const EXTRAS_RAPIDAS = [1, 2, 3, 4];
@@ -822,11 +835,12 @@ function htmlHorario() {
   const chipTurno = (t) => `<button type="button" class="stf-turno t-trabajo ${sel.tipo === "trabajo" && sel.entrada === t ? "on" : ""}" data-stf-accion="turno" data-tipo="trabajo" data-entrada="${t}" aria-pressed="${sel.tipo === "trabajo" && sel.entrada === t}">${hora12(t)}</button>`;
   const chipTipo = (tipo, txt, clase) => `<button type="button" class="stf-turno ${clase} ${sel.tipo === tipo ? "on" : ""}" data-stf-accion="turno" data-tipo="${tipo}" aria-pressed="${sel.tipo === tipo}">${txt}</button>`;
   const yo = staffMiPersona();
+  const { sems, cs } = marcasSemana(fechas);
 
   const cab = fechas.map((f) => {
     const d = diaSemana(f);
     const cont = editable ? `<button type="button" class="stf-dia" data-stf-accion="aplicar-columna" data-fecha="${f}">` : `<span class="stf-dia">`;
-    return `<th class="${d === 0 ? "dom" : ""}">${cont}${DIAS_CORTO[d]}<small>${fechaCorta(f)}</small>${editable ? "</button>" : "</span>"}</th>`;
+    return `<th class="${d === 0 ? "dom" : ""}${cs(f)}">${cont}${DIAS_CORTO[d]}<small>${fechaCorta(f)}</small>${editable ? "</button>" : "</span>"}</th>`;
   }).join("");
 
   const filas = H.personas.map((hp) => {
@@ -839,8 +853,8 @@ function htmlHorario() {
       const marca = t.x ? `<em class="stf-extra ${t.excede ? "excede" : ""}"${t.excede ? ` title="${horasTxt(t.total)} h en el día: pasa de ${MAX_HORAS_DIA} h"` : ""}>${t.excede ? "⚠ " : ""}${t.x}</em>` : "";
       const clase = `${t.clase}${t.x ? " con-extra" : ""}${t.excede ? " excede" : ""}`;
       return editable
-        ? `<td><button type="button" class="stf-celda ${clase}" data-stf-accion="celda" data-persona="${hp.persona_id}" data-fecha="${f}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small>${marca}</button></td>`
-        : `<td><span class="stf-celda ${clase}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small>${marca}</span></td>`;
+        ? `<td class="${cs(f).trim()}"><button type="button" class="stf-celda ${clase}" data-stf-accion="celda" data-persona="${hp.persona_id}" data-fecha="${f}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small>${marca}</button></td>`
+        : `<td class="${cs(f).trim()}"><span class="stf-celda ${clase}" aria-label="${escapar(etiqueta)}"><b>${t.a}</b><small>${t.b}</small>${marca}</span></td>`;
     }).join("");
     const esYo = yo && yo === hp.persona_id;
     return `
@@ -858,7 +872,7 @@ function htmlHorario() {
 
   const cobertura = fechas.map((f) => {
     const n = H.personas.filter((hp) => H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo").length;
-    return `<td class="stf-cob">${n}</td>`;
+    return `<td class="stf-cob${cs(f)}">${n}</td>`;
   }).join("");
 
   // Administradores: pueden agregar a cualquier colaborador activo (de cualquier departamento).
@@ -915,8 +929,8 @@ function htmlHorario() {
     </div>` : ""}
     <div class="det-seccion sin-margen tabla-scroll stf-tabla-caja">
       <table class="stf-tabla">
-        <thead><tr><th class="stf-nombre">Colaborador</th>${cab}<th>Total</th></tr>
-        ${conIngresos(h) ? `<tr class="stf-ingresos"><th scope="row" class="stf-nombre">Ingresos previstos<small>casas que ingresan</small></th>${fechas.map((f) => `<td>${editable
+        <thead>${filaSemanas(sems)}<tr class="stf-dias"><th class="stf-nombre">Colaborador</th>${cab}<th>Total</th></tr>
+        ${conIngresos(h) ? `<tr class="stf-ingresos"><th scope="row" class="stf-nombre">Ingresos previstos<small>casas que ingresan</small></th>${fechas.map((f) => `<td class="${cs(f).trim()}">${editable
           ? `<input type="number" min="0" step="1" inputmode="numeric" class="stf-ing" data-stf-ingreso="${f}" value="${ingresoDe(h, f)}" aria-label="Ingresos previstos ${fechaLarga(f)}">`
           : `<b>${ingresoDe(h, f) === "" ? "—" : ingresoDe(h, f)}</b>`}</td>`).join("")}<td><b>${fechas.reduce((t, f) => t + (Number(ingresoDe(h, f)) || 0), 0)}</b></td></tr>` : ""}</thead>
         <tbody>${filas || `<tr><td colspan="${fechas.length + 2}" class="nota">Agrega colaboradores al horario.</td></tr>`}</tbody>
@@ -1068,12 +1082,13 @@ function stfImprimirHorario() {
   const H = stf.horario;
   const h = H.h;
   const fechas = fechasEntre(h.desde, h.hasta);
+  const { sems, cs } = marcasSemana(fechas);
   const filas = H.personas.map((hp) => {
     const persona = personaPorId(hp.persona_id) || hp;
     const r = resumenHorario(hp);
     return `<tr><th>${escapar(hp.nombre)}<small>${escapar(hp.puesto || "")}</small></th>${fechas.map((f) => {
       const t = textoCelda(H.celdas.get(`${hp.persona_id}|${f}`), persona);
-      return `<td class="${t.clase}${t.excede ? " excede" : ""}"><b>${t.a}</b><small>${t.b}</small>${t.x ? `<em class="stf-extra">${t.excede ? "⚠ " : ""}${t.x}</em>` : ""}</td>`;
+      return `<td class="${t.clase}${t.excede ? " excede" : ""}${cs(f)}"><b>${t.a}</b><small>${t.b}</small>${t.x ? `<em class="stf-extra">${t.excede ? "⚠ " : ""}${t.x}</em>` : ""}</td>`;
     }).join("")}<td><b>${r.horas} h</b>${r.extra ? `<em class="stf-extra">+${horasTxt(r.extra)} h extra</em>` : ""}<small>${r.dias} días</small></td></tr>`;
   }).join("");
   stfImprimir(`
@@ -1082,10 +1097,10 @@ function stfImprimirHorario() {
       <p class="imp-titulo">Horario ${escapar(h.nombre || "")} — ${fechaCorta(h.desde)} al ${fechaAnio(h.hasta)}</p>
     </div>
     <table class="stf-imp-tabla">
-      <thead><tr><th>Colaborador</th>${fechas.map((f) => `<th>${DIAS_CORTO[diaSemana(f)]}<small>${fechaCorta(f)}</small></th>`).join("")}<th>Total</th></tr>
-      ${conIngresos(h) ? `<tr class="stf-ingresos"><th>Ingresos previstos</th>${fechas.map((f) => `<td><b>${ingresoDe(h, f) === "" ? "—" : ingresoDe(h, f)}</b></td>`).join("")}<td><b>${fechas.reduce((t, f) => t + (Number(ingresoDe(h, f)) || 0), 0)}</b></td></tr>` : ""}</thead>
+      <thead>${filaSemanas(sems)}<tr><th>Colaborador</th>${fechas.map((f) => `<th class="${cs(f).trim()}">${DIAS_CORTO[diaSemana(f)]}<small>${fechaCorta(f)}</small></th>`).join("")}<th>Total</th></tr>
+      ${conIngresos(h) ? `<tr class="stf-ingresos"><th>Ingresos previstos</th>${fechas.map((f) => `<td class="${cs(f).trim()}"><b>${ingresoDe(h, f) === "" ? "—" : ingresoDe(h, f)}</b></td>`).join("")}<td><b>${fechas.reduce((t, f) => t + (Number(ingresoDe(h, f)) || 0), 0)}</b></td></tr>` : ""}</thead>
       <tbody>${filas}</tbody>
-      <tfoot><tr><th>Personas trabajando</th>${fechas.map((f) => `<td>${H.personas.filter((hp) => H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo").length}</td>`).join("")}<td></td></tr></tfoot>
+      <tfoot><tr><th>Personas trabajando</th>${fechas.map((f) => `<td class="${cs(f).trim()}">${H.personas.filter((hp) => H.celdas.get(`${hp.persona_id}|${f}`)?.tipo === "trabajo").length}</td>`).join("")}<td></td></tr></tfoot>
     </table>
     <p class="imp-pie">${h.estado === "publicado" ? "Publicado" : "Borrador"} · Impreso el ${fechaHora(new Date())} por ${escapar(app.yo.nombre)}</p>`, true);
 }
@@ -1176,6 +1191,29 @@ async function stfExcelHorario() {
   });
   ws.getColumn(1).width = 28;
   for (let j = 2; j <= ultimaCol; j++) ws.getColumn(j).width = 12;
+
+  const { sems, corte } = marcasSemana(fechas);
+  if (sems.length) {
+    let col = 2;
+    sems.forEach((s, k) => {
+      if (s.length > 1) ws.mergeCells(3, col, 3, col + s.length - 1);
+      const c = ws.getCell(3, col);
+      c.value = textoSemana(s, k);
+      c.font = { bold: true, size: 10, color: { argb: k % 2 ? "FF23343D" : "FF1F4F38" } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: k % 2 ? "FFEDF1F0" : "FFDCEFE4" } };
+      col += s.length;
+    });
+    ws.getRow(3).height = 20;
+    const grueso = { style: "thick", color: { argb: "FF23343D" } };
+    fechas.forEach((f, j) => {
+      if (!corte.has(f)) return;
+      for (let r = 3; r <= ini + H.personas.length; r++) {
+        const c = ws.getCell(r, 2 + j);
+        c.border = { ...(c.border || excelBorde), left: grueso };
+      }
+    });
+  }
 
   const buf = await wb.xlsx.writeBuffer();
   stfDescargar(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
