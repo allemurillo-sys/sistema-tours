@@ -102,6 +102,9 @@ const horasJornada = (p) => (p?.jornada === "media" ? 4 : 8);
 // Horas extra (etapa 15): opcionales por casilla de trabajo; se avisa si el día pasa de 12 h
 const EXTRAS_RAPIDAS = [1, 2, 3, 4];
 const MAX_HORAS_DIA = 12;
+// Turno de la tarde: entrada a las 12:00 PM o más tarde (se pinta azul celeste)
+const esTarde = (entrada) => String(entrada || "").slice(0, 5) >= "12:00";
+const claseTrabajo = (entrada) => (esTarde(entrada) ? "t-tarde" : "t-trabajo");
 const extraDe = (c) => (c?.tipo === "trabajo" ? Number(c.horas_extra) || 0 : 0);
 const horasTxt = (n) => String(Math.round(n * 100) / 100).replace(".", ",");
 // Operaciones lleva la fila «Ingresos previstos» (casas que ingresan cada día), escrita a mano
@@ -817,7 +820,7 @@ function textoCelda(c, persona) {
     const extra = extraDe(c);
     const total = horasJornada(persona) + extra;
     return {
-      a: hora12(c.entrada), b: `a ${hora12(sumarHoras(c.entrada, total))}`, clase: "t-trabajo",
+      a: hora12(c.entrada), b: `a ${hora12(sumarHoras(c.entrada, total))}`, clase: claseTrabajo(c.entrada),
       x: extra ? `+${horasTxt(extra)} h extra` : "", excede: total > MAX_HORAS_DIA, total
     };
   }
@@ -832,7 +835,7 @@ function htmlHorario() {
   const sel = stf.turnoSel;
   const chipExtra = (n) => `<button type="button" class="stf-turno t-extra ${(sel.extra || 0) === n ? "on" : ""}" data-stf-accion="extra" data-extra="${n}" aria-pressed="${(sel.extra || 0) === n}">${n ? `+${horasTxt(n)} h` : "Ninguna"}</button>`;
   const extraLibre = sel.extra && !EXTRAS_RAPIDAS.includes(sel.extra) ? sel.extra : "";
-  const chipTurno = (t) => `<button type="button" class="stf-turno t-trabajo ${sel.tipo === "trabajo" && sel.entrada === t ? "on" : ""}" data-stf-accion="turno" data-tipo="trabajo" data-entrada="${t}" aria-pressed="${sel.tipo === "trabajo" && sel.entrada === t}">${hora12(t)}</button>`;
+  const chipTurno = (t) => `<button type="button" class="stf-turno ${claseTrabajo(t)} ${sel.tipo === "trabajo" && sel.entrada === t ? "on" : ""}" data-stf-accion="turno" data-tipo="trabajo" data-entrada="${t}" aria-pressed="${sel.tipo === "trabajo" && sel.entrada === t}">${hora12(t)}</button>`;
   const chipTipo = (tipo, txt, clase) => `<button type="button" class="stf-turno ${clase} ${sel.tipo === tipo ? "on" : ""}" data-stf-accion="turno" data-tipo="${tipo}" aria-pressed="${sel.tipo === tipo}">${txt}</button>`;
   const yo = staffMiPersona();
   const { sems, cs } = marcasSemana(fechas);
@@ -943,7 +946,7 @@ function htmlHorario() {
         <button type="button" class="btn" data-stf-accion="agregar-persona">Agregar</button>
         ${adminHor ? `<small class="nota">Como administrador puede agregar colaboradores de cualquier departamento.</small>` : ""}
       </div>` : editable && adminHor ? `<p class="nota stf-agregar">Todos los colaboradores activos ya están en este horario. Para agregar a alguien nuevo, créelo primero en Perfiles de colaboradores.</p>` : ""}
-    <div class="stf-leyenda"><span class="t-trabajo">Trabaja</span><span class="t-extra">+ h extra</span><span class="t-libre">Libre</span><span class="t-vac">Vacaciones</span><span class="t-inc">Incapacidad</span><span class="excede">⚠ más de ${MAX_HORAS_DIA} h en el día</span></div>`;
+    <div class="stf-leyenda"><span class="t-trabajo">Entrada en la mañana</span><span class="t-tarde">Entrada 12 PM o después</span><span class="t-extra">+ h extra</span><span class="t-libre">Libre</span><span class="t-vac">Vacaciones</span><span class="t-inc">Incapacidad</span><span class="excede">⚠ más de ${MAX_HORAS_DIA} h en el día</span></div>`;
 }
 
 // Elige las horas extra a aplicar. Si el turno elegido no es de trabajo, se pasa al modo «solo horas extra».
@@ -1105,8 +1108,8 @@ function stfImprimirHorario() {
     <p class="imp-pie">${h.estado === "publicado" ? "Publicado" : "Borrador"} · Impreso el ${fechaHora(new Date())} por ${escapar(app.yo.nombre)}</p>`, true);
 }
 
-const EXCEL_COLOR = { "t-extra": "FFEFE7F7", "t-trabajo": "FFE4EFE8", "t-libre": "FFFFE27A", "t-vac": "FFE3ECF7", "t-inc": "FFFCEBDD", "t-vacia": "FFFFFFFF" };
-const EXCEL_TEXTO = { "t-extra": "FF5B2E86", "t-trabajo": "FF1F4F38", "t-libre": "FF5C4300", "t-vac": "FF24527A", "t-inc": "FF8A3B12", "t-vacia": "FF8A979C" };
+const EXCEL_COLOR = { "t-extra": "FFEFE7F7", "t-trabajo": "FFE4EFE8", "t-tarde": "FFDDF1FA", "t-libre": "FFFFE27A", "t-vac": "FFE3ECF7", "t-inc": "FFFCEBDD", "t-vacia": "FFFFFFFF" };
+const EXCEL_TEXTO = { "t-extra": "FF5B2E86", "t-trabajo": "FF1F4F38", "t-tarde": "FF145F80", "t-libre": "FF5C4300", "t-vac": "FF24527A", "t-inc": "FF8A3B12", "t-vacia": "FF8A979C" };
 const excelBorde = { top: { style: "thin", color: { argb: "FFD5DEDA" } }, left: { style: "thin", color: { argb: "FFD5DEDA" } }, bottom: { style: "thin", color: { argb: "FFD5DEDA" } }, right: { style: "thin", color: { argb: "FFD5DEDA" } } };
 
 async function stfExcelHorario() {
@@ -1183,7 +1186,7 @@ async function stfExcelHorario() {
   fCob.eachCell({ includeEmpty: true }, (c) => { c.border = excelBorde; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF7FAF8" } }; });
 
   const ley = ws.getRow(ini + 2 + H.personas.length);
-  [["Trabaja", "t-trabajo"], ["+ h extra", "t-extra"], ["Libre", "t-libre"], ["Vacaciones", "t-vac"], ["Incapacidad", "t-inc"]].forEach(([t, k], j) => {
+  [["Mañana", "t-trabajo"], ["Desde 12 PM", "t-tarde"], ["+ h extra", "t-extra"], ["Libre", "t-libre"], ["Vacaciones", "t-vac"], ["Incapacidad", "t-inc"]].forEach(([t, k], j) => {
     const c = ley.getCell(2 + j);
     c.value = t; c.alignment = { horizontal: "center" };
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: EXCEL_COLOR[k] } };
