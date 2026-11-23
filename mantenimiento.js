@@ -246,10 +246,10 @@ function htmlUsuarios() {
       <td><strong>${escapar(u.nombre)}</strong>${u.id === app.yo.id ? ` <span class="nota">(tú)</span>` : ""}</td>
       <td>${escapar(u.correo ?? "")}</td>
       <td>${NOMBRE_ROL[u.rol] ?? u.rol}</td>
-      <td>${u.activo ? "Activo" : "Desactivado"}</td>
+      <td>${u.activo ? "Activo" : "Desactivado"}${u.correo_reasignado_a ? `<br><span class="nota">Correo cedido a ${escapar(mant.usuarios.find((x) => x.id === u.correo_reasignado_a)?.nombre ?? "otro usuario")}</span>` : ""}</td>
       <td class="acciones-fila">
         <button type="button" class="enlace" data-mant-accion="editar-usuario" data-id="${u.id}">Editar</button>
-        <button type="button" class="enlace" data-mant-accion="clave-usuario" data-id="${u.id}">Cambiar clave</button>
+        ${u.correo_reasignado_a ? "" : `<button type="button" class="enlace" data-mant-accion="clave-usuario" data-id="${u.id}">Cambiar clave</button>`}
       </td>
     </tr>`).join("");
 
@@ -262,7 +262,7 @@ function htmlUsuarios() {
         <h3>Usuarios del panel</h3>
         <button type="button" class="btn primario" data-mant-accion="nuevo-usuario">Nuevo usuario</button>
       </div>
-      <p class="nota">Un usuario desactivado ya no puede entrar al panel, pero su historial se conserva.</p>
+      <p class="nota">Un usuario desactivado ya no puede entrar al panel, pero su historial se conserva. Su correo se puede usar en un usuario nuevo: lo anterior sigue a nombre de la persona desactivada y lo nuevo queda a nombre de quien use el correo ahora.</p>
       <div class="tabla-scroll">
         <table class="tabla">
           <thead><tr><th>Nombre</th><th>Correo</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
@@ -271,6 +271,25 @@ function htmlUsuarios() {
       </div>
     </div>`;
 }
+
+// Usuarios que ya tuvieron este correo
+function usuariosConCorreo(correo) {
+  const c = String(correo ?? "").trim().toLowerCase();
+  return c ? mant.usuarios.filter((u) => (u.correo ?? "").toLowerCase() === c) : [];
+}
+
+function avisoCorreoNuevo() {
+  const caja = $("nuCorreoAviso");
+  if (!caja) return;
+  const previos = usuariosConCorreo($("nuCorreo").value);
+  const activo = previos.find((u) => u.activo);
+  caja.innerHTML = activo
+    ? `<p class="aviso">Este correo pertenece a <strong>${escapar(activo.nombre)}</strong>, que está activo. Para usarlo aquí, primero desactívalo.</p>`
+    : previos.length
+      ? `<p class="nota">Este correo era de <strong>${escapar(previos.map((u) => u.nombre).join(", "))}</strong> (desactivado). Su historial sigue a su nombre; lo nuevo quedará a nombre de este usuario.</p>`
+      : "";
+}
+document.addEventListener("input", (e) => { if (e.target?.id === "nuCorreo") avisoCorreoNuevo(); });
 
 function htmlFormUsuario(ed) {
   const opcionesRol = (actual) =>
@@ -284,6 +303,7 @@ function htmlFormUsuario(ed) {
           <label>Nombre completo <input id="nuNombre" autofocus></label>
           <label>Correo <input id="nuCorreo" type="email" autocomplete="off"></label>
         </div>
+        <div id="nuCorreoAviso" role="status"></div>
         <div class="fila">
           <label>Tipo de usuario <select id="nuRol">${opcionesRol("operaciones")}</select></label>
           <label>Clave inicial
@@ -332,7 +352,8 @@ function htmlFormUsuario(ed) {
       <div class="fila">
         <label>Tipo de usuario <select id="euRol" ${yoMismo ? "disabled" : ""}>${opcionesRol(u.rol)}</select></label>
       </div>
-      <label class="check-linea"><input id="euActivo" type="checkbox" ${u.activo ? "checked" : ""} ${yoMismo ? "disabled" : ""}> Activo (puede entrar al panel)</label>
+      <label class="check-linea"><input id="euActivo" type="checkbox" ${u.activo ? "checked" : ""} ${yoMismo || u.correo_reasignado_a ? "disabled" : ""}> Activo (puede entrar al panel)</label>
+      ${u.correo_reasignado_a ? `<p class="aviso">El correo ${escapar(u.correo ?? "")} se le asignó a <strong>${escapar(mant.usuarios.find((x) => x.id === u.correo_reasignado_a)?.nombre ?? "otro usuario")}</strong>${u.correo_reasignado_en ? ` el ${new Date(u.correo_reasignado_en).toLocaleDateString("es-CR")}` : ""}. El historial anterior sigue a nombre de ${escapar(u.nombre)}, pero este usuario ya no se puede reactivar.</p>` : ""}
       ${yoMismo ? `<p class="nota">No puedes cambiar tu propio tipo de usuario ni desactivarte. Pídeselo a otro administrador.</p>` : ""}
       <div class="sec-botones">
         <button type="button" class="btn primario" data-mant-accion="guardar-usuario">Guardar cambios</button>
@@ -746,6 +767,10 @@ $("mantContenido").addEventListener("click", async (e) => {
       };
       if (!cuerpo.nombre || !cuerpo.correo) return avisar("Escribe el nombre y el correo.", "error");
       if (cuerpo.clave.length < 8) return avisar("La clave debe tener al menos 8 caracteres.", "error");
+      const previos = usuariosConCorreo(cuerpo.correo);
+      const activoPrevio = previos.find((x) => x.activo);
+      if (activoPrevio) return avisar(`Ese correo pertenece a ${activoPrevio.nombre}, que está activo. Primero desactívalo.`, "error");
+      if (previos.length && !confirm(`Este correo era de ${previos.map((x) => x.nombre).join(", ")} (desactivado).\n\nSu historial seguirá a su nombre y ya no se podrá reactivar. Todo lo nuevo con este correo quedará a nombre de ${cuerpo.nombre}.\n\n¿Crear el usuario?`)) return;
       await conBoton(btn, async () => {
         try {
           await llamarFuncion(cuerpo);
@@ -785,7 +810,7 @@ $("mantContenido").addEventListener("click", async (e) => {
       if (!datos.nombre) return avisar("Escribe el nombre.", "error");
       if (u.id !== app.yo.id) {
         datos.rol = $("euRol").value;
-        datos.activo = $("euActivo").checked;
+        if (!u.correo_reasignado_a) datos.activo = $("euActivo").checked;
       }
       await conBoton(btn, async () => {
         const { error } = await db.from("perfiles").update(datos).eq("id", u.id);
