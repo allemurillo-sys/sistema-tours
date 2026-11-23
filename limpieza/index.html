@@ -320,6 +320,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .o-row{display:grid;grid-template-columns:minmax(120px,1.3fr) 128px 128px 64px 64px minmax(300px,2.4fr);gap:8px;align-items:center;padding:9px 14px;border-top:1px solid var(--line)}
 .o-row.o-h{border-top:0;background:#f7f5f1;font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-top:8px;padding-bottom:8px}
 .o-grupo{padding:8px 14px;background:#efece6;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand-2);border-top:1px solid var(--line)}
+.ord-lista{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.ord-it{display:flex;align-items:center;gap:8px;padding:7px 8px;border-top:1px solid var(--line);background:var(--panel)}
+.ord-it:first-child{border-top:0}
+.ord-it.arr{background:#fdf6e6;box-shadow:0 2px 10px rgba(0,0,0,.15);position:relative;z-index:2}
+.ord-h{cursor:grab;touch-action:none;user-select:none;font-size:20px;color:var(--muted);padding:2px 6px;line-height:1}
+.ord-n{min-width:24px;text-align:right;color:var(--muted);font-size:12.5px;font-weight:700}
+.ord-t{flex:1;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ord-t small{color:var(--muted);font-weight:500}
+.ord-b{border:1px solid var(--line);background:#fff;border-radius:8px;width:34px;height:32px;cursor:pointer;font-size:12px;color:var(--brand-2)}
 .o-nom{font-weight:700;display:flex;align-items:center;gap:6px;min-width:0}
 .o-nom span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .o-nom .o-ren{border:0;background:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px;border-radius:6px}
@@ -639,6 +648,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
           <option value="urgencia">Orden: por urgencia</option>
           <option value="lista">Orden: como el Excel</option>
         </select>
+        <button class="btn sec sm hidden" id="o-ordenar" title="Solo administrador">↕ Ordenar propiedades</button>
         <button class="btn sec sm hidden" id="o-copiar">⧉ Armar desde el día anterior</button>
         <button class="btn sm ok hidden" id="o-terminar">✅ Reporte terminado</button>
         <button class="btn sec sm" id="o-hist">🕘 Bitácora</button>
@@ -698,6 +708,7 @@ const TZ      = 'America/Costa_Rica';
 const MAX_FOTOS = 8;
 const DIA = 24 * 60 * 60 * 1000;
 
+const esAdmin = () => S.perfil?.rol === 'admin';
 const ROL = { admin:'Administrador', ama_llaves:'Ama de llaves', supervisora:'Supervisora', operaciones:'Operaciones', mucama:'Mucama' };
 // Destinos ("Dirigido a"): cada reporte va a un rol y a una o varias personas de ese rol
 const DEP = { ama_llaves:'Ama de llaves', supervisora:'Supervisora', operaciones:'Operaciones', mucama:'Mucama', admin:'Administración' };
@@ -1979,7 +1990,8 @@ async function mPropiedades(){
   await cargarPropiedades();
   const admin = tengo('propiedades_eliminar'), editar = tengo('propiedades_editar');
   $('#mant-body').innerHTML = `
-    <h3>Propiedades</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Propiedades</h3>
+      ${esAdmin() ? '<button class="btn sec sm" type="button" id="fp-ordenar">↕ Ordenar propiedades</button>' : ''}</div>
     <form class="row-form ${editar ? '' : 'hidden'}" id="fp" style="margin-top:12px">
       <input class="inp" id="fp-nombre" placeholder="Nombre de la propiedad" required>
       <input class="inp" id="fp-desc" placeholder="Descripción o ubicación (opcional)">
@@ -1998,7 +2010,9 @@ async function mPropiedades(){
       </td></tr>`).join('') : '<tr><td colspan="6" class="loading">Aún no hay propiedades</td></tr>'}
     </tbody></table></div>
     <p style="font-size:13px;color:var(--muted)">Una propiedad <b>inactiva</b> deja de aparecer en la lista de nuevos reportes pero conserva su historial. Al eliminarla, los reportes anteriores mantienen el nombre.
-    En <b>Editar</b> puede cambiar el nombre, el <b>orden</b> y el <b>grupo</b> con que aparece en el Reporte de Limpieza (ej. 10, 20, 30…), y si aparece o no en ese tablero.</p>`;
+    En <b>Editar</b> puede cambiar el nombre, el <b>grupo</b> con que aparece en el Reporte de Limpieza y si aparece o no en ese tablero.
+    El <b>orden</b> de las propiedades solo lo cambia un administrador con <b>↕ Ordenar propiedades</b>. Las propiedades nuevas se agregan al final.</p>`;
+  if (esAdmin()) $('#fp-ordenar').onclick = () => formOrdenPropiedades(mPropiedades);
 
   $('#fp').onsubmit = async e => {
     e.preventDefault();
@@ -2030,8 +2044,8 @@ function formPropiedad(p, despues){
       <form class="m-body" id="fpe">
         <label class="f">Nombre</label><input class="inp" id="fpe-n" value="${esc(p.nombre)}" required maxlength="60">
         <label class="f">Descripción</label><input class="inp" id="fpe-d" value="${esc(p.descripcion || '')}">
-        <div style="display:grid;grid-template-columns:110px 1fr;gap:10px">
-          <div><label class="f">Orden</label><input class="inp" type="number" id="fpe-o" value="${p.orden ?? ''}" placeholder="Ej. 10"></div>
+        <div style="display:grid;grid-template-columns:${esAdmin() ? '110px ' : ''}1fr;gap:10px">
+          ${esAdmin() ? `<div><label class="f">Orden</label><input class="inp" type="number" id="fpe-o" value="${p.orden ?? ''}" placeholder="Ej. 10"></div>` : ''}
           <div><label class="f">Grupo (opcional)</label><input class="inp" id="fpe-g" maxlength="40" value="${esc(p.grupo || '')}" placeholder="Ej. Apartamentos, Hormigas House"></div>
         </div>
         <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600;cursor:pointer">
@@ -2041,9 +2055,10 @@ function formPropiedad(p, despues){
       </form>`, true)) return;
   $('#fpe').onsubmit = async e => {
     e.preventDefault();
-    const orden = $('#fpe-o').value.trim();
-    const { error } = await sb.from('propiedades').update({ nombre:$('#fpe-n').value.trim(), descripcion:$('#fpe-d').value.trim() || null,
-      orden:orden === '' ? null : Math.round(+orden), grupo:$('#fpe-g').value.trim() || null, en_ocupacion:$('#fpe-t').checked }).eq('id', p.id);
+    const cambios = { nombre:$('#fpe-n').value.trim(), descripcion:$('#fpe-d').value.trim() || null,
+      grupo:$('#fpe-g').value.trim() || null, en_ocupacion:$('#fpe-t').checked };
+    if (esAdmin()) { const orden = $('#fpe-o').value.trim(); cambios.orden = orden === '' ? null : Math.round(+orden); }   // el orden solo lo cambia el administrador
+    const { error } = await sb.from('propiedades').update(cambios).eq('id', p.id);
     if (error) return $('#fpe-err').textContent = errMsg(error);
     cerrarModal(); aviso('Propiedad actualizada');
     await cargarPropiedades();
@@ -3341,6 +3356,7 @@ function pintarOcupacion(){
   if (oEditar() && !O.filas.size) avisos.push('Este día aún no tiene datos. Puede llenarlo aquí o tocar <b>⧉ Armar desde el día anterior</b>.');
   $('#o-aviso').innerHTML = avisos.map(a => a.startsWith('<div') ? a : `<div class="o-aviso">${a}</div>`).join('');
 
+  $('#o-ordenar').classList.toggle('hidden', !esAdmin());
   const q = norm($('#o-q').value);
   if (!O.orden) O.orden = tengo('ocupacion_editar') ? 'lista' : 'urgencia';   // ama de llaves ve primero lo más urgente
   $('#o-orden').value = O.orden;
@@ -3386,7 +3402,7 @@ function oFilaHTML(p){
       <div class="o-tarea t-${tarea.c}">${tarea.ic} ${esc(tarea.txt)}</div>
       ${f.nota ? `<div class="o-nota">📝 ${esc(f.nota)}</div>` : ''}</div>
       ${ed ? `<button type="button" class="o-ren" data-onota title="Nota de recepción" aria-label="Nota de recepción">📝</button>` : ''}
-      ${tengo('propiedades_editar') ? `<button type="button" class="o-ren" data-oren title="Cambiar nombre u orden" aria-label="Editar propiedad">✏️</button>` : ''}
+      ${tengo('propiedades_editar') ? `<button type="button" class="o-ren" data-oren title="Editar propiedad" aria-label="Editar propiedad">✏️</button>` : ''}
     </div>
     <div><span class="o-lbl">Amanece</span>${ed ? sel('estado', O_AMANECE, Object.keys(O_AMANECE), f.estado) : chip(O_AMANECE, f.estado)}</div>
     <div><span class="o-lbl">Queda</span>${ed ? sel('entrada', O_QUEDA, opcQueda, f.entrada) : chip(O_QUEDA, f.entrada)}</div>
@@ -3615,6 +3631,71 @@ $('#o-lista').addEventListener('click', e => {
   if (b.hasAttribute('data-onota')) return oFormNota(pid);
   if (b.hasAttribute('data-oren')) return formPropiedad(S.propiedades.find(p => p.id === pid), () => { if (S.vista === 'ocupacion') pintarOcupacion(); });
 });
+$('#o-ordenar').onclick = () => formOrdenPropiedades(() => { O.orden = 'lista'; if (S.vista === 'ocupacion') pintarOcupacion(); });
+
+/* ---------- Orden manual de las propiedades (solo Administrador) ----------
+   Arrastrar con ⠿ (PC y celular) o mover con ▲ ▼. Se guarda todo junto al tocar "Guardar orden". */
+function formOrdenPropiedades(despues){
+  if (!esAdmin()) return aviso('Solo un administrador puede ordenar las propiedades', true);
+  const porOrden = (a, b) => (a.orden ?? 1e6) - (b.orden ?? 1e6) || a.nombre.localeCompare(b.nombre, 'es');
+  const enTablero = S.propiedades.filter(p => p.activa && p.en_ocupacion !== false).sort(porOrden);
+  const resto = S.propiedades.filter(p => !(p.activa && p.en_ocupacion !== false)).sort(porOrden);
+  if (!abrirModal(`<div class="m-head"><div><h3>Ordenar propiedades</h3>
+        <div style="color:var(--muted);font-size:13px">Así aparecerán en el Reporte de Limpieza (orden “como el Excel”)</div></div>
+        <button class="x" data-x>✕</button></div>
+      <div class="m-body">
+        <p style="font-size:13px;color:var(--muted);margin:0 0 8px">Arrastre con <b>⠿</b> o use <b>▲ ▼</b>. Los cambios se aplican al tocar <b>Guardar orden</b>.</p>
+        <ol class="ord-lista" id="ord-l">${enTablero.map(p => `<li class="ord-it" data-id="${p.id}">
+          <span class="ord-h" title="Arrastrar" aria-hidden="true">⠿</span><span class="ord-n"></span>
+          <span class="ord-t">${esc(p.nombre)}${p.grupo ? ` <small>${esc(p.grupo)}</small>` : ''}</span>
+          <button type="button" class="ord-b" data-m="-1" aria-label="Subir ${esc(p.nombre)}">▲</button>
+          <button type="button" class="ord-b" data-m="1" aria-label="Bajar ${esc(p.nombre)}">▼</button></li>`).join('')}</ol>
+        <div class="err" id="ord-err"></div>
+        <button class="btn block" type="button" id="ord-g">Guardar orden</button>
+      </div>`)) return;
+  const lista = $('#ord-l');
+  const numerar = () => [...lista.children].forEach((li, i) => li.querySelector('.ord-n').textContent = i + 1);
+  numerar();
+  lista.addEventListener('click', e => {
+    const b = e.target.closest('.ord-b'); if (!b) return;
+    const li = b.closest('.ord-it');
+    if (+b.dataset.m < 0 && li.previousElementSibling) lista.insertBefore(li, li.previousElementSibling);
+    if (+b.dataset.m > 0 && li.nextElementSibling) lista.insertBefore(li.nextElementSibling, li);
+    numerar(); b.focus();
+  });
+  // Arrastrar (funciona con mouse y con el dedo)
+  let arr = null;
+  lista.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.ord-h'); if (!h) return;
+    e.preventDefault();
+    arr = h.closest('.ord-it'); arr.classList.add('arr');
+    h.setPointerCapture(e.pointerId);
+  });
+  lista.addEventListener('pointermove', e => {
+    if (!arr) return;
+    // Si arrastra cerca del borde de la pantalla, la lista se desplaza sola
+    const cont = [lista.closest('.modal'), $('#modal')].find(x => x.scrollHeight > x.clientHeight + 2);
+    if (cont) { if (e.clientY < 60) cont.scrollTop -= 12; else if (e.clientY > innerHeight - 60) cont.scrollTop += 12; }
+    const otro = [...lista.children].find(li => { if (li === arr) return false; const b = li.getBoundingClientRect(); return e.clientY >= b.top && e.clientY <= b.bottom; });
+    if (!otro) return;
+    const b = otro.getBoundingClientRect();
+    lista.insertBefore(arr, e.clientY < b.top + b.height / 2 ? otro : otro.nextElementSibling);
+    numerar();
+  });
+  const soltar = () => { if (arr) { arr.classList.remove('arr'); arr = null; } };
+  lista.addEventListener('pointerup', soltar);
+  lista.addEventListener('pointercancel', soltar);
+  $('#ord-g').onclick = async () => {
+    const ids = [...[...lista.children].map(li => +li.dataset.id), ...resto.map(p => p.id)];
+    $('#ord-g').disabled = true;
+    const { error } = await sb.rpc('propiedades_ordenar', { p_ids:ids });
+    $('#ord-g').disabled = false;
+    if (error) return $('#ord-err').textContent = errMsg(error);
+    cerrarModal(); aviso('Orden guardado');
+    await cargarPropiedades();
+    if (despues) despues();
+  };
+}
 
 /* =====================================================================
    MI CUENTA
