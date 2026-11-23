@@ -448,6 +448,8 @@ async function cargarCatalogos() {
   const opc = await db.rpc("tarifario_opciones");
   if (!opc.error) app.opcionesTarifario = opc.data || [];
   else console.error("Tarifario final:", opc.error);
+  // Opciones de "Origen" de las reservas (reserva-manual.js)
+  if (typeof cargarOrigenes === "function") await cargarOrigenes();
   const error = s.error || p.error || c.error || pf.error || op.error || tp.error;
   if (error) return fallo(error, "No se pudieron cargar los catálogos.");
   app.operadores = op.data;

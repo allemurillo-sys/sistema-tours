@@ -153,3 +153,17 @@
   .man-act select, .man-act [data-man-buscar] { grid-column: 1 / -1; }
 }
 .man-transporte { display: block; margin-top: 10px; max-width: 420px; }
+
+/* Reserva manual: editor de opciones de Origen (administrador) */
+.man-origen-editar { display: inline-block; margin-top: 4px; font-size: .85rem; }
+.man-origenes { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--linea, #ddd); border-radius: 8px; background: var(--fondo-suave, #fafafa); }
+.org-fila { display: grid; grid-template-columns: minmax(160px, 2fr) minmax(110px, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.org-fila input { width: 100%; }
+.org-botones { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.org-inactiva input { opacity: .6; }
+.org-estado { font-size: .8rem; color: var(--gris, #777); }
+.org-nueva { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--linea, #ddd); }
+@media (max-width: 700px) {
+  .org-fila { grid-template-columns: 1fr 1fr; padding-bottom: 8px; border-bottom: 1px solid var(--linea, #eee); }
+  .org-fila .org-botones { grid-column: 1 / -1; }
+}

@@ -16,6 +16,157 @@ const ORIGENES = {
   otro: "Otro"
 };
 const ORIGEN_CORTO = { oficina: "Oficina", telefono: "Teléfono", whatsapp: "WhatsApp", correo: "Correo", otro: "Manual" };
+// Las opciones reales vienen de la tabla origenes_reserva (el administrador las edita);
+// las de arriba solo se usan si la tabla no se pudo leer.
+let origenesLista = [];
+
+async function cargarOrigenes() {
+  const { data, error } = await db.from("origenes_reserva").select("*").order("orden").order("nombre");
+  if (error) { console.error("Orígenes:", error); return; }
+  origenesLista = data || [];
+  // Se rellenan los mismos objetos para que el tablero y el detalle sigan funcionando igual
+  Object.keys(ORIGENES).forEach((k) => delete ORIGENES[k]);
+  Object.keys(ORIGEN_CORTO).forEach((k) => delete ORIGEN_CORTO[k]);
+  origenesLista.forEach((o) => {
+    ORIGENES[o.clave] = o.nombre;
+    if (o.clave !== "web") ORIGEN_CORTO[o.clave] = o.corto || o.nombre;
+  });
+}
+
+// Opciones que se pueden elegir en una reserva nueva (activas y sin "Formulario web")
+function origenesElegibles() {
+  const lista = origenesLista.length
+    ? origenesLista.filter((o) => o.activo && o.clave !== "web")
+    : Object.entries(ORIGENES).filter(([k]) => k !== "web").map(([clave, nombre]) => ({ clave, nombre }));
+  return lista;
+}
+
+function htmlOpcionesOrigen(elegido) {
+  const lista = origenesElegibles();
+  const sel = lista.some((o) => o.clave === elegido) ? elegido : lista[0]?.clave;
+  return lista.map((o) => `<option value="${escapar(o.clave)}" ${o.clave === sel ? "selected" : ""}>${escapar(o.nombre)}</option>`).join("");
+}
+
+// ---------- Editor de opciones de Origen (solo administrador) ----------
+const esAdminPanel = () => app.yo?.rol === "administrador";
+
+function htmlEditorOrigenes() {
+  const lista = origenesLista.filter((o) => o.clave !== "web");
+  const filas = lista.map((o, i) => `
+    <div class="org-fila${o.activo ? "" : " org-inactiva"}" data-clave="${escapar(o.clave)}">
+      <input data-org-nombre value="${escapar(o.nombre)}" maxlength="60" aria-label="Nombre de la opción">
+      <input data-org-corto value="${escapar(o.corto || "")}" maxlength="20" placeholder="Etiqueta corta" aria-label="Etiqueta corta en el tablero">
+      <span class="org-botones">
+        <button type="button" class="btn chico" data-manual="org-subir" ${i === 0 ? "disabled" : ""} aria-label="Subir">▲</button>
+        <button type="button" class="btn chico" data-manual="org-bajar" ${i === lista.length - 1 ? "disabled" : ""} aria-label="Bajar">▼</button>
+        <button type="button" class="btn chico" data-manual="org-guardar">Guardar</button>
+        ${o.activo
+          ? `<button type="button" class="enlace peligro" data-manual="org-eliminar">Eliminar</button>`
+          : `<span class="org-estado">Desactivada</span> <button type="button" class="enlace" data-manual="org-reactivar">Reactivar</button>`}
+      </span>
+    </div>`).join("");
+  return `
+    <p class="nota">Cambia el nombre y presiona <strong>Guardar</strong>. La etiqueta corta es la que se ve en el tablero (si la dejas vacía se usa el nombre). Una opción que ya se usó en reservas no se borra: se desactiva y deja de aparecer en reservas nuevas. "Formulario web" es fija.</p>
+    ${filas || `<p class="nota">No hay opciones. Agrega al menos una.</p>`}
+    <div class="org-fila org-nueva">
+      <input id="orgNuevoNombre" maxlength="60" placeholder="Nueva opción (ej.: Recomendación de hotel)" aria-label="Nombre de la nueva opción">
+      <input id="orgNuevoCorto" maxlength="20" placeholder="Etiqueta corta" aria-label="Etiqueta corta de la nueva opción">
+      <span class="org-botones"><button type="button" class="btn" data-manual="org-agregar">+ Agregar</button></span>
+    </div>
+    <p><button type="button" class="btn" data-manual="origenes">Listo</button></p>`;
+}
+
+// Vuelve a pintar el editor y el selector (conserva lo elegido si sigue activo)
+async function refrescarOrigenes() {
+  const elegido = $("manOrigen")?.value;
+  await cargarOrigenes();
+  if ($("manOrigen")) $("manOrigen").innerHTML = htmlOpcionesOrigen(elegido);
+  if ($("manOrigenesCaja") && !$("manOrigenesCaja").hidden) $("manOrigenesCaja").innerHTML = htmlEditorOrigenes();
+}
+
+function claveNueva(nombre) {
+  const base = nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || "origen";
+  let clave = base, n = 2;
+  while (origenesLista.some((o) => o.clave === clave)) clave = `${base}_${n++}`;
+  return clave;
+}
+
+const nombreRepetido = (nombre, salvo) => origenesLista.some((o) =>
+  o.clave !== salvo && o.nombre.trim().toLowerCase() === nombre.trim().toLowerCase());
+
+async function accionOrigen(accion, boton) {
+  if (!esAdminPanel()) return avisar("Solo el administrador puede editar las opciones de Origen.", "error");
+  const fila = boton.closest(".org-fila");
+  const clave = fila?.dataset.clave;
+  const o = origenesLista.find((x) => x.clave === clave);
+
+  await conBoton(boton, async () => {
+    if (accion === "org-agregar") {
+      const nombre = $("orgNuevoNombre").value.trim();
+      const corto = $("orgNuevoCorto").value.trim() || null;
+      if (!nombre) { $("orgNuevoNombre").focus(); return avisar("Escribe el nombre de la nueva opción.", "error"); }
+      if (nombreRepetido(nombre)) return avisar("Ya existe una opción con ese nombre.", "error");
+      const orden = Math.max(0, ...origenesLista.map((x) => x.orden)) + 1;
+      const { error } = await db.from("origenes_reserva").insert({ clave: claveNueva(nombre), nombre, corto, orden });
+      if (error) return fallo(error, "No se pudo agregar la opción.");
+      await refrescarOrigenes();
+      return avisar(`Opción "${nombre}" agregada.`);
+    }
+    if (!o) return;
+
+    if (accion === "org-guardar") {
+      const nombre = fila.querySelector("[data-org-nombre]").value.trim();
+      const corto = fila.querySelector("[data-org-corto]").value.trim() || null;
+      if (!nombre) return avisar("El nombre no puede quedar vacío.", "error");
+      if (nombreRepetido(nombre, clave)) return avisar("Ya existe una opción con ese nombre.", "error");
+      const { error } = await db.from("origenes_reserva").update({ nombre, corto }).eq("clave", clave);
+      if (error) return fallo(error, "No se pudo guardar la opción.");
+      await refrescarOrigenes();
+      return avisar("Opción guardada.");
+    }
+
+    if (accion === "org-subir" || accion === "org-bajar") {
+      const lista = origenesLista.filter((x) => x.clave !== "web");
+      const i = lista.findIndex((x) => x.clave === clave);
+      const j = accion === "org-subir" ? i - 1 : i + 1;
+      if (j < 0 || j >= lista.length) return;
+      [lista[i], lista[j]] = [lista[j], lista[i]];
+      const cambios = lista.map((x, k) => ({ clave: x.clave, orden: k + 1 })).filter((x) => origenesLista.find((y) => y.clave === x.clave).orden !== x.orden);
+      for (const c of cambios) {
+        const { error } = await db.from("origenes_reserva").update({ orden: c.orden }).eq("clave", c.clave);
+        if (error) return fallo(error, "No se pudo cambiar el orden.");
+      }
+      return refrescarOrigenes();
+    }
+
+    if (accion === "org-reactivar") {
+      const { error } = await db.from("origenes_reserva").update({ activo: true }).eq("clave", clave);
+      if (error) return fallo(error, "No se pudo reactivar la opción.");
+      await refrescarOrigenes();
+      return avisar(`Opción "${o.nombre}" reactivada.`);
+    }
+
+    if (accion === "org-eliminar") {
+      if (origenesElegibles().length <= 1) return avisar("Debe quedar al menos una opción activa.", "error");
+      // ¿Ya se usó en alguna reserva? Entonces solo se puede desactivar
+      const { count, error: e1 } = await db.from("cotizaciones").select("id", { count: "exact", head: true }).eq("origen", clave);
+      if (e1) return fallo(e1, "No se pudo revisar si la opción está en uso.");
+      if (count) {
+        if (!confirm(`"${o.nombre}" ya se usó en ${count} ${count === 1 ? "reserva" : "reservas"}, así que no se puede borrar (esas reservas la siguen mostrando).\n\n¿Desactivarla para que no aparezca en reservas nuevas?`)) return;
+        const { error } = await db.from("origenes_reserva").update({ activo: false }).eq("clave", clave);
+        if (error) return fallo(error, "No se pudo desactivar la opción.");
+        await refrescarOrigenes();
+        return avisar(`Opción "${o.nombre}" desactivada.`);
+      }
+      if (!confirm(`¿Eliminar la opción "${o.nombre}"? No se ha usado en ninguna reserva.`)) return;
+      const { error } = await db.from("origenes_reserva").delete().eq("clave", clave);
+      if (error) return fallo(error, "No se pudo eliminar la opción.");
+      await refrescarOrigenes();
+      return avisar(`Opción "${o.nombre}" eliminada.`);
+    }
+  });
+}
 const CODIGOS_PAIS = [
   ["+506", "Costa Rica"], ["+1", "EE. UU. / Canadá"], ["+52", "México"], ["+507", "Panamá"],
   ["+57", "Colombia"], ["+54", "Argentina"], ["+55", "Brasil"], ["+56", "Chile"],
@@ -63,10 +214,8 @@ function htmlFormManual() {
         <h3>¿Cómo llegó el cliente?</h3>
         <div class="fila">
           <label>Origen
-            <select id="manOrigen">
-              ${Object.entries(ORIGENES).filter(([k]) => k !== "web")
-                .map(([k, v]) => `<option value="${k}" ${k === (leerLocal("thot.manOrigen") || "oficina") ? "selected" : ""}>${v}</option>`).join("")}
-            </select>
+            <select id="manOrigen">${htmlOpcionesOrigen(leerLocal("thot.manOrigen") || "oficina")}</select>
+            ${esAdminPanel() ? `<button type="button" class="enlace man-origen-editar" data-manual="origenes">Editar opciones</button>` : ""}
           </label>
           <label>Atiende
             <select id="manColaborador">
@@ -79,6 +228,7 @@ function htmlFormManual() {
             </select>
           </label>
         </div>
+        <div id="manOrigenesCaja" class="man-origenes" hidden></div>
       </section>
 
       <section class="det-seccion">
@@ -162,7 +312,8 @@ function htmlFormManual() {
     </form>`;
 }
 
-function abrirManual() {
+async function abrirManual() {
+  await cargarOrigenes();   // por si el administrador cambió las opciones en otro equipo
   man.fechasManuales = false;
   man.idiomaManual = false;
   $("manualContenido").innerHTML = htmlFormManual();
@@ -338,6 +489,15 @@ $("manualContenido").addEventListener("keydown", (e) => {
 $("manualContenido").addEventListener("click", (e) => {
   const b = e.target.closest("[data-manual]");
   if (!b) return;
+  if (b.dataset.manual === "origenes") {
+    e.preventDefault();
+    const caja = $("manOrigenesCaja");
+    caja.hidden = !caja.hidden;
+    if (!caja.hidden) { caja.innerHTML = htmlEditorOrigenes(); $("orgNuevoNombre").focus(); }
+    else caja.innerHTML = "";
+    return;
+  }
+  if (b.dataset.manual.startsWith("org-")) { e.preventDefault(); accionOrigen(b.dataset.manual, b); return; }
   if (b.dataset.manual === "agregar-act") {
     // La siguiente actividad empieza el día después de la última
     const dias = [...document.querySelectorAll("#manActs [data-man-dia]")].map((x) => x.value).filter(Boolean).sort();
@@ -350,6 +510,15 @@ $("manualContenido").addEventListener("click", (e) => {
     if (!document.querySelector("#manActs .man-act")) $("manActs").insertAdjacentHTML("beforeend", htmlFilaManual($("manInicio").value));
     recalcularFechasManual();
   }
+});
+
+// Enter en el editor de Origen: guarda esa fila (o agrega la nueva) en vez de crear la reserva
+$("manualContenido").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.closest("#manOrigenesCaja .org-fila")) return;
+  e.preventDefault();
+  const fila = e.target.closest(".org-fila");
+  const b = fila.querySelector("[data-manual='org-agregar'], [data-manual='org-guardar']");
+  if (b) accionOrigen(b.dataset.manual, b);
 });
 
 $("manualContenido").addEventListener("submit", (e) => {
