@@ -48,3 +48,6 @@ drop trigger if exists propiedades_orden_guardia on hv.propiedades;
 create trigger propiedades_orden_guardia
   before insert or update on hv.propiedades
   for each row execute function hv.propiedades_orden_guardia();
+
+-- Para que el orden nuevo aparezca solo (sin recargar) en todos los dispositivos
+alter publication supabase_realtime add table hv.propiedades;

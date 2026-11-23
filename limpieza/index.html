@@ -645,8 +645,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
           <option value="l-sin">Limpieza: sin marcar</option>
         </select>
         <select class="inp" id="o-orden" style="flex:0 0 auto;min-width:150px" aria-label="Orden">
+          <option value="lista">Orden: asignado</option>
           <option value="urgencia">Orden: por urgencia</option>
-          <option value="lista">Orden: como el Excel</option>
         </select>
         <button class="btn sec sm hidden" id="o-ordenar" title="Solo administrador">↕ Ordenar propiedades</button>
         <button class="btn sec sm hidden" id="o-copiar">⧉ Armar desde el día anterior</button>
@@ -1113,6 +1113,11 @@ function conectarTiempoReal(){
       .on('postgres_changes', { event:'*', schema:'hv', table:'ocupacion' }, () => {
         clearTimeout(O.recargaT);
         O.recargaT = setTimeout(() => { if (S.vista === 'ocupacion') cargarOcupacion(true); }, 500);
+      })
+      // Si el administrador cambia el orden (o una propiedad), se aplica solo en todos los dispositivos
+      .on('postgres_changes', { event:'*', schema:'hv', table:'propiedades' }, () => {
+        clearTimeout(O.propT);
+        O.propT = setTimeout(async () => { await cargarPropiedades(); if (S.vista === 'ocupacion') pintarOcupacion(); }, 600);
       })
       .on('postgres_changes', { event:'*', schema:'hv', table:'ocupacion_dia' }, () => {
         clearTimeout(O.recargaT);
@@ -3358,7 +3363,7 @@ function pintarOcupacion(){
 
   $('#o-ordenar').classList.toggle('hidden', !esAdmin());
   const q = norm($('#o-q').value);
-  if (!O.orden) O.orden = tengo('ocupacion_editar') ? 'lista' : 'urgencia';   // ama de llaves ve primero lo más urgente
+  if (!O.orden) O.orden = 'lista';   // todos abren con el orden asignado por el administrador (igual en todos los dispositivos)
   $('#o-orden').value = O.orden;
   const urg = O.orden === 'urgencia';
   let props = oProps().filter(p => (!q || norm(p.nombre + ' ' + (p.grupo || '')).includes(q)) && oPasaFiltro(oFila(p.id)));
@@ -3641,7 +3646,7 @@ function formOrdenPropiedades(despues){
   const enTablero = S.propiedades.filter(p => p.activa && p.en_ocupacion !== false).sort(porOrden);
   const resto = S.propiedades.filter(p => !(p.activa && p.en_ocupacion !== false)).sort(porOrden);
   if (!abrirModal(`<div class="m-head"><div><h3>Ordenar propiedades</h3>
-        <div style="color:var(--muted);font-size:13px">Así aparecerán en el Reporte de Limpieza (orden “como el Excel”)</div></div>
+        <div style="color:var(--muted);font-size:13px">Así aparecerán en el Reporte de Limpieza en todos los dispositivos</div></div>
         <button class="x" data-x>✕</button></div>
       <div class="m-body">
         <p style="font-size:13px;color:var(--muted);margin:0 0 8px">Arrastre con <b>⠿</b> o use <b>▲ ▼</b>. Los cambios se aplican al tocar <b>Guardar orden</b>.</p>
