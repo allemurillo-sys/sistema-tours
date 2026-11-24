@@ -1340,7 +1340,7 @@ function verNotifs(){
       <div class="nm">${esc(n.mensaje)}</div>
       <div class="nf">${fecha(n.creado_en)}</div></button>`).join('');
   const ok = abrirModal(`<div class="m-head"><div><h3>Notificaciones</h3>
-      <div style="color:var(--muted);font-size:13px">Novedades de los reportes que usted creó, tiene asignados o le corresponde seguir, y cambios de claves de caja</div></div>
+      <div style="color:var(--muted);font-size:13px">Novedades de los reportes que usted creó, tiene asignados o le corresponde seguir, cambios de claves de caja y estados de limpieza de las propiedades</div></div>
       <button class="x" data-x aria-label="Cerrar">✕</button></div>
     <div class="m-body">
       ${S.notifs.some(n => !n.leida) ? '<button class="btn sec sm" id="nt-todas" style="margin-bottom:8px">✔ Marcar todas como leídas</button>' : ''}
