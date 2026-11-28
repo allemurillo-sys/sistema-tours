@@ -27,6 +27,9 @@
 .mapa-etiqueta { display: grid; gap: 4px; font-size: .9rem; }
 .mapa-etiqueta input { width: 100%; }
 .mapa-etiqueta-punto { font-family: var(--texto); font-weight: 700; font-size: .8rem; padding: 1px 6px; }
+.leaflet-tooltip.mapa-etq-oculta { opacity: 0 !important; pointer-events: none; }
+.mapa-popup-prop { display: grid; gap: 6px; }
+.mapa-popup-prop + .mapa-popup-prop { border-top: 1px solid var(--linea); padding-top: 10px; margin-top: 4px; }
 .leaflet-popup-content { font-family: var(--texto); display: grid; gap: 6px; }
 
 @media (max-width: 900px) {

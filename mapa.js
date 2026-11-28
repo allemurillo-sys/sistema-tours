@@ -87,7 +87,7 @@ async function mapaAbrir() {
   if (!mapa.mapa) mapaArmar();
   mapaPintarLista();
   mapaPintarMarcadores();
-  setTimeout(() => mapa.mapa.invalidateSize(), 50);
+  setTimeout(() => { mapa.mapa.invalidateSize(); mapaAcomodarEtiquetas(); }, 50);
 }
 
 // ---------- Estructura de la vista ----------
@@ -109,6 +109,8 @@ function mapaArmar() {
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "© OpenStreetMap"
   }).addTo(mapa.mapa);
+  mapa.mapa.on("moveend", () => mapaAcomodarEtiquetas());
+  mapa.mapa.on("resize", () => mapaAcomodarEtiquetas());
   mapa.mapa.on("click", (e) => { if (mapa.marcando) mapaGuardarPunto(mapa.marcando, e.latlng.lat, e.latlng.lng); });
 
   $("mapaBuscar").addEventListener("input", (e) => { mapa.buscar = e.target.value.trim().toLowerCase(); mapaPintarLista(); });
@@ -176,28 +178,95 @@ function mapaPintarLista() {
 }
 
 function mapaPintarMarcadores() {
-  mapa.marcadores.forEach((m) => m.remove());
+  new Set(mapa.marcadores.values()).forEach((m) => m.remove());
   mapa.marcadores.clear();
   const puntos = [];
+  // Propiedades en el mismo punto (mismo edificio o mismo enlace) comparten un solo pin
+  const grupos = new Map();
   app.propiedades.forEach((p) => {
     const u = mapa.ubicaciones.get(p.id);
     if (!tienePunto(u)) return;
-    const m = L.marker([u.latitud, u.longitud], { title: p.nombre }).addTo(mapa.mapa);
-    m.bindTooltip(escapar(p.nombre), { permanent: true, direction: "top", offset: [-15, -12], className: "mapa-etiqueta-punto" });
-    const foto = fotoDe(u);
-    m.bindPopup(`
-      ${foto ? `<a href="${escapar(foto)}" target="_blank" rel="noopener"><img class="mapa-popup-foto" src="${escapar(foto)}" alt="Foto de ${escapar(p.nombre)}"></a>` : ""}
-      <strong>${escapar(p.nombre)}</strong>
-      <button type="button" class="btn chico" data-mapa="copiar" data-id="${p.id}">Copiar enlace</button>
-      <a class="enlace" href="${escapar(enlaceDe(u))}" target="_blank" rel="noopener">Abrir en Google Maps</a>`);
-    mapa.marcadores.set(p.id, m);
-    puntos.push([u.latitud, u.longitud]);
+    const clave = `${u.latitud.toFixed(5)},${u.longitud.toFixed(5)}`;
+    if (!grupos.has(clave)) grupos.set(clave, { lat: u.latitud, lng: u.longitud, props: [] });
+    grupos.get(clave).props.push(p);
+  });
+  grupos.forEach((g) => {
+    const nombres = g.props.map((p) => p.nombre);
+    const m = L.marker([g.lat, g.lng], { title: nombres.join(" · ") }).addTo(mapa.mapa);
+    m.bindTooltip(nombres.map(escapar).join("<br>"), { permanent: true, direction: "top", offset: ETQ_POSICIONES[0][1], className: "mapa-etiqueta-punto" });
+    m.bindPopup(g.props.map((p) => {
+      const u = mapa.ubicaciones.get(p.id);
+      const foto = fotoDe(u);
+      return `<div class="mapa-popup-prop">
+        ${foto ? `<a href="${escapar(foto)}" target="_blank" rel="noopener"><img class="mapa-popup-foto" src="${escapar(foto)}" alt="Foto de ${escapar(p.nombre)}"></a>` : ""}
+        <strong>${escapar(p.nombre)}</strong>
+        <button type="button" class="btn chico" data-mapa="copiar" data-id="${p.id}">Copiar enlace</button>
+        <a class="enlace" href="${escapar(enlaceDe(u))}" target="_blank" rel="noopener">Abrir en Google Maps</a>
+      </div>`;
+    }).join(""), { maxHeight: 420 });
+    // Si su nombre quedó escondido para no taparse con otro, aparece al pasar el cursor
+    m.on("mouseover", () => m.getTooltip()?.getElement()?.classList.remove("mapa-etq-oculta"));
+    m.on("mouseout", () => { if (m._etqOculta) m.getTooltip()?.getElement()?.classList.add("mapa-etq-oculta"); });
+    g.props.forEach((p) => mapa.marcadores.set(p.id, m));
+    puntos.push([g.lat, g.lng]);
   });
   if (!mapa.ajustado && puntos.length) {
     mapa.ajustado = true;
     if (puntos.length === 1) mapa.mapa.setView(puntos[0], 15);
     else mapa.mapa.fitBounds(puntos, { padding: [40, 40], maxZoom: 15 });
   }
+  mapaAcomodarEtiquetas();
+}
+
+// ---------- Nombres sin sobreponerse ----------
+// Cada nombre prueba ponerse arriba, a la derecha, a la izquierda o abajo de su pin;
+// se queda en el primer lugar donde no tape otro nombre ni otro pin. Si no cabe
+// en ninguno (pines muy juntos con poco zoom), se esconde y aparece al pasar el
+// cursor, al tocar el pin o al acercar el mapa.
+const ETQ_POSICIONES = [
+  ["top", [-16, -13]],
+  ["right", [-4, 3]],
+  ["left", [-28, 3]],
+  ["bottom", [-16, 30]],
+];
+const rectChoca = (a, b, m = 2) => a.left < b.right + m && a.right > b.left - m && a.top < b.bottom + m && a.bottom > b.top - m;
+
+function mapaAcomodarEtiquetas() {
+  if (!mapa.mapa) return;
+  const marcadores = [...new Set(mapa.marcadores.values())];
+  const caja = mapa.mapa.getContainer().getBoundingClientRect();
+  const pines = marcadores.map((m) => m.getElement()?.getBoundingClientRect()).filter(Boolean);
+  const ocupados = [...pines];
+  // De arriba hacia abajo y de izquierda a derecha, para un resultado estable
+  marcadores
+    .map((m) => ({ m, pt: mapa.mapa.latLngToContainerPoint(m.getLatLng()) }))
+    .sort((x, y) => x.pt.y - y.pt.y || x.pt.x - y.pt.x)
+    .forEach(({ m }) => {
+      const t = m.getTooltip();
+      const el = t?.getElement();
+      if (!el) return;
+      el.classList.remove("mapa-etq-oculta");
+      m._etqOculta = false;
+      const propio = m.getElement()?.getBoundingClientRect();
+      for (const [dir, offset] of ETQ_POSICIONES) {
+        t.options.direction = dir;
+        t.options.offset = L.point(offset);
+        t.update();
+        const r = el.getBoundingClientRect();
+        const dentro = r.left >= caja.left && r.right <= caja.right && r.top >= caja.top && r.bottom <= caja.bottom;
+        const choca = ocupados.some((o) => o !== propio && rectChoca(r, o));
+        if (!choca && (dentro || dir === ETQ_POSICIONES[ETQ_POSICIONES.length - 1][0])) {
+          ocupados.push(r);
+          return;
+        }
+      }
+      // No cupo en ningún lado: se esconde (vuelve a la posición de arriba para cuando aparezca)
+      t.options.direction = ETQ_POSICIONES[0][0];
+      t.options.offset = L.point(ETQ_POSICIONES[0][1]);
+      t.update();
+      el.classList.add("mapa-etq-oculta");
+      m._etqOculta = true;
+    });
 }
 
 // ---------- Acciones ----------
