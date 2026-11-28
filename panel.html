@@ -11,11 +11,12 @@
   <link rel="stylesheet" href="panel.css?v=31">
   <link rel="stylesheet" href="tarifario.css?v=27">
   <link rel="stylesheet" href="chat.css?v=1">
-  <link rel="stylesheet" href="staff.css?v=16">
+  <link rel="stylesheet" href="staff.css?v=17">
   <link rel="stylesheet" href="reserva-vista.css?v=4">
   <link rel="stylesheet" href="escritorio.css?v=5">
   <link rel="stylesheet" href="movil.css?v=8">
   <link rel="stylesheet" href="notificaciones.css?v=1">
+  <link rel="stylesheet" href="mapa.css?v=1">
 </head>
 <body class="panel">
 
@@ -50,7 +51,13 @@
         <span class="marca-texto"><span class="marca-nombre">The House of Tours</span><span class="marca-hv">Home Vacations CR</span></span>
       </div>
       <nav class="menu" aria-label="Secciones del panel">
-        <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Reservas</button>
+        <div class="menu-grupo" id="grupoReservas">
+          <button type="button" class="menu-btn menu-grupo-btn" aria-expanded="false" aria-controls="despReservas">Reservas <svg class="menu-flecha" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="menu-desp" id="despReservas">
+            <button type="button" class="menu-btn" data-vista="reservas" aria-current="page">Tablero de reservas</button>
+            <button type="button" class="menu-btn" data-vista="mapa" id="btnMenuMapa" hidden>Mapa de propiedades</button>
+          </div>
+        </div>
         <button type="button" class="menu-btn" data-vista="calendario">Calendario</button>
         <button type="button" class="menu-btn" data-vista="tarifario" id="btnMenuTarifario" hidden>Tarifario</button>
         <div class="menu-grupo" id="grupoAmaLlaves" hidden>
@@ -96,6 +103,14 @@
         <span id="ultimaActualizacion" class="nota"></span>
       </div>
       <main id="tablero" class="tablero"></main>
+    </section>
+
+    <!-- Mapa de propiedades (Administrador y Operaciones) -->
+    <section id="vistaMapa" class="vista" hidden>
+      <div class="catalogo">
+        <h1 class="vista-titulo">Mapa de propiedades</h1>
+        <div id="mapaContenido"></div>
+      </div>
     </section>
 
     <!-- Calendario -->
@@ -212,6 +227,7 @@
   <script src="mantenimiento.js?v=26"></script>
   <script src="calendario.js?v=15"></script>
   <script src="finanzas.js?v=2"></script>
+  <script src="mapa.js?v=1"></script>
   <script src="correo.js?v=3"></script>
   <script src="proveedores.js?v=9"></script>
   <script src="reserva-vista.js?v=3"></script>

@@ -1,0 +1,33 @@
+/* Mapa de propiedades (Reservas › Mapa de propiedades) */
+.mapa-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.mapa-lienzo-caja { position: relative; }
+.mapa-lienzo { height: calc(100vh - 210px); min-height: 420px; border: 1px solid var(--linea); border-radius: 12px; z-index: 0; }
+.mapa-lienzo.marcando { cursor: crosshair; outline: 3px solid var(--verde); }
+.mapa-marcando {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; margin: 0;
+  background: var(--pizarra); color: #fff; padding: 8px 14px; border-radius: 999px; font-size: .95rem; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+}
+.mapa-marcando .enlace { color: #fff; text-decoration: underline; margin-left: 6px; }
+.mapa-lista { background: var(--blanco); border: 1px solid var(--linea); border-radius: 12px; padding: 12px; max-height: calc(100vh - 210px); overflow: auto; }
+.mapa-lista input[type="search"] { width: 100%; margin-bottom: 8px; }
+.mapa-fila { border-bottom: 1px solid var(--linea); padding: 10px 2px; display: grid; gap: 4px; }
+.mapa-fila:last-child { border-bottom: 0; }
+.mapa-fila.inactiva .mapa-nombre { color: var(--gris); }
+.mapa-fila.editando { background: var(--verde-suave); border-radius: 8px; padding: 10px; }
+.mapa-nombre { all: unset; cursor: pointer; font-weight: 700; color: var(--pizarra); }
+.mapa-nombre:hover:not([disabled]) { color: var(--verde); text-decoration: underline; }
+.mapa-nombre[disabled] { cursor: default; }
+.mapa-nombre:focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
+.mapa-falta { font-size: .85rem; color: var(--alerta); }
+.mapa-acciones { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.mapa-etiqueta { display: grid; gap: 4px; font-size: .9rem; }
+.mapa-etiqueta input { width: 100%; }
+.mapa-etiqueta-punto { font-family: var(--texto); font-weight: 700; font-size: .8rem; padding: 1px 6px; }
+.leaflet-popup-content { font-family: var(--texto); display: grid; gap: 6px; }
+
+@media (max-width: 900px) {
+  .mapa-cuerpo { grid-template-columns: 1fr; }
+  .mapa-lienzo { height: 55vh; min-height: 320px; }
+  .mapa-lista { max-height: none; }
+}
+@media print { .mapa-lista input { display: none; } }
