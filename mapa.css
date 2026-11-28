@@ -11,6 +11,10 @@
 .mapa-lista { background: var(--blanco); border: 1px solid var(--linea); border-radius: 12px; padding: 12px; max-height: calc(100vh - 210px); overflow: auto; }
 .mapa-lista input[type="search"] { width: 100%; margin-bottom: 8px; }
 .mapa-fila { border-bottom: 1px solid var(--linea); padding: 10px 2px; display: grid; gap: 4px; }
+.mapa-fila.con-foto { grid-template-columns: 84px minmax(0, 1fr); align-items: start; gap: 10px; }
+.mapa-fila-texto { display: grid; gap: 4px; min-width: 0; }
+.mapa-miniatura img { width: 84px; height: 63px; object-fit: cover; border-radius: 8px; display: block; border: 1px solid var(--linea); }
+.mapa-popup-foto { width: 220px; max-height: 165px; object-fit: cover; border-radius: 8px; display: block; }
 .mapa-fila:last-child { border-bottom: 0; }
 .mapa-fila.inactiva .mapa-nombre { color: var(--gris); }
 .mapa-fila.editando { background: var(--verde-suave); border-radius: 8px; padding: 10px; }
