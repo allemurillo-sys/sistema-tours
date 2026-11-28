@@ -5,7 +5,7 @@
    · Permite instalar el sitio como app. No guarda copias viejas del sistema:
      siempre carga la versión más reciente de GitHub (solo usa la copia si no hay internet).
    ===================================================================== */
-const VERSION = 'v9';
+const VERSION = 'v10';
 const CACHE = 'thot-limpieza-' + VERSION;
 
 self.addEventListener('install', e => {

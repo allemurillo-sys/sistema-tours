@@ -1117,7 +1117,7 @@ function conectarTiempoReal(){
       // Si el administrador cambia el orden (o una propiedad), se aplica solo en todos los dispositivos
       .on('postgres_changes', { event:'*', schema:'hv', table:'propiedades' }, () => {
         clearTimeout(O.propT);
-        O.propT = setTimeout(async () => { await cargarPropiedades(); if (S.vista === 'ocupacion') pintarOcupacion(); }, 600);
+        O.propT = setTimeout(async () => { await cargarPropiedades(); if (S.vista !== 'ocupacion') return; if ($('#o-lista').contains(document.activeElement) && document.activeElement.matches('input,select')) O.pend = true; else pintarOcupacion(); }, 600);
       })
       .on('postgres_changes', { event:'*', schema:'hv', table:'ocupacion_dia' }, () => {
         clearTimeout(O.recargaT);
@@ -3198,7 +3198,8 @@ async function historialClaves(filtro, titulo, sub){
    · Ama de llaves / Supervisora / Mucama marcan el estado de limpieza
      cuando pasan por la propiedad: Lista, Sucia, Pendiente o Bloqueada
    ===================================================================== */
-const O = { fecha:null, filas:new Map(), ultima:new Map(), dia:null, cargado:false, recargaT:null, pend:false, filtro:'todas', cerradoPintado:null, orden:null };
+const O = { fecha:null, filas:new Map(), ultima:new Map(), dia:null, cargado:false, recargaT:null, pend:false, filtro:'todas', cerradoPintado:null, orden:null,
+  enVuelo:0, gen:0, colas:new Map(), filasPend:new Set() };
 const O_CIERRE = '20:15';            // a esta hora el tablero del día se archiva (solo lectura)
 const O_INGRESO = '3:00 p. m.';      // hora de ingreso de todas las propiedades
 // "Amanece": cómo inicia la propiedad · "Queda": cómo estará (en la base de datos: estado / entrada)
@@ -3263,12 +3264,20 @@ async function cargarOcupacion(silencioso){
     if (!O.cargado) $('#o-lista').innerHTML = '<div class="loading">Cargando…</div>';
     await cargarPropiedades();
   }
+  const gen = O.gen;
   const [a, b, d] = await Promise.all([
     sb.from('ocupacion').select('*').eq('fecha', f),
     sb.rpc('ocupacion_ultima_limpieza', { p_fecha:f }),
     sb.from('ocupacion_dia').select('*').eq('fecha', f).maybeSingle()
   ]);
   if (f !== O.fecha) return;                       // cambiaron de día mientras cargaba
+  // Si mientras cargaba se guardó algo (o hay guardados en curso), estos datos ya son viejos:
+  // no se usan, para no borrar en pantalla lo recién escrito. Se vuelve a cargar en un momento.
+  if (O.enVuelo > 0 || gen !== O.gen) {
+    clearTimeout(O.recargaT);
+    O.recargaT = setTimeout(() => { if (S.vista === 'ocupacion') cargarOcupacion(true); }, 700);
+    return;
+  }
   if (a.error) { if (!silencioso) $('#o-lista').innerHTML = `<div class="err" style="padding:16px">${esc(errMsg(a.error))}</div>`; return; }
   O.filas = new Map((a.data || []).map(r => [r.propiedad_id, r]));
   O.ultima = new Map((b.data || []).map(r => [r.propiedad_id, r]));
@@ -3418,23 +3427,71 @@ function oFilaHTML(p){
 }
 function oRepintarFila(pid){
   const el = $(`#o-lista .o-row[data-pid="${pid}"]`), p = S.propiedades.find(x => x.id === pid);
-  if (el && p) { el.outerHTML = oFilaHTML(p); }
+  if (el && p) {
+    // Si la persona sigue en esta fila (escribiendo Noches/Pax o con una lista abierta), no se reemplaza:
+    // se actualizan solo los otros campos y la fila completa se repinta cuando salga de ella.
+    if (el.contains(document.activeElement) && document.activeElement.matches('input,select')) {
+      oActualizarEnSitio(el, pid);
+      O.filasPend.add(pid);
+    } else el.outerHTML = oFilaHTML(p);
+  }
   pintarStatsOcup();
+}
+// Pone los valores guardados en los campos de la fila que la persona NO está usando en este momento
+function oActualizarEnSitio(el, pid){
+  const f = oFila(pid);
+  el.querySelectorAll('[data-c]').forEach(c => {
+    if (c === document.activeElement) return;
+    const v = f[c.dataset.c] ?? '';
+    if (c.tagName === 'SELECT') {
+      if (c.dataset.c === 'entrada') {
+        const opc = Object.keys(O_QUEDA).filter(k => f.estado === 'OCUPADA' ? k === 'OCUPADA' : k !== 'OCUPADA');
+        c.innerHTML = `<option value="">—</option>` + opc.map(x => `<option value="${x}">${esc(O_QUEDA[x])}</option>`).join('');
+      }
+      c.value = v; c.className = 'o-sel o-v-' + v;
+    } else if (String(c.value) !== String(v)) c.value = v;
+  });
 }
 
 /* ---------- Guardar (Operaciones) ---------- */
-async function oGuardarFila(pid, cambios){
-  const f = { ...oFila(pid), ...cambios };
+// Se envía SOLO el dato que la persona cambió; la base de datos lo combina con lo ya guardado.
+// Los cambios de una misma propiedad se guardan en orden (uno espera al anterior), así nunca se pisan.
+function oGuardarFila(pid, cambios){
+  const fecha = O.fecha;
   const n = v => (v === '' || v == null || isNaN(+v)) ? null : Math.max(0, Math.round(+v));
-  f.noches = n(f.noches); f.pax = n(f.pax);
+  const env = {};
+  for (const [k, v] of Object.entries(cambios)) env[k] = (k === 'noches' || k === 'pax') ? n(v) : (k === 'nota' ? (v || null) : (v || null));
+  // Se refleja de inmediato en la copia local para que el siguiente cambio parta de aquí
+  O.filas.set(pid, { ...oFila(pid), fecha, propiedad_id:pid, ...env });
+  O.enVuelo++; O.gen++;
   const fila = $(`#o-lista .o-row[data-pid="${pid}"]`); if (fila) fila.classList.add('guardando');
-  const { error } = await sb.rpc('ocupacion_guardar', { p_fecha:O.fecha, p_propiedad:pid, p_estado:f.estado, p_entrada:f.entrada,
-    p_noches:f.noches, p_pax:f.pax, p_nota:f.nota || null });
-  if (fila) fila.classList.remove('guardando');
-  if (error) { aviso(errMsg(error), true); oRepintarFila(pid); return false; }
-  O.filas.set(pid, { ...oFila(pid), fecha:O.fecha, propiedad_id:pid, estado:f.estado, entrada:f.entrada, noches:f.noches, pax:f.pax, nota:f.nota || null });
-  pintarStatsOcup();
-  return true;
+  const previo = O.colas.get(pid) || Promise.resolve();
+  const tarea = previo.catch(() => {}).then(async () => {
+    const { data, error } = await sb.rpc('ocupacion_guardar_campos', { p_fecha:fecha, p_propiedad:pid, p_cambios:env });
+    return { data, error };
+  }).then(({ data, error }) => {
+    O.enVuelo = Math.max(0, O.enVuelo - 1); O.gen++;
+    const fl = $(`#o-lista .o-row[data-pid="${pid}"]`); if (fl && O.colas.get(pid) === tarea) fl.classList.remove('guardando');
+    if (fecha !== O.fecha) return !error;
+    if (error) {
+      aviso(errMsg(error), true);
+      // Algo no se guardó: se vuelve a traer lo que realmente está en la base de datos
+      clearTimeout(O.recargaT); O.recargaT = setTimeout(() => cargarOcupacion(true), 300);
+      return false;
+    }
+    // La base de datos devuelve la fila como quedó: se usa como dato real (solo si no hay otro cambio pendiente de esa fila)
+    if (data && O.colas.get(pid) === tarea) O.filas.set(pid, { ...oFila(pid), ...data });
+    pintarStatsOcup();
+    return true;
+  }, err => {
+    O.enVuelo = Math.max(0, O.enVuelo - 1); O.gen++;
+    aviso('No se pudo guardar (revise la conexión). Se recargará el reporte.', true);
+    clearTimeout(O.recargaT); O.recargaT = setTimeout(() => cargarOcupacion(true), 1000);
+    return false;
+  });
+  O.colas.set(pid, tarea);
+  tarea.finally(() => { if (O.colas.get(pid) === tarea) O.colas.delete(pid); });
+  return tarea;
 }
 
 /* ---------- Estado de limpieza (personal de ama de llaves) ---------- */
@@ -3620,7 +3677,11 @@ $('#o-lista').addEventListener('change', async e => {
 $('#o-orden').onchange = e => { O.orden = e.target.value; pintarOcupacion(); };
 $('#o-lista').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.o-num')) e.target.blur(); });
 $('#o-lista').addEventListener('focusout', () => setTimeout(() => {
-  if (O.pend && !$('#o-lista').contains(document.activeElement)) pintarOcupacion();
+  if (O.pend && !$('#o-lista').contains(document.activeElement)) return pintarOcupacion();
+  for (const pid of [...O.filasPend]) {
+    const el = $(`#o-lista .o-row[data-pid="${pid}"]`);
+    if (!el || !el.contains(document.activeElement)) { O.filasPend.delete(pid); oRepintarFila(pid); }
+  }
 }, 150));
 $('#o-lista').addEventListener('click', e => {
   const row = e.target.closest('.o-row[data-pid]'); if (!row) return;
